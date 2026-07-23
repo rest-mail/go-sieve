@@ -1,7 +1,7 @@
 # sieve
 
-[![CI](https://github.com/rest-mail/sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/sieve/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/sieve.svg)](https://pkg.go.dev/github.com/rest-mail/sieve)
+[![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve)
 
 A parser and interpreter for the Sieve mail-filtering language
 ([RFC 5228](https://www.rfc-editor.org/rfc/rfc5228)) in Go, with zero external
@@ -36,7 +36,7 @@ their recognised parts.
 ## Install
 
 ```sh
-go get github.com/rest-mail/sieve
+go get github.com/rest-mail/go-sieve
 ```
 
 ## Usage
@@ -47,7 +47,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/rest-mail/sieve"
+	"github.com/rest-mail/go-sieve"
 )
 
 // mailbox implements sieve.Executor, applying actions to your delivery model.
