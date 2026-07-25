@@ -59,6 +59,7 @@ package sieve
 
 import (
 	"fmt"
+	"net/mail"
 	"regexp"
 	"strconv"
 	"strings"
@@ -407,7 +408,11 @@ func gatherAddressValues(msg *Message, names []string, part string) []string {
 	return out
 }
 
-// addressList returns the bare addr-specs of a header (no display name).
+// addressList returns the bare addr-specs of a header (no display name). For
+// headers outside the structured set, the raw value is parsed as an RFC 5322
+// address list so the address test sees real addr-specs — not display names,
+// comments, or group syntax — per RFC 5228 §5.1. Values that do not parse as an
+// address are dropped so they cannot match :localpart/:domain (§2.7.4).
 func addressList(msg *Message, name string) []string {
 	lower := strings.ToLower(strings.TrimSpace(name))
 	switch lower {
@@ -422,8 +427,28 @@ func addressList(msg *Message, name string) []string {
 	}
 	var out []string
 	for k, vals := range msg.Headers.Raw {
-		if strings.EqualFold(k, lower) {
-			out = append(out, vals...)
+		if !strings.EqualFold(k, lower) {
+			continue
+		}
+		for _, v := range vals {
+			out = append(out, parseAddrSpecs(v)...)
+		}
+	}
+	return out
+}
+
+// parseAddrSpecs parses a raw header value as an RFC 5322 address list and
+// returns the addr-spec of each address. A value that cannot be parsed as an
+// address list yields no addr-specs.
+func parseAddrSpecs(raw string) []string {
+	addrs, err := mail.ParseAddressList(raw)
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		if a.Address != "" {
+			out = append(out, a.Address)
 		}
 	}
 	return out
