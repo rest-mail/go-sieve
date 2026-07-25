@@ -25,7 +25,7 @@ func (m *mailbox) Notify(method, message string)       {}
 // Example parses a small Sieve script, runs it against a message, and inspects
 // the actions the script selected.
 func Example() {
-	script, err := sieve.Parse(`require ["fileinto", "imap4flags"];
+	script, err := sieve.Parse(`require ["fileinto", "imap4flags", "mailbox"];
 if header :contains "Subject" "invoice" {
     setflag "\\Flagged";
     fileinto :create "Invoices";
