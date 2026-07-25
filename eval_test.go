@@ -97,9 +97,10 @@ func uniqueStrings(in []string) []string {
 
 // sieveResult bundles the recorded actions and terminal outcome of a run.
 type sieveResult struct {
-	meta        map[string]string
-	disposition Disposition
-	reject      string
+	meta         map[string]string
+	disposition  Disposition
+	reject       string
+	implicitKeep bool
 }
 
 func runSieve(t *testing.T, script string, msg *Message) *sieveResult {
@@ -110,7 +111,12 @@ func runSieve(t *testing.T, script string, msg *Message) *sieveResult {
 	}
 	ex := newRecExec()
 	out := s.Evaluate(msg, ex)
-	return &sieveResult{meta: ex.meta, disposition: out.Disposition, reject: out.RejectReason}
+	return &sieveResult{
+		meta:         ex.meta,
+		disposition:  out.Disposition,
+		reject:       out.RejectReason,
+		implicitKeep: out.ImplicitKeep,
+	}
 }
 
 // folderOf returns the fileinto target recorded on a result, or "".
