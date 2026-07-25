@@ -2,15 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-While the project is pre-1.0, a breaking change bumps the minor version.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Note: pre-1.0, breaking changes may ship in a minor release.
 
 ## [Unreleased]
 
 ## [0.3.0] - 2026-07-25
 
-### BREAKING CHANGES
+### Breaking
 
 - **The evaluation `Outcome` now drives the RFC 5228 implicit keep, and hosts
   must honour it.** `Outcome` gains two fields, `ImplicitKeep bool` and
@@ -195,7 +193,7 @@ While the project is pre-1.0, a breaking change bumps the minor version.
   string is now accepted (and counted for line numbering), and a bare CR, a lone
   LF, or a NUL octet is a lex error reported at the string's start line.
 
-## v0.2.0
+## [0.2.0] - 2026-07-25
 
 ### Breaking
 
@@ -231,10 +229,10 @@ While the project is pre-1.0, a breaking change bumps the minor version.
   filters; an unrepresentable quantified value is now a parse error
   (RFC 5228 §2.4.1).
 
-## v0.1.1
+## [0.1.1] - 2026-07-23
 
 - Documentation and packaging polish for the initial public release.
 
-## v0.1.0
+## [0.1.0] - 2026-07-23
 
 - Initial public release: RFC 5228 Sieve parser and evaluator.
