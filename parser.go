@@ -177,6 +177,7 @@ var supportedCapabilities = map[string]bool{
 	"notify":                     true, // notification action
 	"mailbox":                    true, // RFC 5490 fileinto :create
 	"copy":                       true, // RFC 3894 :copy tagged argument
+	"encoded-character":          true, // RFC 5228 §2.4.2.4 ${hex:..}/${unicode:..} in strings
 	"regex":                      true, // non-standard :regex match type
 	"comparator-i;ascii-numeric": true, // RFC 4790/5228 i;ascii-numeric comparator
 	"comparator-i;octet":         true, // built-in comparator (may be declared explicitly)
@@ -608,7 +609,33 @@ func (p *parser) expect(k tokKind, what string) (token, error) {
 	if p.peek().kind != k {
 		return token{}, p.errf("expected %s, got %s", what, p.describe(p.peek()))
 	}
-	return p.next(), nil
+	tok := p.next()
+	if k == tString {
+		s, err := p.decodeStringConstant(tok)
+		if err != nil {
+			return token{}, err
+		}
+		tok.str = s
+	}
+	return tok, nil
+}
+
+// decodeStringConstant applies the RFC 5228 §2.4.2.4 "encoded-character"
+// transformation to a string token's value when — and only when — the script
+// declared require "encoded-character". Capability names in require itself are
+// consumed before the capability is recorded, so they are never decoded. Every
+// other string constant becomes its decoded value at parse time; the AST and the
+// evaluator therefore see the intended octets. A well-formed but out-of-range
+// ${unicode:...} value is reported as an error against the token's line.
+func (p *parser) decodeStringConstant(tok token) (string, error) {
+	if !p.required["encoded-character"] {
+		return tok.str, nil
+	}
+	s, err := decodeEncodedCharacters(tok.str)
+	if err != nil {
+		return "", fmt.Errorf("sieve: line %d: %s", tok.line, err)
+	}
+	return s, nil
 }
 
 // parseCommands parses a sequence of commands. When inBlock is true it stops at
@@ -881,7 +908,11 @@ func firstControlChar(s string) rune {
 func (p *parser) parseReject() (sieveCmd, error) {
 	cmd := &rejectCmd{}
 	if p.peek().kind == tString {
-		cmd.reason = p.next().str
+		reason, err := p.decodeStringConstant(p.next())
+		if err != nil {
+			return nil, err
+		}
+		cmd.reason = reason
 	}
 	return cmd, p.finishStatement()
 }
@@ -932,7 +963,11 @@ func (p *parser) parseVacation() (sieveCmd, error) {
 		}
 	}
 	if p.peek().kind == tString {
-		cmd.body = p.next().str
+		body, err := p.decodeStringConstant(p.next())
+		if err != nil {
+			return nil, err
+		}
+		cmd.body = body
 	}
 	return cmd, p.finishStatement()
 }
@@ -965,7 +1000,11 @@ func (p *parser) parseNotify() (sieveCmd, error) {
 	}
 	// RFC 5435 puts the method in a trailing positional string.
 	if cmd.method == "" && p.peek().kind == tString {
-		cmd.method = p.next().str
+		method, err := p.decodeStringConstant(p.next())
+		if err != nil {
+			return nil, err
+		}
+		cmd.method = method
 	}
 	return cmd, p.finishStatement()
 }
@@ -1275,7 +1314,11 @@ func (p *parser) parseBodyTest() (sieveTest, error) {
 // (e.g. `exists []`, which would otherwise evaluate true vacuously).
 func (p *parser) parseStringList() ([]string, error) {
 	if p.peek().kind == tString {
-		return []string{p.next().str}, nil
+		s, err := p.decodeStringConstant(p.next())
+		if err != nil {
+			return nil, err
+		}
+		return []string{s}, nil
 	}
 	open, err := p.expect(tLBracket, "a string or string list")
 	if err != nil {
@@ -1326,4 +1369,199 @@ func (p *parser) skipBracketed() {
 	if p.peek().kind == tRBracket {
 		p.next()
 	}
+}
+
+// ── encoded-character (RFC 5228 §2.4.2.4) ────────────────────────────
+
+// decodeEncodedCharacters applies the "encoded-character" transformation to s.
+// Within a string, "${hex:HH HH ...}" is replaced by the octets named by its
+// blank-separated 1*2-hex-digit groups, and "${unicode:XXXX ...}" by the UTF-8
+// encoding of its blank-separated code points. The keywords are matched
+// case-insensitively. A "${...}" run that does not match the grammar is left
+// exactly as written (not an error); a well-formed ${unicode:...} whose value is
+// a surrogate (U+D800..U+DFFF) or exceeds U+10FFFF is an error. The transform is
+// a single left-to-right pass — its own output is never re-scanned, so at most
+// one transformation is applied to any position (RFC 5228 §2.4.2.4).
+func decodeEncodedCharacters(s string) (string, error) {
+	// Fast path: without a "${" nothing can match, so the string is unchanged.
+	if !strings.Contains(s, "${") {
+		return s, nil
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		if s[i] == '$' && i+1 < len(s) && s[i+1] == '{' {
+			decoded, end, err := decodeEncodedSequence(s, i)
+			if err != nil {
+				return "", err
+			}
+			if end > i {
+				b.WriteString(decoded)
+				i = end
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String(), nil
+}
+
+// decodeEncodedSequence tries to decode a single "${hex:...}" or "${unicode:...}"
+// sequence beginning at start, where s[start:start+2] is "${". On a grammar match
+// it returns the decoded octets and the index just past the closing "}"; when the
+// run does not match the grammar it returns end == start so the caller emits the
+// "$" literally and resumes at the following octet. A well-formed but out-of-range
+// ${unicode:...} value returns an error.
+func decodeEncodedSequence(s string, start int) (decoded string, end int, err error) {
+	body := s[start+2:] // text after "${"
+	var payloadStart int
+	isUnicode := false
+	switch {
+	case hasASCIIFoldPrefix(body, "hex:"):
+		payloadStart = start + 2 + len("hex:")
+	case hasASCIIFoldPrefix(body, "unicode:"):
+		payloadStart = start + 2 + len("unicode:")
+		isUnicode = true
+	default:
+		return "", start, nil // unknown encoding keyword: leave literal
+	}
+	// The payload contains only hex digits and blanks, so the first "}" (if any)
+	// terminates the sequence.
+	rel := strings.IndexByte(s[payloadStart:], '}')
+	if rel < 0 {
+		return "", start, nil // no closing brace: leave literal
+	}
+	payload := s[payloadStart : payloadStart+rel]
+	if isUnicode {
+		out, ok, verr := decodeUnicodeSeq(payload)
+		if verr != nil {
+			return "", 0, verr
+		}
+		if !ok {
+			return "", start, nil
+		}
+		return out, payloadStart + rel + 1, nil
+	}
+	out, ok := decodeHexSeq(payload)
+	if !ok {
+		return "", start, nil
+	}
+	return out, payloadStart + rel + 1, nil
+}
+
+// decodeHexSeq parses a hex-pair-seq — "*blank hex-pair *(1*blank hex-pair)
+// *blank" where hex-pair is 1*2HEXDIG — and returns the octets it names. ok is
+// false when payload does not match the grammar (a non-hex character, or a digit
+// run that is not split into blank-separated 1-or-2-digit pairs), so the caller
+// leaves the sequence literal.
+func decodeHexSeq(payload string) (string, bool) {
+	var b strings.Builder
+	i, n := skipEncBlanks(payload, 0), len(payload)
+	if i >= n {
+		return "", false // a hex-pair-seq requires at least one hex-pair
+	}
+	for {
+		if i >= n || !isHexDigit(payload[i]) {
+			return "", false
+		}
+		p := i
+		i++
+		if i < n && isHexDigit(payload[i]) { // optional second digit of the pair
+			i++
+		}
+		v, perr := strconv.ParseUint(payload[p:i], 16, 8)
+		if perr != nil {
+			return "", false
+		}
+		b.WriteByte(byte(v))
+		if i >= n {
+			return b.String(), true
+		}
+		if !isEncBlank(payload[i]) {
+			return "", false // a hex-pair must be followed by a blank or the end
+		}
+		i = skipEncBlanks(payload, i)
+		if i >= n {
+			return b.String(), true // trailing blanks
+		}
+	}
+}
+
+// decodeUnicodeSeq parses a unicode-hex-seq — "*blank unicode-hex *(1*blank
+// unicode-hex) *blank" where unicode-hex is 1*HEXDIG — and returns the UTF-8
+// encoding of the code points it names. ok is false when payload does not match
+// the grammar (the caller then leaves the sequence literal); err is non-nil when
+// a well-formed value is a surrogate (U+D800..U+DFFF) or exceeds U+10FFFF.
+func decodeUnicodeSeq(payload string) (string, bool, error) {
+	var b strings.Builder
+	i, n := skipEncBlanks(payload, 0), len(payload)
+	if i >= n {
+		return "", false, nil
+	}
+	for {
+		if i >= n || !isHexDigit(payload[i]) {
+			return "", false, nil
+		}
+		p := i
+		for i < n && isHexDigit(payload[i]) { // 1*HEXDIG
+			i++
+		}
+		cp, perr := strconv.ParseUint(payload[p:i], 16, 32)
+		if perr != nil || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
+			// The digits are well-formed but the value is out of range: too large
+			// to hold, above U+10FFFF, or a UTF-16 surrogate. Per RFC 5228
+			// §2.4.2.4 this is an error rather than a literal sequence.
+			return "", true, fmt.Errorf("encoded-character: unicode value %q is outside the valid range (0..D7FF, E000..10FFFF)", payload[p:i])
+		}
+		b.WriteRune(rune(cp))
+		if i >= n {
+			return b.String(), true, nil
+		}
+		if !isEncBlank(payload[i]) {
+			return "", false, nil
+		}
+		i = skipEncBlanks(payload, i)
+		if i >= n {
+			return b.String(), true, nil
+		}
+	}
+}
+
+func isHexDigit(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// isEncBlank reports whether c is a "blank" separator per RFC 5228 §2.4.2.4
+// (blank = WSP / CRLF).
+func isEncBlank(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
+}
+
+func skipEncBlanks(s string, i int) int {
+	for i < len(s) && isEncBlank(s[i]) {
+		i++
+	}
+	return i
+}
+
+// hasASCIIFoldPrefix reports whether s begins with prefix, folding only the
+// US-ASCII letters A–Z (RFC 5228 §2.4.2.4 makes the "hex"/"unicode" keywords
+// case-insensitive). prefix must be lowercase ASCII. It deliberately does not use
+// Go's Unicode-aware case folding, so no non-ASCII octet can masquerade as a
+// keyword letter.
+func hasASCIIFoldPrefix(s, prefix string) bool {
+	if len(s) < len(prefix) {
+		return false
+	}
+	for i := 0; i < len(prefix); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != prefix[i] {
+			return false
+		}
+	}
+	return true
 }
