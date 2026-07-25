@@ -301,11 +301,12 @@ func (l *lexer) tokenize() ([]token, error) {
 			toks = append(toks, token{kind: tSemicolon, line: l.line})
 			l.pos++
 		case c == '"':
+			startLine := l.line // a CRLF inside the string advances l.line
 			s, err := l.readQuotedString()
 			if err != nil {
 				return nil, err
 			}
-			toks = append(toks, token{kind: tString, str: s, line: l.line})
+			toks = append(toks, token{kind: tString, str: s, line: startLine})
 		case c == ':':
 			tag := l.readTag()
 			toks = append(toks, token{kind: tTag, str: tag, line: l.line})
@@ -378,8 +379,23 @@ func (l *lexer) readQuotedString() (string, error) {
 				continue
 			}
 			l.pos++
+		case '\r':
+			// RFC 5228 §8.1: quoted-safe permits CRLF as a line break inside a
+			// quoted string, but a bare CR (not followed by LF) is not a valid
+			// quoted-char (octet-not-qspecial excludes CR).
+			if l.pos+1 < len(l.src) && l.src[l.pos+1] == '\n' {
+				b.WriteString("\r\n")
+				l.pos += 2
+				l.line++
+				continue
+			}
+			return "", l.errf("bare CR in quoted string")
 		case '\n':
-			return "", l.errf("unterminated string")
+			// A lone LF (not part of a CRLF) is not a valid quoted-char.
+			return "", l.errf("bare LF in quoted string")
+		case 0:
+			// RFC 5228 §2.4.2 forbids the NUL octet in strings.
+			return "", l.errf("NUL byte in quoted string")
 		default:
 			b.WriteByte(c)
 			l.pos++
