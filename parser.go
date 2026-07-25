@@ -6,10 +6,12 @@ package sieve
 // and a non-standard :regex match type retained for backwards compatibility.
 //
 // The parser produces an AST (Script -> commands -> tests) that the evaluator
-// in eval.go walks at execution time. Parsing is deliberately strict for the
-// constructs it understands (so Validate can catch real mistakes) but lenient
-// about unknown commands, tests and tagged arguments so that scripts relying on
-// extensions we do not implement still load and run their recognised parts.
+// in eval.go walks at execution time. Parsing enforces RFC 5228 "require"
+// semantics: every extension a script uses must be declared with require, a
+// require of an extension this package does not implement is an error, require
+// must precede every other command, and an unknown command or test (including a
+// typo) is an error rather than a silent no-op. See supportedCapabilities for
+// the set of extensions this package implements.
 
 import (
 	"fmt"
@@ -150,6 +152,32 @@ const (
 	defaultComparator  = "i;ascii-casemap"
 	defaultAddressPart = ":all"
 )
+
+// supportedCapabilities is the set of extension capability strings this package
+// implements. RFC 5228 §2.10.5 requires that a script which "require"s a
+// capability outside this set be rejected rather than run, and that any
+// extension feature (command, test, match type, comparator, or tagged argument)
+// be declared with require before it is used. Core RFC 5228 constructs — the
+// control commands, keep/discard/redirect/stop, the address/header/exists/size/
+// allof/anyof/not/true/false tests, the :is/:contains/:matches match types, the
+// i;ascii-casemap and i;octet comparators, and the :all/:localpart/:domain
+// address parts — need no require and are not listed here.
+var supportedCapabilities = map[string]bool{
+	"fileinto":                   true, // RFC 5228 fileinto action
+	"reject":                     true, // RFC 5429 reject action
+	"ereject":                    true, // RFC 5429 ereject action
+	"envelope":                   true, // RFC 5228 envelope test
+	"body":                       true, // RFC 5173 body test
+	"imap4flags":                 true, // RFC 5232 setflag/addflag/removeflag and :flags
+	"vacation":                   true, // RFC 5230 vacation action
+	"notify":                     true, // notification action
+	"mailbox":                    true, // RFC 5490 fileinto :create
+	"copy":                       true, // RFC 3894 :copy tagged argument
+	"regex":                      true, // non-standard :regex match type
+	"comparator-i;ascii-numeric": true, // RFC 4790/5228 i;ascii-numeric comparator
+	"comparator-i;octet":         true, // built-in comparator (may be declared explicitly)
+	"comparator-i;ascii-casemap": true, // built-in comparator (may be declared explicitly)
+}
 
 // DefaultMaxDepth is the default limit on how deeply tests and control blocks
 // may nest before [Parse] rejects a script. The parser and evaluator both
@@ -489,6 +517,9 @@ type parser struct {
 	pos      int
 	requires []string
 
+	required       map[string]bool // capabilities declared via require
+	seenNonRequire bool            // a non-require command has been parsed
+
 	maxDepth   int // nesting cap for tests and blocks
 	testDepth  int // current test-expression nesting
 	blockDepth int // current control-block nesting
@@ -511,7 +542,7 @@ func parseSieveScript(src string, opts ...Option) (*Script, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &parser{toks: toks, maxDepth: cfg.maxDepth}
+	p := &parser{toks: toks, maxDepth: cfg.maxDepth, required: map[string]bool{}}
 	cmds, err := p.parseCommands(false)
 	if err != nil {
 		return nil, err
@@ -595,6 +626,12 @@ func (p *parser) parseCommand() (sieveCmd, error) {
 	}
 	name := p.next().str
 
+	// RFC 5228 §3.2: require must precede every other command. Record that a
+	// non-require command has been seen so a later require is rejected.
+	if name != "require" {
+		p.seenNonRequire = true
+	}
+
 	switch name {
 	case "require":
 		return nil, p.parseRequire()
@@ -610,28 +647,76 @@ func (p *parser) parseCommand() (sieveCmd, error) {
 	case "discard":
 		return &discardCmd{}, p.finishStatement()
 	case "fileinto":
+		if err := p.requireCapability("fileinto", "the fileinto action"); err != nil {
+			return nil, err
+		}
 		return p.parseFileinto()
 	case "redirect":
 		return p.parseRedirect()
-	case "reject", "ereject":
+	case "reject":
+		if err := p.requireCapability("reject", "the reject action"); err != nil {
+			return nil, err
+		}
+		return p.parseReject()
+	case "ereject":
+		if err := p.requireCapability("ereject", "the ereject action"); err != nil {
+			return nil, err
+		}
 		return p.parseReject()
 	case "setflag", "addflag", "removeflag":
+		if err := p.requireCapability("imap4flags", "the "+name+" action"); err != nil {
+			return nil, err
+		}
 		return p.parseFlag(name)
 	case "vacation":
+		if err := p.requireCapability("vacation", "the vacation action"); err != nil {
+			return nil, err
+		}
 		return p.parseVacation()
 	case "notify":
+		if err := p.requireCapability("notify", "the notify action"); err != nil {
+			return nil, err
+		}
 		return p.parseNotify()
 	default:
-		// Unknown command from an unimplemented extension: skip it so the rest
-		// of the script still loads.
-		return nil, p.skipUnknownCommand()
+		// RFC 5228 §2.10.5: a command from an extension that was not declared
+		// with require (or that this package does not implement) is treated as
+		// unavailable, so reject it rather than silently skipping it — a typo
+		// like "kep;" must not be a silent no-op.
+		return nil, p.errf("unknown command %q (extensions must be declared with require)", name)
 	}
 }
 
+// requireCapability returns an error unless capability was declared with require.
+// RFC 5228 §2.10.5: an extension feature that was not required MUST be treated as
+// unavailable.
+func (p *parser) requireCapability(capability, feature string) error {
+	if !p.required[capability] {
+		return p.errf("%s requires %q to be declared with require", feature, capability)
+	}
+	return nil
+}
+
 func (p *parser) parseRequire() error {
+	// RFC 5228 §3.2: require may appear only at the start of the script, before
+	// any other command and never inside a control block.
+	if p.seenNonRequire {
+		return p.errf("require must appear before any other command")
+	}
+	if p.blockDepth > 0 {
+		return p.errf("require is only allowed at the top level, not inside a block")
+	}
 	names, err := p.parseStringList()
 	if err != nil {
 		return err
+	}
+	// RFC 5228 §2.10.5: requiring an extension this implementation does not
+	// support is an error; the script must not run.
+	for _, name := range names {
+		if !supportedCapabilities[name] {
+			return p.errf("require of unsupported extension %q", name)
+		}
+		p.required[name] = true
 	}
 	p.requires = append(p.requires, names...)
 	return p.finishStatement()
@@ -704,13 +789,24 @@ func (p *parser) parseFileinto() (sieveCmd, error) {
 	for p.peek().kind == tTag {
 		switch p.next().str {
 		case ":create":
+			// RFC 5490: fileinto :create requires the "mailbox" extension.
+			if err := p.requireCapability("mailbox", "fileinto :create"); err != nil {
+				return nil, err
+			}
 			cmd.create = true
 		case ":flags":
+			// RFC 5232: the :flags tagged argument requires "imap4flags".
+			if err := p.requireCapability("imap4flags", "fileinto :flags"); err != nil {
+				return nil, err
+			}
 			if _, err := p.parseStringList(); err != nil {
 				return nil, err
 			}
 		case ":copy":
-			// no argument
+			// RFC 3894: the :copy tagged argument requires the "copy" extension.
+			if err := p.requireCapability("copy", "fileinto :copy"); err != nil {
+				return nil, err
+			}
 		}
 	}
 	folder, err := p.expect(tString, "a folder name")
@@ -723,7 +819,14 @@ func (p *parser) parseFileinto() (sieveCmd, error) {
 
 func (p *parser) parseRedirect() (sieveCmd, error) {
 	for p.peek().kind == tTag {
-		p.next() // :copy / :list / :notify etc. — no argument we act on
+		switch p.next().str {
+		case ":copy":
+			// RFC 3894: the :copy tagged argument requires the "copy" extension.
+			if err := p.requireCapability("copy", "redirect :copy"); err != nil {
+				return nil, err
+			}
+		}
+		// Other tags (:list, :notify, …) carry no argument we act on.
 	}
 	addr, err := p.expect(tString, "a redirect address")
 	if err != nil {
@@ -843,38 +946,6 @@ func (p *parser) parseNotify() (sieveCmd, error) {
 	return cmd, p.finishStatement()
 }
 
-// skipUnknownCommand discards an unrecognised command, including a trailing
-// block if present, up to and including its terminating semicolon.
-func (p *parser) skipUnknownCommand() error {
-	depth := 0
-	for {
-		t := p.peek()
-		switch t.kind {
-		case tEOF:
-			return nil
-		case tLBrace:
-			depth++
-			p.next()
-		case tRBrace:
-			if depth == 0 {
-				return nil
-			}
-			depth--
-			p.next()
-			if depth == 0 {
-				return nil
-			}
-		case tSemicolon:
-			p.next()
-			if depth == 0 {
-				return nil
-			}
-		default:
-			p.next()
-		}
-	}
-}
-
 // ── Test parsing ─────────────────────────────────────────────────────
 
 func (p *parser) parseTest() (sieveTest, error) {
@@ -926,14 +997,20 @@ func (p *parser) parseTest() (sieveTest, error) {
 	case "address":
 		return p.parseAddressTest()
 	case "envelope":
+		if err := p.requireCapability("envelope", "the envelope test"); err != nil {
+			return nil, err
+		}
 		return p.parseEnvelopeTest()
 	case "body":
+		if err := p.requireCapability("body", "the body test"); err != nil {
+			return nil, err
+		}
 		return p.parseBodyTest()
 	default:
-		// Unknown test from an unimplemented extension: consume its arguments
-		// and treat it as always-false so surrounding logic still works.
-		p.skipTestArguments()
-		return &boolTest{val: false}, nil
+		// RFC 5228 §2.10.5: a test from an extension that was not declared with
+		// require (or that this package does not implement) is unavailable, so
+		// reject it rather than silently treating it as false.
+		return nil, p.errf("unknown test %q (extensions must be declared with require)", name)
 	}
 }
 
@@ -1004,7 +1081,14 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 	for p.peek().kind == tTag {
 		tag := p.next().str
 		switch tag {
-		case ":is", ":contains", ":matches", ":regex":
+		case ":is", ":contains", ":matches":
+			opts.matchType = tag
+		case ":regex":
+			// The :regex match type is a non-standard extension; it must be
+			// declared with require "regex" before use.
+			if err := p.requireCapability("regex", "the :regex match type"); err != nil {
+				return opts, err
+			}
 			opts.matchType = tag
 		case ":comparator":
 			s, err := p.expect(tString, "a comparator name")
@@ -1012,6 +1096,13 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 				return opts, err
 			}
 			opts.comparator = strings.ToLower(s.str)
+			// RFC 4790/5228: only i;ascii-casemap and i;octet are built in; any
+			// other comparator (e.g. i;ascii-numeric) needs a matching require.
+			if opts.comparator != defaultComparator && opts.comparator != "i;octet" {
+				if err := p.requireCapability("comparator-"+opts.comparator, "the "+opts.comparator+" comparator"); err != nil {
+					return opts, err
+				}
+			}
 		case ":localpart", ":domain", ":all":
 			if allowAddressPart {
 				opts.addressPart = tag
@@ -1153,22 +1244,6 @@ func (p *parser) skipArguments() {
 	}
 }
 
-// skipTestArguments discards the arguments of an unknown test.
-func (p *parser) skipTestArguments() {
-	for {
-		switch p.peek().kind {
-		case tTag, tNumber, tString:
-			p.next()
-		case tLBracket:
-			p.skipBracketed()
-		case tLParen:
-			p.skipParen()
-		default:
-			return
-		}
-	}
-}
-
 func (p *parser) skipBracketed() {
 	p.next() // [
 	for p.peek().kind != tRBracket && p.peek().kind != tEOF {
@@ -1176,26 +1251,5 @@ func (p *parser) skipBracketed() {
 	}
 	if p.peek().kind == tRBracket {
 		p.next()
-	}
-}
-
-func (p *parser) skipParen() {
-	depth := 0
-	for {
-		switch p.peek().kind {
-		case tEOF:
-			return
-		case tLParen:
-			depth++
-			p.next()
-		case tRParen:
-			depth--
-			p.next()
-			if depth == 0 {
-				return
-			}
-		default:
-			p.next()
-		}
 	}
 }

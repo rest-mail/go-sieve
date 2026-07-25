@@ -46,12 +46,14 @@
 // :regex extension. Comparators: i;ascii-casemap (the default), i;octet, and
 // i;ascii-numeric. Address parts: :all, :localpart, :domain.
 //
-// # Unknown extensions
+// # require and extensions
 //
-// Parsing is strict about the constructs it understands, so [Parse] and
-// [Validate] catch real mistakes, but lenient about the rest: unknown commands,
-// tests, and tagged arguments are skipped, so a script that uses an extension
-// this package does not implement still loads and runs its recognised parts.
+// Parsing enforces RFC 5228 "require" semantics. Every extension a script uses
+// must be declared with require before use; requiring an extension this package
+// does not implement is an error; require must precede every other command; and
+// an unknown command or test (including a typo) is a parse error rather than a
+// silent no-op. [Parse] and [Validate] therefore reject a script that uses an
+// unsupported or undeclared extension instead of running it partially.
 // [Script.Requires] reports the extensions the script declared via "require".
 package sieve
 

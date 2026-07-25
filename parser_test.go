@@ -40,7 +40,8 @@ func TestValidateSieve_AcceptsNewConstructs(t *testing.T) {
 		`if anyof (true, false) { keep; }`,
 		`require "imap4flags";
 if header :matches "Subject" "*urgent*" { addflag "\\Flagged"; }`,
-		`if header :is "Subject" "x" { fileinto "A"; } elsif true { fileinto "B"; } else { keep; }`,
+		`require "fileinto";
+if header :is "Subject" "x" { fileinto "A"; } elsif true { fileinto "B"; } else { keep; }`,
 		`if address :localpart :contains "From" "admin" { redirect "ops@example.com"; }`,
 	}
 	for _, s := range good {

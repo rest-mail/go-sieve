@@ -167,7 +167,8 @@ if header :contains "Subject" "invoice" {
 
 func TestSieve_ElsifOnlyFirstMatchRuns(t *testing.T) {
 	// Both branches would match; only the first should fire.
-	script := `if header :contains "Subject" "test" {
+	script := `require "fileinto";
+if header :contains "Subject" "test" {
   fileinto "First";
 } elsif header :contains "Subject" "message" {
   fileinto "Second";
@@ -180,7 +181,8 @@ func TestSieve_ElsifOnlyFirstMatchRuns(t *testing.T) {
 // ── allof / anyof / not ──────────────────────────────────────────────
 
 func TestSieve_Allof(t *testing.T) {
-	script := `if allof (header :contains "Subject" "test", address :is "From" "sender@example.com") {
+	script := `require "fileinto";
+if allof (header :contains "Subject" "test", address :is "From" "sender@example.com") {
   fileinto "Both";
 }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "Both" {
@@ -189,7 +191,8 @@ func TestSieve_Allof(t *testing.T) {
 }
 
 func TestSieve_Allof_OneFalse(t *testing.T) {
-	script := `if allof (header :contains "Subject" "test", address :is "From" "nobody@example.com") {
+	script := `require "fileinto";
+if allof (header :contains "Subject" "test", address :is "From" "nobody@example.com") {
   fileinto "Both";
 }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got == "Both" {
@@ -198,7 +201,8 @@ func TestSieve_Allof_OneFalse(t *testing.T) {
 }
 
 func TestSieve_Anyof(t *testing.T) {
-	script := `if anyof (header :contains "Subject" "nope", header :contains "Subject" "test") {
+	script := `require "fileinto";
+if anyof (header :contains "Subject" "nope", header :contains "Subject" "test") {
   fileinto "Any";
 }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "Any" {
@@ -207,7 +211,8 @@ func TestSieve_Anyof(t *testing.T) {
 }
 
 func TestSieve_Anyof_NoneTrue(t *testing.T) {
-	script := `if anyof (header :contains "Subject" "nope", header :contains "Subject" "nada") {
+	script := `require "fileinto";
+if anyof (header :contains "Subject" "nope", header :contains "Subject" "nada") {
   fileinto "Any";
 }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got == "Any" {
@@ -216,7 +221,8 @@ func TestSieve_Anyof_NoneTrue(t *testing.T) {
 }
 
 func TestSieve_Not(t *testing.T) {
-	script := `if not header :contains "Subject" "spam" {
+	script := `require "fileinto";
+if not header :contains "Subject" "spam" {
   fileinto "Ham";
 }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "Ham" {
@@ -225,7 +231,8 @@ func TestSieve_Not(t *testing.T) {
 }
 
 func TestSieve_NotAnyofNested(t *testing.T) {
-	script := `if not anyof (header :contains "Subject" "spam", header :contains "Subject" "junk") {
+	script := `require "fileinto";
+if not anyof (header :contains "Subject" "spam", header :contains "Subject" "junk") {
   fileinto "Clean";
 }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "Clean" {
@@ -236,10 +243,12 @@ func TestSieve_NotAnyofNested(t *testing.T) {
 // ── true / false ─────────────────────────────────────────────────────
 
 func TestSieve_TrueFalse(t *testing.T) {
-	if got := folderOf(runSieve(t, `if true { fileinto "Yes"; }`, sieveEmail())); got != "Yes" {
+	if got := folderOf(runSieve(t, `require "fileinto";
+if true { fileinto "Yes"; }`, sieveEmail())); got != "Yes" {
 		t.Errorf("true test should always match, got %q", got)
 	}
-	if got := folderOf(runSieve(t, `if false { fileinto "No"; }`, sieveEmail())); got == "No" {
+	if got := folderOf(runSieve(t, `require "fileinto";
+if false { fileinto "No"; }`, sieveEmail())); got == "No" {
 		t.Error("false test should never match")
 	}
 }
@@ -247,7 +256,8 @@ func TestSieve_TrueFalse(t *testing.T) {
 // ── exists ───────────────────────────────────────────────────────────
 
 func TestSieve_Exists(t *testing.T) {
-	script := `if exists "Subject" { fileinto "HasSubject"; }`
+	script := `require "fileinto";
+if exists "Subject" { fileinto "HasSubject"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "HasSubject" {
 		t.Errorf("expected exists match, got %q", got)
 	}
@@ -255,14 +265,16 @@ func TestSieve_Exists(t *testing.T) {
 
 func TestSieve_Exists_AllRequired(t *testing.T) {
 	// exists is true only if every listed header is present.
-	script := `if exists ["Subject", "X-Missing"] { fileinto "Both"; }`
+	script := `require "fileinto";
+if exists ["Subject", "X-Missing"] { fileinto "Both"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got == "Both" {
 		t.Error("exists must be false when one header is absent")
 	}
 }
 
 func TestSieve_Exists_RawHeader(t *testing.T) {
-	script := `if exists "X-Custom" { fileinto "Custom"; }`
+	script := `require "fileinto";
+if exists "X-Custom" { fileinto "Custom"; }`
 	email := sieveEmail()
 	email.Headers.Raw = map[string][]string{"X-Custom": {"hello"}}
 	if got := folderOf(runSieve(t, script, email)); got != "Custom" {
@@ -274,10 +286,12 @@ func TestSieve_Exists_RawHeader(t *testing.T) {
 
 func TestSieve_Size(t *testing.T) {
 	email := sieveEmail() // body is a few dozen bytes
-	if got := folderOf(runSieve(t, `if size :over 5 { fileinto "Big"; }`, email)); got != "Big" {
+	if got := folderOf(runSieve(t, `require "fileinto";
+if size :over 5 { fileinto "Big"; }`, email)); got != "Big" {
 		t.Errorf("expected size :over 5 to match, got %q", got)
 	}
-	if got := folderOf(runSieve(t, `if size :under 5 { fileinto "Small"; }`, sieveEmail())); got == "Small" {
+	if got := folderOf(runSieve(t, `require "fileinto";
+if size :under 5 { fileinto "Small"; }`, sieveEmail())); got == "Small" {
 		t.Error("size :under 5 should not match a larger body")
 	}
 }
@@ -285,11 +299,13 @@ func TestSieve_Size(t *testing.T) {
 func TestSieve_Size_Quantifier(t *testing.T) {
 	email := sieveEmail()
 	email.Body.Content = strings.Repeat("x", 2048) // 2 KiB
-	if got := folderOf(runSieve(t, `if size :over 1K { fileinto "Over1K"; }`, email)); got != "Over1K" {
+	if got := folderOf(runSieve(t, `require "fileinto";
+if size :over 1K { fileinto "Over1K"; }`, email)); got != "Over1K" {
 		t.Errorf("expected size :over 1K to match 2KiB body, got %q", got)
 	}
 	small := sieveEmail()
-	if got := folderOf(runSieve(t, `if size :over 1K { fileinto "Over1K"; }`, small)); got == "Over1K" {
+	if got := folderOf(runSieve(t, `require "fileinto";
+if size :over 1K { fileinto "Over1K"; }`, small)); got == "Over1K" {
 		t.Error("small body should not exceed 1K")
 	}
 }
@@ -297,7 +313,8 @@ func TestSieve_Size_Quantifier(t *testing.T) {
 func TestSieve_Size_IncludesAttachments(t *testing.T) {
 	email := sieveEmail()
 	email.Attachments = []Attachment{{Size: 5000}}
-	if got := folderOf(runSieve(t, `if size :over 4K { fileinto "Heavy"; }`, email)); got != "Heavy" {
+	if got := folderOf(runSieve(t, `require "fileinto";
+if size :over 4K { fileinto "Heavy"; }`, email)); got != "Heavy" {
 		t.Errorf("expected attachment bytes to count toward size, got %q", got)
 	}
 }
@@ -305,14 +322,16 @@ func TestSieve_Size_IncludesAttachments(t *testing.T) {
 // ── :matches wildcards ───────────────────────────────────────────────
 
 func TestSieve_MatchesStar(t *testing.T) {
-	script := `if header :matches "Subject" "Test *" { fileinto "M"; }`
+	script := `require "fileinto";
+if header :matches "Subject" "Test *" { fileinto "M"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "M" {
 		t.Errorf("expected '*' wildcard match, got %q", got)
 	}
 }
 
 func TestSieve_MatchesQuestionMark(t *testing.T) {
-	script := `if header :matches "Subject" "Te?t message" { fileinto "Q"; }`
+	script := `require "fileinto";
+if header :matches "Subject" "Te?t message" { fileinto "Q"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "Q" {
 		t.Errorf("expected '?' wildcard match, got %q", got)
 	}
@@ -320,7 +339,8 @@ func TestSieve_MatchesQuestionMark(t *testing.T) {
 
 func TestSieve_MatchesAnchored(t *testing.T) {
 	// :matches is anchored: a partial pattern must not match.
-	script := `if header :matches "Subject" "message" { fileinto "NoMatch"; }`
+	script := `require "fileinto";
+if header :matches "Subject" "message" { fileinto "NoMatch"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got == "NoMatch" {
 		t.Error(":matches must be anchored (full-string) and not match a substring")
 	}
@@ -330,7 +350,8 @@ func TestSieve_MatchesEscapedWildcard(t *testing.T) {
 	// "\\*" in the source becomes "\*" after string parsing, a literal star.
 	email := sieveEmail()
 	email.Headers.Subject = "50% off*"
-	script := `if header :matches "Subject" "50% off\\*" { fileinto "Literal"; }`
+	script := `require "fileinto";
+if header :matches "Subject" "50% off\\*" { fileinto "Literal"; }`
 	if got := folderOf(runSieve(t, script, email)); got != "Literal" {
 		t.Errorf("expected escaped literal-star match, got %q", got)
 	}
@@ -339,28 +360,32 @@ func TestSieve_MatchesEscapedWildcard(t *testing.T) {
 // ── address parts ────────────────────────────────────────────────────
 
 func TestSieve_AddressLocalpart(t *testing.T) {
-	script := `if address :localpart :is "From" "sender" { fileinto "Local"; }`
+	script := `require "fileinto";
+if address :localpart :is "From" "sender" { fileinto "Local"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "Local" {
 		t.Errorf("expected :localpart match, got %q", got)
 	}
 }
 
 func TestSieve_AddressDomain(t *testing.T) {
-	script := `if address :domain :is "From" "example.com" { fileinto "Domain"; }`
+	script := `require "fileinto";
+if address :domain :is "From" "example.com" { fileinto "Domain"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "Domain" {
 		t.Errorf("expected :domain match, got %q", got)
 	}
 }
 
 func TestSieve_AddressAllDefault(t *testing.T) {
-	script := `if address :is "From" "sender@example.com" { fileinto "All"; }`
+	script := `require "fileinto";
+if address :is "From" "sender@example.com" { fileinto "All"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "All" {
 		t.Errorf("expected default :all address match, got %q", got)
 	}
 }
 
 func TestSieve_AddressCc(t *testing.T) {
-	script := `if address :domain :is "Cc" "cc.example.com" { fileinto "CcDomain"; }`
+	script := `require "fileinto";
+if address :domain :is "Cc" "cc.example.com" { fileinto "CcDomain"; }`
 	email := sieveEmail()
 	email.Headers.Cc = []Address{{Address: "someone@cc.example.com"}}
 	if got := folderOf(runSieve(t, script, email)); got != "CcDomain" {
@@ -369,7 +394,7 @@ func TestSieve_AddressCc(t *testing.T) {
 }
 
 func TestSieve_EnvelopeDomainPart(t *testing.T) {
-	script := `require "envelope";
+	script := `require ["envelope", "fileinto"];
 if envelope :domain :is "from" "example.com" { fileinto "EnvDom"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "EnvDom" {
 		t.Errorf("expected envelope :domain match, got %q", got)
@@ -380,14 +405,16 @@ if envelope :domain :is "from" "example.com" { fileinto "EnvDom"; }`
 
 func TestSieve_ComparatorOctetCaseSensitive(t *testing.T) {
 	// Subject is "Test message"; octet comparison is case-sensitive.
-	script := `if header :is :comparator "i;octet" "Subject" "test message" { fileinto "NoMatch"; }`
+	script := `require "fileinto";
+if header :is :comparator "i;octet" "Subject" "test message" { fileinto "NoMatch"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got == "NoMatch" {
 		t.Error("i;octet :is must be case-sensitive")
 	}
 }
 
 func TestSieve_ComparatorCasemapDefault(t *testing.T) {
-	script := `if header :is "Subject" "test message" { fileinto "CI"; }`
+	script := `require "fileinto";
+if header :is "Subject" "test message" { fileinto "CI"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "CI" {
 		t.Errorf("expected default casemap to match case-insensitively, got %q", got)
 	}
@@ -396,11 +423,13 @@ func TestSieve_ComparatorCasemapDefault(t *testing.T) {
 func TestSieve_ComparatorAsciiNumeric(t *testing.T) {
 	email := sieveEmail()
 	email.Headers.Raw = map[string][]string{"X-Priority": {"1"}}
-	match := `if header :is :comparator "i;ascii-numeric" "X-Priority" "1" { fileinto "Prio"; }`
+	match := `require ["fileinto", "comparator-i;ascii-numeric"];
+if header :is :comparator "i;ascii-numeric" "X-Priority" "1" { fileinto "Prio"; }`
 	if got := folderOf(runSieve(t, match, email)); got != "Prio" {
 		t.Errorf("expected ascii-numeric equality, got %q", got)
 	}
-	noMatch := `if header :is :comparator "i;ascii-numeric" "X-Priority" "2" { fileinto "Prio"; }`
+	noMatch := `require ["fileinto", "comparator-i;ascii-numeric"];
+if header :is :comparator "i;ascii-numeric" "X-Priority" "2" { fileinto "Prio"; }`
 	if got := folderOf(runSieve(t, noMatch, email)); got == "Prio" {
 		t.Error("ascii-numeric 1 should not equal 2")
 	}
@@ -409,14 +438,16 @@ func TestSieve_ComparatorAsciiNumeric(t *testing.T) {
 // ── string lists ─────────────────────────────────────────────────────
 
 func TestSieve_KeyList(t *testing.T) {
-	script := `if header :contains "Subject" ["foo", "test", "bar"] { fileinto "List"; }`
+	script := `require "fileinto";
+if header :contains "Subject" ["foo", "test", "bar"] { fileinto "List"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "List" {
 		t.Errorf("expected match against one of a key list, got %q", got)
 	}
 }
 
 func TestSieve_HeaderList(t *testing.T) {
-	script := `if header :contains ["X-Label", "Subject"] "message" { fileinto "HL"; }`
+	script := `require "fileinto";
+if header :contains ["X-Label", "Subject"] "message" { fileinto "HL"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "HL" {
 		t.Errorf("expected match across a header list, got %q", got)
 	}
@@ -487,7 +518,8 @@ if true { redirect :copy "copy@example.com"; }`
 // ── stop across top-level commands ───────────────────────────────────
 
 func TestSieve_TopLevelStop(t *testing.T) {
-	script := `if true { fileinto "First"; }
+	script := `require "fileinto";
+if true { fileinto "First"; }
 stop;
 if true { fileinto "Second"; }`
 	if got := folderOf(runSieve(t, script, sieveEmail())); got != "First" {
@@ -529,7 +561,8 @@ func TestSieve_MultiLineDotStuffing(t *testing.T) {
 // ── comments and escapes ─────────────────────────────────────────────
 
 func TestSieve_Comments(t *testing.T) {
-	script := `# hash comment
+	script := `require "fileinto";
+# hash comment
 /* bracket
    comment */
 if header :contains "Subject" "test" { # trailing comment
@@ -543,7 +576,8 @@ if header :contains "Subject" "test" { # trailing comment
 func TestSieve_EscapedQuoteInString(t *testing.T) {
 	email := sieveEmail()
 	email.Headers.Subject = `say "hi"`
-	script := `if header :is "Subject" "say \"hi\"" { fileinto "Quoted"; }`
+	script := `require "fileinto";
+if header :is "Subject" "say \"hi\"" { fileinto "Quoted"; }`
 	if got := folderOf(runSieve(t, script, email)); got != "Quoted" {
 		t.Errorf("expected escaped-quote string match, got %q", got)
 	}
@@ -551,24 +585,27 @@ func TestSieve_EscapedQuoteInString(t *testing.T) {
 
 // ── extension leniency ───────────────────────────────────────────────
 
-func TestSieve_UnknownCommandSkipped(t *testing.T) {
-	// An unknown command must not break parsing of the rest of the script.
-	script := `frobnicate "x" 42;
+func TestSieve_UnknownCommandRejected(t *testing.T) {
+	// An unknown command (from an undeclared extension, or a typo) must be a
+	// parse error, not a silent no-op that lets the rest of the script run.
+	script := `require "fileinto";
+frobnicate "x" 42;
 if header :contains "Subject" "test" { fileinto "StillWorks"; }`
-	if got := folderOf(runSieve(t, script, sieveEmail())); got != "StillWorks" {
-		t.Errorf("expected script to run past unknown command, got %q", got)
+	if err := Validate(script); err == nil {
+		t.Error("expected an unknown command to be rejected at parse time")
 	}
 }
 
-func TestSieve_UnknownTestIsFalse(t *testing.T) {
-	// An unknown test evaluates to false but must not abort the script.
-	script := `if spamtest :value "gt" "5" {
+func TestSieve_UnknownTestRejected(t *testing.T) {
+	// An unknown test must be a parse error, not silently treated as false.
+	script := `require "fileinto";
+if spamtest :value "gt" "5" {
   fileinto "Spam";
 } else {
   fileinto "Ham";
 }`
-	if got := folderOf(runSieve(t, script, sieveEmail())); got != "Ham" {
-		t.Errorf("expected unknown test to be false (else branch), got %q", got)
+	if err := Validate(script); err == nil {
+		t.Error("expected an unknown test to be rejected at parse time")
 	}
 }
 
@@ -584,7 +621,8 @@ func TestSieve_Discard(t *testing.T) {
 }
 
 func TestSieve_Reject(t *testing.T) {
-	script := `if header :is "Subject" "Test message" {
+	script := `require "reject";
+if header :is "Subject" "Test message" {
   reject "Not accepted";
 }`
 	r := runSieve(t, script, sieveEmail())
@@ -628,7 +666,7 @@ func TestSieve_Redirect(t *testing.T) {
 // ── body extension ───────────────────────────────────────────────────
 
 func TestSieve_BodyContains(t *testing.T) {
-	script := `require "body";
+	script := `require ["body", "fileinto"];
 if body :contains "test message" {
   fileinto "BodyMatch";
 }`
@@ -639,7 +677,7 @@ if body :contains "test message" {
 }
 
 func TestSieve_BodyContains_NoMatch(t *testing.T) {
-	script := `require "body";
+	script := `require ["body", "fileinto"];
 if body :contains "nonexistent phrase" {
   fileinto "ShouldNotMatch";
 }`
@@ -650,7 +688,7 @@ if body :contains "nonexistent phrase" {
 }
 
 func TestSieve_BodyContains_HTMLStripped(t *testing.T) {
-	script := `require "body";
+	script := `require ["body", "fileinto"];
 if body :contains "important" {
   fileinto "HTMLMatch";
 }`
@@ -665,7 +703,7 @@ if body :contains "important" {
 }
 
 func TestSieve_BodyContains_MultipartPlainPreferred(t *testing.T) {
-	script := `require "body";
+	script := `require ["body", "fileinto"];
 if body :contains "plain text content" {
   fileinto "PlainMatch";
 }`
@@ -684,7 +722,7 @@ if body :contains "plain text content" {
 }
 
 func TestSieve_BodyIs(t *testing.T) {
-	script := `require "body";
+	script := `require ["body", "fileinto"];
 if body :is "Hello, this is a test message body." {
   fileinto "ExactMatch";
 }`
@@ -697,7 +735,7 @@ if body :is "Hello, this is a test message body." {
 // ── regex extension ──────────────────────────────────────────────────
 
 func TestSieve_HeaderRegex(t *testing.T) {
-	script := `require "regex";
+	script := `require ["regex", "fileinto"];
 if header :regex "Subject" ".*[Tt]est.*" {
   fileinto "RegexMatch";
 }`
@@ -708,7 +746,7 @@ if header :regex "Subject" ".*[Tt]est.*" {
 }
 
 func TestSieve_HeaderRegex_NoMatch(t *testing.T) {
-	script := `require "regex";
+	script := `require ["regex", "fileinto"];
 if header :regex "Subject" "^URGENT:.*" {
   fileinto "UrgentFolder";
 }`
@@ -719,7 +757,7 @@ if header :regex "Subject" "^URGENT:.*" {
 }
 
 func TestSieve_HeaderRegex_CaseInsensitive(t *testing.T) {
-	script := `require "regex";
+	script := `require ["regex", "fileinto"];
 if header :regex "Subject" "^test message$" {
   fileinto "CaseInsensitive";
 }`
@@ -732,7 +770,7 @@ if header :regex "Subject" "^test message$" {
 }
 
 func TestSieve_BodyRegex(t *testing.T) {
-	script := `require ["body", "regex"];
+	script := `require ["body", "regex", "fileinto"];
 if body :regex "test.*body" {
   fileinto "BodyRegex";
 }`
@@ -743,7 +781,7 @@ if body :regex "test.*body" {
 }
 
 func TestSieve_AddressRegex(t *testing.T) {
-	script := `require "regex";
+	script := `require ["regex", "fileinto"];
 if address :regex "From" "sender@.*\.com" {
   fileinto "AddressRegex";
 }`
@@ -754,7 +792,7 @@ if address :regex "From" "sender@.*\.com" {
 }
 
 func TestSieve_InvalidRegex_Skipped(t *testing.T) {
-	script := `require "regex";
+	script := `require ["regex", "fileinto"];
 if header :regex "Subject" "[invalid" {
   fileinto "ShouldNotMatch";
 }`
@@ -768,7 +806,7 @@ if header :regex "Subject" "[invalid" {
 // ── envelope extension ───────────────────────────────────────────────
 
 func TestSieve_EnvelopeFrom_Is(t *testing.T) {
-	script := `require "envelope";
+	script := `require ["envelope", "fileinto"];
 if envelope :is "from" "sender@example.com" {
   fileinto "EnvelopeMatch";
 }`
@@ -779,7 +817,7 @@ if envelope :is "from" "sender@example.com" {
 }
 
 func TestSieve_EnvelopeTo_Is(t *testing.T) {
-	script := `require "envelope";
+	script := `require ["envelope", "fileinto"];
 if envelope :is "to" "recipient@example.com" {
   fileinto "EnvelopeTo";
 }`
@@ -790,7 +828,7 @@ if envelope :is "to" "recipient@example.com" {
 }
 
 func TestSieve_EnvelopeFrom_Contains(t *testing.T) {
-	script := `require "envelope";
+	script := `require ["envelope", "fileinto"];
 if envelope :contains "from" "example.com" {
   fileinto "EnvelopeDomain";
 }`
@@ -801,7 +839,7 @@ if envelope :contains "from" "example.com" {
 }
 
 func TestSieve_EnvelopeFrom_NoMatch(t *testing.T) {
-	script := `require "envelope";
+	script := `require ["envelope", "fileinto"];
 if envelope :is "from" "other@example.com" {
   fileinto "ShouldNotMatch";
 }`
@@ -813,7 +851,7 @@ if envelope :is "from" "other@example.com" {
 
 func TestSieve_EnvelopeFrom_Resolved(t *testing.T) {
 	// The host resolves any gateway-supplied envelope sender before evaluating.
-	script := `require "envelope";
+	script := `require ["envelope", "fileinto"];
 if envelope :is "from" "gateway-sender@example.com" {
   fileinto "MetadataEnvelope";
 }`
@@ -826,7 +864,7 @@ if envelope :is "from" "gateway-sender@example.com" {
 }
 
 func TestSieve_EnvelopeTo_Resolved(t *testing.T) {
-	script := `require "envelope";
+	script := `require ["envelope", "fileinto"];
 if envelope :is "to" "special-rcpt@example.com" {
   fileinto "MetadataEnvelopeTo";
 }`
@@ -839,7 +877,7 @@ if envelope :is "to" "special-rcpt@example.com" {
 }
 
 func TestSieve_EnvelopeRegex(t *testing.T) {
-	script := `require ["envelope", "regex"];
+	script := `require ["envelope", "regex", "fileinto"];
 if envelope :regex "from" ".*@example\.com" {
   fileinto "EnvelopeRegex";
 }`
@@ -982,7 +1020,7 @@ notify :method "mailto:alerts@example.com"
 // ── combined extensions ──────────────────────────────────────────────
 
 func TestSieve_CombinedExtensions(t *testing.T) {
-	script := `require ["vacation", "notify", "body", "envelope"];
+	script := `require ["vacation", "notify", "body", "envelope", "fileinto"];
 if body :contains "urgent" {
   notify :method "mailto:admin@example.com" :message "Urgent body detected";
 }
@@ -1009,7 +1047,7 @@ vacation :days 5 :subject "Away" "On vacation.";`
 }
 
 func TestSieve_Stop(t *testing.T) {
-	script := `require "body";
+	script := `require ["body", "fileinto"];
 if body :contains "test" {
   fileinto "First";
   stop;
