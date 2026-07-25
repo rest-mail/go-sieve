@@ -27,8 +27,17 @@
 //	case sieve.Reject:
 //		// refuse it, citing outcome.RejectReason
 //	default:
-//		// deliver, honouring the actions exec recorded
+//		// deliver, honouring the actions exec recorded; additionally deliver to
+//		// the default mailbox when outcome.ImplicitKeep is set (the RFC 5228
+//		// §2.10.2 implicit keep)
 //	}
+//
+// The evaluator applies the RFC 5228 §2.10.2 implicit keep: unless the script
+// cancels it with keep, fileinto, redirect, or discard, the message is delivered
+// to the default mailbox, signalled by [Outcome.ImplicitKeep]. A discard only
+// cancels that keep — it does not stop the script, so later actions still run.
+// A runtime error during evaluation fails safe to the implicit keep (§2.10.6),
+// reported via [Outcome.Error], rather than losing the message.
 //
 // Use [Validate] to check a script's syntax without evaluating it.
 //
@@ -138,7 +147,8 @@ type Disposition int
 
 const (
 	// Continue means no terminal action fired; deliver honouring whatever
-	// actions the Executor recorded.
+	// actions the Executor recorded, plus the implicit keep to the default
+	// mailbox when Outcome.ImplicitKeep is set.
 	Continue Disposition = iota
 	// Discard means the script asked to silently drop the message.
 	Discard
@@ -150,6 +160,19 @@ const (
 type Outcome struct {
 	Disposition  Disposition
 	RejectReason string // set only when Disposition == Reject
+	// ImplicitKeep reports that the RFC 5228 §2.10.2 implicit keep is in effect:
+	// the script cancelled no keep and performed no fileinto, redirect, or
+	// discard, so the host must deliver the message to the default mailbox in
+	// addition to honouring any actions the Executor recorded. It is only ever set
+	// alongside Disposition == Continue. It is also set on the §2.10.6 fail-safe
+	// keep (see Error). When a delivering action ran, or a discard dropped the
+	// message, ImplicitKeep is false.
+	ImplicitKeep bool
+	// Error is non-nil when evaluation was aborted by a runtime error — for
+	// example an Executor callback panicked. Per RFC 5228 §2.10.6 the message is
+	// then kept rather than lost (ImplicitKeep is true and Disposition is
+	// Continue) and the host should notify the user of the failure.
+	Error error
 }
 
 // Vacation carries the arguments of a matched vacation action (RFC 5230). The
@@ -169,7 +192,9 @@ type Vacation struct {
 // Executor methods but are reported via the [Outcome] returned by
 // [Script.Evaluate].
 type Executor interface {
-	// Keep requests explicit delivery to the default mailbox.
+	// Keep requests explicit delivery to the default mailbox. The RFC 5228
+	// §2.10.2 implicit keep does not call this method; it is reported through
+	// Outcome.ImplicitKeep so the host can distinguish it from an explicit keep.
 	Keep()
 	// FileInto delivers into the named folder, creating it when create is set.
 	FileInto(folder string, create bool)
@@ -195,34 +220,75 @@ func Validate(script string, opts ...Option) error {
 
 // Evaluate runs the script against msg, invoking exec for each action it
 // selects, and returns the terminal [Outcome].
-func (s *Script) Evaluate(msg *Message, exec Executor) Outcome {
-	if s == nil {
-		return Outcome{Disposition: Continue}
-	}
-	// A nil message has no headers, body, or envelope to test against. Every
-	// test dereferences msg (msg.Headers, msg.Body, …), so evaluating one
-	// against a nil pointer would panic. Treat "no message" as nothing to
-	// decide and take the implicit keep: Continue tells the host to deliver
-	// normally, honouring whatever the Executor recorded (here, nothing).
-	if msg == nil {
-		return Outcome{Disposition: Continue}
+//
+// It applies the RFC 5228 §2.10.2 implicit-keep model: unless the script cancels
+// it (with keep, fileinto, redirect, or discard) the message is delivered to the
+// default mailbox, reported via [Outcome.ImplicitKeep]. Per §2.10.6, a runtime
+// error during evaluation fails safe to that implicit keep rather than losing the
+// message.
+func (s *Script) Evaluate(msg *Message, exec Executor) (out Outcome) {
+	// A nil script and a nil message both leave nothing to decide. A nil message
+	// in particular has no headers, body, or envelope to test against, and every
+	// test dereferences msg, so evaluating one would panic. Either way, take the
+	// implicit keep: deliver to the default mailbox, honouring whatever the
+	// Executor recorded (here, nothing).
+	if s == nil || msg == nil {
+		return Outcome{Disposition: Continue, ImplicitKeep: true}
 	}
 	st := &evalState{
-		msg:        msg,
-		exec:       exec,
-		filedInto:  map[fileintoDest]struct{}{},
-		redirected: map[redirectDest]struct{}{},
+		msg:          msg,
+		exec:         exec,
+		implicitKeep: true,
+		filedInto:    map[fileintoDest]struct{}{},
+		redirected:   map[redirectDest]struct{}{},
 	}
-	out, _ := st.runBlock(s.commands)
-	return out
+	// RFC 5228 §2.10.6: an execution error must not lose the message. If any
+	// action panics — typically a host Executor callback failing — recover and
+	// fall back to the implicit keep, reporting the error so the host can notify
+	// the user.
+	defer func() {
+		if r := recover(); r != nil {
+			out = Outcome{Disposition: Continue, ImplicitKeep: true, Error: errFromRecover(r)}
+		}
+	}()
+	st.runBlock(s.commands)
+	return st.finalize()
 }
 
-// evalState carries the immutable inputs while walking a script's commands,
-// plus the set of delivery destinations already dispatched (for RFC 5228
-// §2.10.3 de-duplication).
+// errFromRecover normalises a recovered panic value into an error.
+func errFromRecover(r any) error {
+	if err, ok := r.(error); ok {
+		return err
+	}
+	return fmt.Errorf("sieve: evaluation aborted by runtime error: %v", r)
+}
+
+// evalState carries the immutable inputs while walking a script's commands, the
+// implicit-keep bookkeeping, and the set of delivery destinations already
+// dispatched (for RFC 5228 §2.10.3 de-duplication).
 type evalState struct {
 	msg  *Message
 	exec Executor
+
+	// implicit-keep model (RFC 5228 §2.10.2). The final delivery decision is
+	// resolved by finalize after the whole script has run (or after stop),
+	// rather than inline, so that discard does not terminate the script and a
+	// later delivering action can still take effect.
+	//
+	//   implicitKeep — true until a keep, fileinto, redirect, or discard cancels
+	//                  it. When still true at the end, the message is delivered to
+	//                  the default mailbox (Outcome.ImplicitKeep).
+	//   delivered    — a keep, fileinto, or redirect ran, so the message has an
+	//                  explicit destination. Delivering actions win over discard.
+	//   discarded    — discard ran; it cancels the implicit keep but does not
+	//                  stop the script. If no delivering action also ran, the
+	//                  message is dropped.
+	//   rejected     — reject ran; a terminal refusal that halts the script.
+	implicitKeep bool
+	delivered    bool
+	discarded    bool
+	rejected     bool
+	rejectReason string
 
 	// Delivery de-duplication (RFC 5228 §2.10.3): "the same message MUST NOT be
 	// delivered to the same destination more than once", even when several
@@ -250,19 +316,22 @@ type redirectDest struct {
 	copy bool
 }
 
-// runBlock evaluates a sequence of commands. The bool result reports whether
-// evaluation should halt (a terminal discard/reject, or a stop).
-func (st *evalState) runBlock(cmds []sieveCmd) (Outcome, bool) {
+// runBlock evaluates a sequence of commands, recording their effects on the
+// evaluation state. The bool result reports whether evaluation should halt (a
+// stop, or a terminal reject); the resolved delivery is computed by finalize
+// once the script (or the halting command) is reached.
+func (st *evalState) runBlock(cmds []sieveCmd) bool {
 	for _, c := range cmds {
-		out, halt := st.runCmd(c)
-		if halt {
-			return out, true
+		if st.runCmd(c) {
+			return true
 		}
 	}
-	return Outcome{Disposition: Continue}, false
+	return false
 }
 
-func (st *evalState) runCmd(c sieveCmd) (Outcome, bool) {
+// runCmd applies a single command, mutating the evaluation state. It returns
+// true to halt all further processing (stop or reject).
+func (st *evalState) runCmd(c sieveCmd) (halt bool) {
 	switch cmd := c.(type) {
 	case *ifCmd:
 		for _, br := range cmd.branches {
@@ -272,37 +341,35 @@ func (st *evalState) runCmd(c sieveCmd) (Outcome, bool) {
 		}
 
 	case *stopCmd:
-		// Halt further Sieve processing but still deliver per actions so far.
-		return Outcome{Disposition: Continue}, true
+		// Halt further Sieve processing. Whatever the state is at this point —
+		// an implicit keep still owed, an explicit delivery already recorded, or
+		// a discard with nothing else — is what finalize will resolve.
+		return true
 
 	case *keepCmd:
-		// RFC 5228 §2.10.3: multiple keeps collapse to a single delivery.
-		if !st.kept {
-			st.kept = true
-			st.exec.Keep()
-		}
+		st.deliverKeep()
 
 	case *discardCmd:
-		return Outcome{Disposition: Discard}, true
+		// RFC 5228 §4.4: discard cancels the implicit keep and is compatible with
+		// every other action. It does NOT stop the script; subsequent actions
+		// still run, and if a delivering action also runs it overrides the discard
+		// ("fileinto"+"discard" is equivalent to "fileinto"). Only when no
+		// delivering action runs does discard drop the message.
+		st.implicitKeep = false
+		st.discarded = true
 
 	case *rejectCmd:
-		return Outcome{Disposition: Reject, RejectReason: cmd.reason}, true
+		// A terminal refusal: it cancels the implicit keep and halts the script.
+		st.implicitKeep = false
+		st.rejected = true
+		st.rejectReason = cmd.reason
+		return true
 
 	case *fileintoCmd:
-		// RFC 5228 §2.10.3: filing into the same mailbox twice is one delivery.
-		dest := fileintoDest{folder: cmd.folder, copy: cmd.copy}
-		if _, done := st.filedInto[dest]; !done {
-			st.filedInto[dest] = struct{}{}
-			st.exec.FileInto(cmd.folder, cmd.create)
-		}
+		st.deliverFileInto(cmd)
 
 	case *redirectCmd:
-		// RFC 5228 §2.10.3: redirecting to the same address twice is one delivery.
-		dest := redirectDest{addr: cmd.addr, copy: cmd.copy}
-		if _, done := st.redirected[dest]; !done {
-			st.redirected[dest] = struct{}{}
-			st.exec.Redirect(cmd.addr)
-		}
+		st.deliverRedirect(cmd)
 
 	case *flagCmd:
 		st.exec.Flag(cmd.op, cmd.flags)
@@ -319,7 +386,64 @@ func (st *evalState) runCmd(c sieveCmd) (Outcome, bool) {
 		st.exec.Notify(cmd.method, cmd.message)
 	}
 
-	return Outcome{Disposition: Continue}, false
+	return false
+}
+
+// deliverKeep records an explicit keep: it cancels the implicit keep and
+// delivers to the default mailbox. RFC 5228 §2.10.3: multiple keeps collapse to
+// a single delivery.
+func (st *evalState) deliverKeep() {
+	st.implicitKeep = false
+	st.delivered = true
+	if !st.kept {
+		st.kept = true
+		st.exec.Keep()
+	}
+}
+
+// deliverFileInto records a fileinto: it cancels the implicit keep and files the
+// message. RFC 5228 §2.10.3: filing into the same mailbox twice is one delivery.
+func (st *evalState) deliverFileInto(cmd *fileintoCmd) {
+	st.implicitKeep = false
+	st.delivered = true
+	dest := fileintoDest{folder: cmd.folder, copy: cmd.copy}
+	if _, done := st.filedInto[dest]; !done {
+		st.filedInto[dest] = struct{}{}
+		st.exec.FileInto(cmd.folder, cmd.create)
+	}
+}
+
+// deliverRedirect records a redirect: it cancels the implicit keep and forwards
+// the message. RFC 5228 §2.10.3: redirecting to the same address twice is one
+// delivery.
+func (st *evalState) deliverRedirect(cmd *redirectCmd) {
+	st.implicitKeep = false
+	st.delivered = true
+	dest := redirectDest{addr: cmd.addr, copy: cmd.copy}
+	if _, done := st.redirected[dest]; !done {
+		st.redirected[dest] = struct{}{}
+		st.exec.Redirect(cmd.addr)
+	}
+}
+
+// finalize resolves the accumulated state into the terminal Outcome, applied
+// once the whole script has run or a stop/reject halted it.
+func (st *evalState) finalize() Outcome {
+	switch {
+	case st.rejected:
+		return Outcome{Disposition: Reject, RejectReason: st.rejectReason}
+	case st.implicitKeep:
+		// Nothing cancelled the implicit keep: deliver to the default mailbox.
+		return Outcome{Disposition: Continue, ImplicitKeep: true}
+	case st.delivered:
+		// A keep, fileinto, or redirect ran: deliver per the recorded actions. If
+		// a discard also ran it is overridden (RFC 5228 §4.4).
+		return Outcome{Disposition: Continue}
+	default:
+		// The implicit keep was cancelled only by discard, with no delivering
+		// action: silently drop the message.
+		return Outcome{Disposition: Discard}
+	}
 }
 
 // vacationReplyTo picks the address a vacation auto-reply should go to: the

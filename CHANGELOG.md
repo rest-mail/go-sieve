@@ -10,6 +10,26 @@ While the project is pre-1.0, a breaking change bumps the minor version.
 
 ### Fixed
 
+- **`discard` no longer terminates the script or drops mail the script asked to
+  deliver, and the implicit keep is now modelled.** RFC 5228 §4.4 makes `discard`
+  compatible with every other action — it only cancels the implicit keep — but
+  the evaluator halted the whole script on `discard`, so `discard; fileinto "X";`
+  filed nothing and the message was lost, and `fileinto "X"; discard;` recorded
+  the `fileinto` yet reported `Discard`, so the host dropped it. The evaluator now
+  accumulates the actions a script selects and resolves delivery only after the
+  script finishes (or a `stop`): `discard` cancels the implicit keep but lets the
+  rest of the script run, and a delivering action always wins over it
+  (`fileinto`+`discard` is equivalent to `fileinto`). A bare `discard` with no
+  delivering action still drops the message.
+
+  Alongside it, `Outcome` gains the RFC 5228 §2.10.2 implicit keep: unless a
+  `keep`, `fileinto`, `redirect`, or `discard` cancels it, `Outcome.ImplicitKeep`
+  is set and the host must deliver to the default mailbox (previously a host had
+  no way to tell "keep to the default mailbox" apart from "the script handled
+  delivery"). A runtime error during evaluation now fails safe to that implicit
+  keep (§2.10.6), reported via the new `Outcome.Error`, rather than losing the
+  message. A `stop` before any action still delivers via the implicit keep.
+
 - **Duplicate delivery actions no longer deliver to the same destination
   twice.** Each `keep`, `fileinto`, and `redirect` was passed straight to the
   `Executor`, so a script naming the same destination more than once — two

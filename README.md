@@ -24,6 +24,13 @@ transport) is entirely your concern. The package decides *what* to do; your host
 decides *how*. The two terminal dispositions, `discard` and `reject`, are
 reported through the returned `Outcome` rather than the Executor.
 
+Delivery follows RFC 5228's implicit-keep model: unless the script cancels it
+(with `keep`, `fileinto`, `redirect`, or `discard`), the message is delivered to
+the default mailbox, reported as `Outcome.ImplicitKeep`. A `discard` only cancels
+that keep — it does not stop the script, so any other delivering action still
+takes effect. A runtime error during evaluation fails safe to the implicit keep
+(`Outcome.Error`) rather than losing the message.
+
 ## Features
 
 - **Control**: `if` / `elsif` / `else`, `require`, `stop`.
@@ -97,6 +104,9 @@ if header :contains "Subject" "invoice" {
 	case sieve.Reject:
 		fmt.Println("reject:", outcome.RejectReason)
 	default:
+		if outcome.ImplicitKeep {
+			mb.Keep() // implicit keep: deliver to the default mailbox
+		}
 		fmt.Printf("deliver to %q with flags %v\n", mb.folder, mb.flags)
 	}
 	// Prints: deliver to "Invoices" with flags [\Flagged]
@@ -111,11 +121,14 @@ Check a script's syntax without evaluating it with `sieve.Validate(src)`.
 (`Keep`, `FileInto`, `Redirect`, `Flag`, `Vacation`, `Notify`) are invoked in
 script order as each non-terminal action fires; you decide what a folder name,
 flag, redirect, or vacation reply actually means for your storage and transport.
-The terminal actions are not methods — `discard` and `reject` short-circuit
-evaluation and surface through `Outcome.Disposition` (and `Outcome.RejectReason`
-for a reject). For a `vacation` action the evaluator computes `Vacation.ReplyTo`
-(the envelope sender, falling back to the `From` header); de-duplication and
-actually sending the auto-reply remain your responsibility.
+The terminal dispositions are not methods — `reject` refuses the message and
+`discard` (when nothing else delivers it) drops it, and both surface through
+`Outcome.Disposition` (with `Outcome.RejectReason` for a reject). A `discard`
+alongside a delivering action does not drop the message; it only cancels the
+implicit keep, so `Outcome.ImplicitKeep` tells you whether to also deliver to the
+default mailbox. For a `vacation` action the evaluator computes
+`Vacation.ReplyTo` (the envelope sender, falling back to the `From` header);
+de-duplication and actually sending the auto-reply remain your responsibility.
 
 Adapt your own email representation into the neutral `Message` before evaluating:
 `Headers` carries the common structured fields plus a `Raw` map consulted
