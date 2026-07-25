@@ -387,7 +387,44 @@ func headerValues(msg *Message, name string) []string {
 			out = append(out, vals...)
 		}
 	}
+	// RFC 5228 §5.7: the header test compares the value of the named field
+	// with leading and trailing whitespace ignored, after RFC 5322 §2.2.3
+	// unfolding. Normalise every value so a padded or folded header still
+	// matches :is / :contains against the logical value.
+	for i, v := range out {
+		out[i] = unfoldAndTrim(v)
+	}
 	return out
+}
+
+// unfoldAndTrim applies RFC 5322 §2.2.3 unfolding to a header value — each line
+// break (CRLF, or a bare CR/LF) that introduces folding whitespace is removed
+// along with that whitespace and replaced by a single space — and then strips
+// leading and trailing whitespace, as RFC 5228 §5.7 requires the header test to
+// ignore. Values without a line break take a fast path that only trims.
+func unfoldAndTrim(v string) string {
+	if !strings.ContainsAny(v, "\r\n") {
+		return strings.TrimSpace(v)
+	}
+	var b strings.Builder
+	b.Grow(len(v))
+	for i := 0; i < len(v); i++ {
+		if c := v[i]; c == '\r' || c == '\n' {
+			// Collapse the line break and any adjoining folding whitespace
+			// (further CR/LF, SP, or HTAB) into a single space.
+			for i+1 < len(v) {
+				if n := v[i+1]; n == '\r' || n == '\n' || n == ' ' || n == '\t' {
+					i++
+					continue
+				}
+				break
+			}
+			b.WriteByte(' ')
+			continue
+		}
+		b.WriteByte(v[i])
+	}
+	return strings.TrimSpace(b.String())
 }
 
 // formatAddresses renders structured addresses as header-style values.
