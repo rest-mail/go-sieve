@@ -1202,12 +1202,17 @@ func (p *parser) parseBodyTest() (sieveTest, error) {
 }
 
 // parseStringList parses either a single quoted string or a bracketed,
-// comma-separated list of strings.
+// comma-separated list of strings. Per RFC 5228 §8.2 the string-list grammar is
+// `"[" string *("," string) "]" / string`, so a bracketed list must contain at
+// least one string; an empty "[]" has no production and is rejected. This keeps
+// an empty list from being silently accepted where the grammar requires a value
+// (e.g. `exists []`, which would otherwise evaluate true vacuously).
 func (p *parser) parseStringList() ([]string, error) {
 	if p.peek().kind == tString {
 		return []string{p.next().str}, nil
 	}
-	if _, err := p.expect(tLBracket, "a string or string list"); err != nil {
+	open, err := p.expect(tLBracket, "a string or string list")
+	if err != nil {
 		return nil, err
 	}
 	var list []string
@@ -1225,6 +1230,9 @@ func (p *parser) parseStringList() ([]string, error) {
 	}
 	if _, err := p.expect(tRBracket, "]"); err != nil {
 		return nil, err
+	}
+	if len(list) == 0 {
+		return nil, fmt.Errorf("sieve: line %d: empty string list []: a string list must contain at least one string", open.line)
 	}
 	return list, nil
 }
