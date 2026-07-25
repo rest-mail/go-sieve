@@ -319,6 +319,58 @@ if size :over 4K { fileinto "Heavy"; }`, email)); got != "Heavy" {
 	}
 }
 
+// sizedEmail returns a message whose body alone (50 octets) is well under 100,
+// but whose full wire size — the header block, the blank separator line, and the
+// body — is well over it. Per RFC 5228 §5.9 the size test counts the entire
+// message, so both :over and :under must reflect the header octets.
+func sizedEmail() *Message {
+	return &Message{
+		Headers: Headers{
+			Subject: strings.Repeat("A", 200), // header block >> body
+			From:    []Address{{Address: "sender@example.com"}},
+			To:      []Address{{Address: "recipient@example.com"}},
+		},
+		Body: Body{
+			ContentType: "text/plain",
+			Content:     strings.Repeat("x", 50), // 50-octet body
+		},
+	}
+}
+
+func TestSieve_Size_IncludesHeaders(t *testing.T) {
+	// :over — false when only the body (50 octets) is counted, true once the
+	// header octets are included and the whole message exceeds 100.
+	if got := folderOf(runSieve(t, `require "fileinto";
+if size :over 100 { fileinto "Big"; }`, sizedEmail())); got != "Big" {
+		t.Errorf("size :over 100 must count header octets, got %q", got)
+	}
+	// :under — matches when only the body is counted (50 < 100), but must not
+	// match once the header octets push the whole message past 100.
+	if got := folderOf(runSieve(t, `require "fileinto";
+if size :under 100 { fileinto "Small"; }`, sizedEmail())); got == "Small" {
+		t.Error("size :under 100 must count header octets and not match")
+	}
+}
+
+func TestSieve_Size_UsesRawSizeWhenSet(t *testing.T) {
+	// A host-supplied exact wire size takes precedence over the reconstruction.
+	big := sieveEmail()
+	big.RawSize = 100000
+	if got := folderOf(runSieve(t, `require "fileinto";
+if size :over 4K { fileinto "Big"; }`, big)); got != "Big" {
+		t.Errorf("size test should use host-supplied RawSize, got %q", got)
+	}
+	// A small RawSize wins even against a large body and attachments.
+	small := sieveEmail()
+	small.Body.Content = strings.Repeat("x", 10000)
+	small.Attachments = []Attachment{{Size: 999999}}
+	small.RawSize = 200
+	if got := folderOf(runSieve(t, `require "fileinto";
+if size :under 1K { fileinto "Small"; }`, small)); got != "Small" {
+		t.Errorf("RawSize must override the reconstructed size, got %q", got)
+	}
+}
+
 // ── :matches wildcards ───────────────────────────────────────────────
 
 func TestSieve_MatchesStar(t *testing.T) {

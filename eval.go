@@ -73,6 +73,14 @@ type Message struct {
 	Envelope    Envelope
 	Body        Body
 	Attachments []Attachment
+	// RawSize is the exact octet count of the whole message as it appears on
+	// the wire — the header block, the blank line separating headers from body,
+	// and the body. The size test (RFC 5228 §5.9) counts the entire message, so
+	// when the host knows this figure it should set RawSize and it is used
+	// verbatim. When RawSize is zero the size is reconstructed from the Headers,
+	// Body, and Attachments fields, which is only an approximation because the
+	// reconstructed headers need not be byte-identical to the original.
+	RawSize int64
 }
 
 // Headers holds the structured and raw headers used by header/address/exists
@@ -320,13 +328,50 @@ func evalTest(t sieveTest, msg *Message) bool {
 	return false
 }
 
-// messageSize approximates the octet size of the message: body content, nested
-// part content, and known attachment sizes.
+// messageSize returns the octet count the size test (RFC 5228 §5.9) compares
+// against: the number of octets in the entire message — the header block, the
+// blank line separating headers from body, and the body — as it appears on the
+// wire. When the host supplied the exact wire size in RawSize that value is used
+// verbatim; otherwise the size is reconstructed from the header, body, and
+// attachment fields (an approximation, since the reconstructed headers need not
+// be byte-identical to the original transfer encoding).
 func messageSize(msg *Message) int64 {
-	var size int64
+	if msg.RawSize > 0 {
+		return msg.RawSize
+	}
+	size := headerSize(msg.Headers)
+	size += 2 // CRLF blank line separating the header block from the body
 	size += bodySize(msg.Body)
 	for _, a := range msg.Attachments {
 		size += a.Size
+	}
+	return size
+}
+
+// headerSize approximates the octet size of the serialized header block,
+// rendering each present header as "Name: value\r\n". It is only used when the
+// host did not supply RawSize.
+func headerSize(h Headers) int64 {
+	var size int64
+	add := func(name, value string) {
+		if value == "" {
+			return
+		}
+		size += int64(len(name) + len(": ") + len(value) + len("\r\n"))
+	}
+	add("Subject", h.Subject)
+	add("From", strings.Join(formatAddresses(h.From), ", "))
+	add("To", strings.Join(formatAddresses(h.To), ", "))
+	add("Cc", strings.Join(formatAddresses(h.Cc), ", "))
+	add("Bcc", strings.Join(formatAddresses(h.Bcc), ", "))
+	add("Message-ID", h.MessageID)
+	add("In-Reply-To", h.InReplyTo)
+	add("Date", h.Date)
+	add("References", strings.Join(h.References, " "))
+	for k, vals := range h.Raw {
+		for _, v := range vals {
+			add(k, v)
+		}
 	}
 	return size
 }
