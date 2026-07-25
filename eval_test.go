@@ -401,6 +401,58 @@ if envelope :domain :is "from" "example.com" { fileinto "EnvDom"; }`
 	}
 }
 
+// ── address parts on non-structured (raw) headers ────────────────────
+//
+// Regression for #11: the address test on a header outside the structured
+// set (From/To/Cc/Bcc) went through the raw map and did string surgery on the
+// unparsed header value. It must instead parse the RFC 5322 address and derive
+// :all/:localpart/:domain from the addr-spec, excluding display names/comments.
+
+func TestSieve_AddressRawHeader_DisplayName(t *testing.T) {
+	email := sieveEmail()
+	// Quoted display name that itself looks like an address, plus the real
+	// addr-spec c@d. Old code split the whole raw value on the last '@'.
+	email.Headers.Raw = map[string][]string{"Resent-From": {`"a@b" <c@d>`}}
+
+	// :domain must be "d"; string surgery yielded "d>" (trailing bracket).
+	if got := folderOf(runSieve(t, `require "fileinto";
+if address :domain :is "Resent-From" "d" { fileinto "Dom"; }`, email)); got != "Dom" {
+		t.Errorf(`:domain should parse to "d", got folder %q`, got)
+	}
+	// :localpart must be "c"; string surgery yielded `"a@b" <c`.
+	if got := folderOf(runSieve(t, `require "fileinto";
+if address :localpart :is "Resent-From" "c" { fileinto "Loc"; }`, email)); got != "Loc" {
+		t.Errorf(`:localpart should parse to "c", got folder %q`, got)
+	}
+	// The display-name text ("a@b") must NOT be matched: it is not an address.
+	if got := folderOf(runSieve(t, `require "fileinto";
+if address :all :contains "Resent-From" "a@b" { fileinto "Display"; }`, email)); got == "Display" {
+		t.Error(":all must not match display-name text")
+	}
+}
+
+func TestSieve_AddressRawHeader_AngleAddr(t *testing.T) {
+	email := sieveEmail()
+	// Quoted local-part containing '@', wrapped in angle brackets.
+	email.Headers.Raw = map[string][]string{"Resent-Sender": {`<"weird@local"@example.com>`}}
+	// Old code split the raw value on the last '@' and returned "example.com>".
+	if got := folderOf(runSieve(t, `require "fileinto";
+if address :domain :is "Resent-Sender" "example.com" { fileinto "Dom"; }`, email)); got != "Dom" {
+		t.Errorf(`:domain should parse to "example.com", got folder %q`, got)
+	}
+}
+
+func TestSieve_AddressRawHeader_Unparseable(t *testing.T) {
+	email := sieveEmail()
+	email.Headers.Raw = map[string][]string{"Resent-From": {"not an address"}}
+	// A value that is not an addr-spec must not match :localpart (RFC 5228 §2.7.4);
+	// string surgery returned the whole string as the local part.
+	if got := folderOf(runSieve(t, `require "fileinto";
+if address :localpart :is "Resent-From" "not an address" { fileinto "Bad"; }`, email)); got == "Bad" {
+		t.Error("unparseable address must not match :localpart")
+	}
+}
+
 // ── comparators ──────────────────────────────────────────────────────
 
 func TestSieve_ComparatorOctetCaseSensitive(t *testing.T) {

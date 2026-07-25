@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 While the project is pre-1.0, a breaking change bumps the minor version.
 
+## Unreleased
+
+### Fixed
+
+- **`address` test now parses non-structured headers as RFC 5322 addresses.**
+  When the `address` test was applied to a header outside the structured set
+  (From/To/Cc/Bcc) — e.g. `Resent-From` — the raw header value was split on the
+  last `@` instead of being parsed. This produced wrong `:localpart`/`:domain`
+  results (for `Resent-From: "a@b" <c@d>`, `:domain` yielded `d>`), matched
+  display-name and comment text, and let unparseable values match
+  `:localpart`/`:domain`. Such headers are now parsed with
+  `net/mail.ParseAddressList` and evaluated on the parsed addr-spec; values that
+  do not parse as an address are skipped (RFC 5228 §5.1, §2.7.4).
+
 ## v0.2.0
 
 ### Breaking
