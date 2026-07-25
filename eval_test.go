@@ -539,6 +539,64 @@ if header :is :comparator "i;ascii-numeric" "X-Priority" "2" { fileinto "Prio"; 
 	}
 }
 
+// TestSieve_ComparatorAsciiCasemapAsciiOnly asserts that i;ascii-casemap folds
+// case ONLY within US-ASCII (A–Z ↔ a–z) per RFC 4790 §9.2 / RFC 5228 §2.7.3.
+// Non-ASCII characters that Unicode case-folding would collapse onto an ASCII
+// letter (e.g. long s ſ U+017F → s, Kelvin sign K U+212A → k) must be compared
+// byte-exact and therefore must NOT match an ASCII key — otherwise a filter can
+// be evaded with look-alikes. ASCII A/a case-insensitivity must still hold.
+func TestSieve_ComparatorAsciiCasemapAsciiOnly(t *testing.T) {
+	t.Run("is_longS_must_not_fold_to_s", func(t *testing.T) {
+		email := sieveEmail()
+		email.Headers.Raw = map[string][]string{"X-Test": {"ſ"}} // ſ (LATIN SMALL LETTER LONG S)
+		script := `require "fileinto";
+if header :is "X-Test" "s" { fileinto "Evaded"; }`
+		if got := folderOf(runSieve(t, script, email)); got == "Evaded" {
+			t.Errorf("i;ascii-casemap :is must not fold ſ (U+017F) to ASCII s, got %q", got)
+		}
+	})
+
+	t.Run("contains_kelvin_must_not_fold_to_k", func(t *testing.T) {
+		email := sieveEmail()
+		email.Headers.Raw = map[string][]string{"X-Test": {"tempK"}} // Kelvin sign K
+		script := `require "fileinto";
+if header :contains "X-Test" "k" { fileinto "Evaded"; }`
+		if got := folderOf(runSieve(t, script, email)); got == "Evaded" {
+			t.Errorf("i;ascii-casemap :contains must not fold Kelvin sign (U+212A) to ASCII k, got %q", got)
+		}
+	})
+
+	t.Run("matches_kelvin_must_not_fold_to_k", func(t *testing.T) {
+		email := sieveEmail()
+		email.Headers.Raw = map[string][]string{"X-Test": {"tempK"}} // U+212A KELVIN SIGN
+		script := `require "fileinto";
+if header :matches "X-Test" "temp*k" { fileinto "Evaded"; }`
+		if got := folderOf(runSieve(t, script, email)); got == "Evaded" {
+			t.Errorf("i;ascii-casemap :matches must not fold Kelvin sign (U+212A) to ASCII k, got %q", got)
+		}
+	})
+
+	t.Run("ascii_case_insensitivity_still_holds", func(t *testing.T) {
+		email := sieveEmail()
+		email.Headers.Raw = map[string][]string{"X-Test": {"ABC"}}
+		is := `require "fileinto";
+if header :is "X-Test" "abc" { fileinto "Is"; }`
+		if got := folderOf(runSieve(t, is, email)); got != "Is" {
+			t.Errorf(":is must still fold ASCII A/a, got %q", got)
+		}
+		contains := `require "fileinto";
+if header :contains "X-Test" "b" { fileinto "Contains"; }`
+		if got := folderOf(runSieve(t, contains, email)); got != "Contains" {
+			t.Errorf(":contains must still fold ASCII A/a, got %q", got)
+		}
+		matches := `require "fileinto";
+if header :matches "X-Test" "a?c" { fileinto "Matches"; }`
+		if got := folderOf(runSieve(t, matches, email)); got != "Matches" {
+			t.Errorf(":matches must still fold ASCII A/a, got %q", got)
+		}
+	})
+}
+
 // ── header whitespace / unfolding ────────────────────────────────────
 
 func TestSieve_HeaderTrimsWhitespace(t *testing.T) {

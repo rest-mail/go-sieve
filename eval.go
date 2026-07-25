@@ -625,7 +625,7 @@ func matchOne(value, key, matchType, comparator string) bool {
 		if comparator == "i;octet" {
 			return strings.Contains(value, key)
 		}
-		return strings.Contains(strings.ToLower(value), strings.ToLower(key))
+		return strings.Contains(asciiCasemapFold(value), asciiCasemapFold(key))
 	case ":matches":
 		return wildcardMatch(foldForComparator(value, comparator), foldForComparator(key, comparator))
 	case ":regex":
@@ -639,7 +639,7 @@ func matchOne(value, key, matchType, comparator string) bool {
 		}
 		return re.MatchString(value)
 	default:
-		return strings.Contains(strings.ToLower(value), strings.ToLower(key))
+		return strings.Contains(asciiCasemapFold(value), asciiCasemapFold(key))
 	}
 }
 
@@ -656,7 +656,7 @@ func compareIs(value, key, comparator string) bool {
 		}
 		return nv == nk
 	default: // i;ascii-casemap
-		return strings.EqualFold(value, key)
+		return asciiCasemapFold(value) == asciiCasemapFold(key)
 	}
 }
 
@@ -683,7 +683,32 @@ func foldForComparator(s, comparator string) string {
 	if comparator == "i;octet" {
 		return s
 	}
-	return strings.ToLower(s)
+	return asciiCasemapFold(s)
+}
+
+// asciiCasemapFold applies the i;ascii-casemap comparator's case fold
+// (RFC 4790 §9.2, RFC 5228 §2.7.3): ONLY the US-ASCII letters A–Z (0x41–0x5A)
+// fold to a–z. Every other octet — all non-letter ASCII and every byte ≥ 0x80,
+// including the interior bytes of multi-byte UTF-8 sequences — is left
+// byte-exact, so non-ASCII characters are compared unchanged and cannot be
+// folded onto an ASCII look-alike (e.g. ſ U+017F, Kelvin sign K U+212A). This
+// deliberately avoids Go's Unicode-aware strings.ToLower/EqualFold, which fold
+// beyond US-ASCII and would let a filter be evaded or over-match.
+func asciiCasemapFold(s string) string {
+	var b []byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			if b == nil {
+				b = []byte(s)
+			}
+			b[i] = c + ('a' - 'A')
+		}
+	}
+	if b == nil {
+		return s
+	}
+	return string(b)
 }
 
 // wildcardMatch implements Sieve :matches semantics: '*' matches zero or more
