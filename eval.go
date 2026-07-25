@@ -164,9 +164,11 @@ type Executor interface {
 	Notify(method, message string)
 }
 
-// Validate reports whether a Sieve script is syntactically valid.
-func Validate(script string) error {
-	if _, err := parseSieveScript(script); err != nil {
+// Validate reports whether a Sieve script is syntactically valid. It accepts
+// the same [Option]s as [Parse]; nesting beyond [DefaultMaxDepth] (or the limit
+// set with [WithMaxDepth]) is reported as invalid.
+func Validate(script string, opts ...Option) error {
+	if _, err := parseSieveScript(script, opts...); err != nil {
 		return fmt.Errorf("invalid sieve script: %w", err)
 	}
 	return nil
