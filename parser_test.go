@@ -51,6 +51,33 @@ if header :is "Subject" "x" { fileinto "A"; } elsif true { fileinto "B"; } else 
 	}
 }
 
+func TestValidateSieve_RejectsEmptyStringList(t *testing.T) {
+	// RFC 5228 §8.2: string-list = "[" string *("," string) "]" / string — a
+	// bracketed list must contain at least one string. An empty "[]" has no
+	// production in the grammar, so it must be a parse error in every position a
+	// string-list may appear, not silently accepted. In particular `exists []`
+	// must not be accepted (it would otherwise evaluate true vacuously).
+	empty := []struct {
+		name   string
+		script string
+	}{
+		{"exists", `if exists [] { keep; }`},
+		{"header names", `if header :is [] "x" { keep; }`},
+		{"header keys", `if header :is "Subject" [] { keep; }`},
+		{"address headers", `if address :is [] "x@y.example" { keep; }`},
+		{"envelope keys", `require "envelope";
+if envelope :is "from" [] { keep; }`},
+		{"require", `require [];`},
+		{"setflag", `require "imap4flags";
+if true { setflag []; }`},
+	}
+	for _, tc := range empty {
+		if err := Validate(tc.script); err == nil {
+			t.Errorf("%s: expected Validate to reject an empty [] string list:\n%s", tc.name, tc.script)
+		}
+	}
+}
+
 func TestValidateSieve_RejectsRedirectControlChars(t *testing.T) {
 	// A "text:" multi-line literal lets control characters into the redirect
 	// target. A host that builds SMTP commands or message headers from the

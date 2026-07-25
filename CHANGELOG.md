@@ -10,6 +10,15 @@ While the project is pre-1.0, a breaking change bumps the minor version.
 
 ### Fixed
 
+- **An empty `[]` string list is now a parse error.** RFC 5228 §8.2 defines
+  `string-list` as `"[" string *("," string) "]" / string`, so a bracketed list
+  must contain at least one string; there is no production for an empty `[]`.
+  The parser accepted it anyway in every string-list position, which let
+  `exists []` evaluate true vacuously (the "all headers present" loop had
+  nothing to falsify) and silently accepted meaningless lists such as
+  `require []` or `header :is [] "x"`. An empty `[]` is now rejected at parse
+  time wherever a string list is expected.
+
 - **`envelope :is "from" ""` now matches a null reverse-path.** A null
   reverse-path (SMTP `MAIL FROM:<>`, i.e. a bounce) has an empty-string
   envelope `from` value (RFC 5228 §5.4), but it was treated as absent, so the
