@@ -128,7 +128,7 @@ func TestEvaluate_SizeTest_BodyDepthBounded(t *testing.T) {
 	for i := range payload {
 		payload[i] = 'a'
 	}
-	email := sieveEmail()               // RawSize unset -> size is reconstructed
+	email := sieveEmail() // RawSize unset -> size is reconstructed
 	email.Body = deepBodyChain(maxBodyDepth+50, string(payload))
 
 	// The reconstructed header block is well under 1000 octets, so :over 1000
