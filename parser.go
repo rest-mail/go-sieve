@@ -1065,13 +1065,19 @@ func (p *parser) parseSizeTest() (sieveTest, error) {
 	st := &sizeTest{}
 	gotOp := false
 	for p.peek().kind == tTag {
-		switch p.next().str {
-		case ":over":
-			st.over = true
+		tag := p.next().str
+		switch tag {
+		case ":over", ":under":
+			// RFC 5228 §5.9: size takes exactly one of :over / :under. A second
+			// relation (whether the same tag repeated or the opposing one) is a
+			// conflict, not a last-wins overwrite.
+			if gotOp {
+				return nil, p.errf("size test takes exactly one of :over or :under, not a further %q", tag)
+			}
+			st.over = tag == ":over"
 			gotOp = true
-		case ":under":
-			st.over = false
-			gotOp = true
+		default:
+			return nil, p.errf("unexpected tagged argument %q on the size test", tag)
 		}
 	}
 	if !gotOp {
@@ -1096,16 +1102,30 @@ type matchOptions struct {
 // address-part tags in any order. allowAddressPart selects whether
 // :localpart/:domain/:all are recognised; allowBody selects the body-transform
 // tags :raw/:text/:content.
+//
+// RFC 5228 §2.7.1 (a test carries a single match type), §2.7.3 (a single
+// comparator) and §2.7.4/§5.7 (address parts apply only to address/envelope, and
+// a test carries a single one) make a duplicated or conflicting tagged argument
+// a syntax error, not a last-wins overwrite. A tagged argument that is not
+// defined for the test (an address part on header/body, a body transform on a
+// non-body test, or any foreign tag) is likewise rejected rather than silently
+// consumed. Each mutually-exclusive group — match type, comparator, address
+// part, body transform — may therefore appear at most once.
 func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptions, error) {
 	opts := matchOptions{
 		comparator:  defaultComparator,
 		matchType:   defaultMatchType,
 		addressPart: defaultAddressPart,
 	}
+	var matchTypeSet, comparatorSet, addressPartSet, bodyTransformSet bool
 	for p.peek().kind == tTag {
 		tag := p.next().str
 		switch tag {
 		case ":is", ":contains", ":matches":
+			if matchTypeSet {
+				return opts, p.errf("duplicate or conflicting match type %q: a test takes at most one match type", tag)
+			}
+			matchTypeSet = true
 			opts.matchType = tag
 		case ":regex":
 			// The :regex match type is a non-standard extension; it must be
@@ -1113,12 +1133,20 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 			if err := p.requireCapability("regex", "the :regex match type"); err != nil {
 				return opts, err
 			}
+			if matchTypeSet {
+				return opts, p.errf("duplicate or conflicting match type %q: a test takes at most one match type", tag)
+			}
+			matchTypeSet = true
 			opts.matchType = tag
 		case ":comparator":
+			if comparatorSet {
+				return opts, p.errf("duplicate :comparator: a test takes at most one comparator")
+			}
 			s, err := p.expect(tString, "a comparator name")
 			if err != nil {
 				return opts, err
 			}
+			comparatorSet = true
 			opts.comparator = strings.ToLower(s.str)
 			// RFC 4790/5228: only i;ascii-casemap and i;octet are built in; any
 			// other comparator (e.g. i;ascii-numeric) needs a matching require.
@@ -1128,17 +1156,31 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 				}
 			}
 		case ":localpart", ":domain", ":all":
-			if allowAddressPart {
-				opts.addressPart = tag
+			if !allowAddressPart {
+				return opts, p.errf("tagged argument %q is not valid on this test (address parts apply only to address and envelope tests)", tag)
 			}
-		case ":content":
-			if allowBody {
+			if addressPartSet {
+				return opts, p.errf("duplicate or conflicting address part %q: a test takes at most one address part", tag)
+			}
+			addressPartSet = true
+			opts.addressPart = tag
+		case ":raw", ":text", ":content":
+			if !allowBody {
+				return opts, p.errf("tagged argument %q is not valid on this test (body transforms apply only to the body test)", tag)
+			}
+			if bodyTransformSet {
+				return opts, p.errf("duplicate or conflicting body transform %q: a test takes at most one body transform", tag)
+			}
+			bodyTransformSet = true
+			// :content carries a content-type string; :raw and :text carry no
+			// argument and are treated uniformly as extracted text.
+			if tag == ":content" {
 				if _, err := p.expect(tString, "a content type"); err != nil {
 					return opts, err
 				}
 			}
-		case ":raw", ":text":
-			// body transforms we treat uniformly as extracted text
+		default:
+			return opts, p.errf("unexpected tagged argument %q on this test", tag)
 		}
 	}
 	return opts, nil
