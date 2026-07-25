@@ -1327,3 +1327,101 @@ func TestStripHTMLTags(t *testing.T) {
 		}
 	}
 }
+
+// ── Delivery de-duplication (RFC 5228 §2.10.3) ───────────────────────
+
+// countApplied returns how many recorded actions equal want, so a test can
+// assert how many times the Executor was asked to deliver to a destination.
+func countApplied(applied []string, want string) int {
+	n := 0
+	for _, a := range applied {
+		if a == want {
+			n++
+		}
+	}
+	return n
+}
+
+// evalApplied parses and evaluates script and returns the ordered list of
+// actions the reference Executor recorded.
+func evalApplied(t *testing.T, script string) []string {
+	t.Helper()
+	s, err := Parse(script)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	ex := newRecExec()
+	s.Evaluate(sieveEmail(), ex)
+	return ex.applied
+}
+
+func TestSieve_DuplicateFileintoDeliversOnce(t *testing.T) {
+	applied := evalApplied(t, `require "fileinto";
+if true {
+  fileinto "INBOX.X";
+  fileinto "INBOX.X";
+}`)
+	if got := countApplied(applied, "fileinto:INBOX.X"); got != 1 {
+		t.Errorf("duplicate fileinto to the same mailbox delivered %d times, want 1 (%v)", got, applied)
+	}
+}
+
+func TestSieve_DistinctFileintoDeliversEach(t *testing.T) {
+	applied := evalApplied(t, `require "fileinto";
+if true {
+  fileinto "INBOX.X";
+  fileinto "INBOX.Y";
+}`)
+	if got := countApplied(applied, "fileinto:INBOX.X"); got != 1 {
+		t.Errorf("fileinto INBOX.X delivered %d times, want 1 (%v)", got, applied)
+	}
+	if got := countApplied(applied, "fileinto:INBOX.Y"); got != 1 {
+		t.Errorf("fileinto INBOX.Y delivered %d times, want 1 (%v)", got, applied)
+	}
+}
+
+func TestSieve_DuplicateRedirectDeliversOnce(t *testing.T) {
+	applied := evalApplied(t, `if true {
+  redirect "dup@example.com";
+  redirect "dup@example.com";
+}`)
+	if got := countApplied(applied, "redirect:dup@example.com"); got != 1 {
+		t.Errorf("duplicate redirect to the same address delivered %d times, want 1 (%v)", got, applied)
+	}
+}
+
+func TestSieve_DistinctRedirectDeliversEach(t *testing.T) {
+	applied := evalApplied(t, `if true {
+  redirect "a@example.com";
+  redirect "b@example.com";
+}`)
+	if got := countApplied(applied, "redirect:a@example.com"); got != 1 {
+		t.Errorf("redirect a@example.com delivered %d times, want 1 (%v)", got, applied)
+	}
+	if got := countApplied(applied, "redirect:b@example.com"); got != 1 {
+		t.Errorf("redirect b@example.com delivered %d times, want 1 (%v)", got, applied)
+	}
+}
+
+func TestSieve_DuplicateKeepDeliversOnce(t *testing.T) {
+	applied := evalApplied(t, `if true {
+  keep;
+  keep;
+}`)
+	if got := countApplied(applied, "keep"); got != 1 {
+		t.Errorf("duplicate keep delivered %d times, want 1 (%v)", got, applied)
+	}
+}
+
+// A :copy fileinto targets a destination distinct from a consuming fileinto to
+// the same mailbox (RFC 3894), so the two are not collapsed.
+func TestSieve_FileintoCopyDistinctFromConsuming(t *testing.T) {
+	applied := evalApplied(t, `require ["fileinto", "copy"];
+if true {
+  fileinto "INBOX.X";
+  fileinto :copy "INBOX.X";
+}`)
+	if got := countApplied(applied, "fileinto:INBOX.X"); got != 2 {
+		t.Errorf("fileinto and fileinto :copy to the same mailbox delivered %d times, want 2 (%v)", got, applied)
+	}
+}

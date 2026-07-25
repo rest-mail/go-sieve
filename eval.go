@@ -199,15 +199,47 @@ func (s *Script) Evaluate(msg *Message, exec Executor) Outcome {
 	if s == nil {
 		return Outcome{Disposition: Continue}
 	}
-	st := &evalState{msg: msg, exec: exec}
+	st := &evalState{
+		msg:        msg,
+		exec:       exec,
+		filedInto:  map[fileintoDest]struct{}{},
+		redirected: map[redirectDest]struct{}{},
+	}
 	out, _ := st.runBlock(s.commands)
 	return out
 }
 
-// evalState carries the immutable inputs while walking a script's commands.
+// evalState carries the immutable inputs while walking a script's commands,
+// plus the set of delivery destinations already dispatched (for RFC 5228
+// §2.10.3 de-duplication).
 type evalState struct {
 	msg  *Message
 	exec Executor
+
+	// Delivery de-duplication (RFC 5228 §2.10.3): "the same message MUST NOT be
+	// delivered to the same destination more than once", even when several
+	// actions name it. These record the destinations already dispatched so a
+	// repeated keep / fileinto / redirect collapses to a single Executor call.
+	// The first occurrence executes (preserving script order and interleaving
+	// with other actions); later duplicates are suppressed. A :copy action is a
+	// distinct destination from a consuming one, so :copy is part of each key.
+	kept       bool
+	filedInto  map[fileintoDest]struct{}
+	redirected map[redirectDest]struct{}
+}
+
+// fileintoDest keys a fileinto delivery for de-duplication: same folder and
+// same :copy disposition means the same destination.
+type fileintoDest struct {
+	folder string
+	copy   bool
+}
+
+// redirectDest keys a redirect delivery for de-duplication: same address and
+// same :copy disposition means the same destination.
+type redirectDest struct {
+	addr string
+	copy bool
 }
 
 // runBlock evaluates a sequence of commands. The bool result reports whether
@@ -236,7 +268,11 @@ func (st *evalState) runCmd(c sieveCmd) (Outcome, bool) {
 		return Outcome{Disposition: Continue}, true
 
 	case *keepCmd:
-		st.exec.Keep()
+		// RFC 5228 §2.10.3: multiple keeps collapse to a single delivery.
+		if !st.kept {
+			st.kept = true
+			st.exec.Keep()
+		}
 
 	case *discardCmd:
 		return Outcome{Disposition: Discard}, true
@@ -245,10 +281,20 @@ func (st *evalState) runCmd(c sieveCmd) (Outcome, bool) {
 		return Outcome{Disposition: Reject, RejectReason: cmd.reason}, true
 
 	case *fileintoCmd:
-		st.exec.FileInto(cmd.folder, cmd.create)
+		// RFC 5228 §2.10.3: filing into the same mailbox twice is one delivery.
+		dest := fileintoDest{folder: cmd.folder, copy: cmd.copy}
+		if _, done := st.filedInto[dest]; !done {
+			st.filedInto[dest] = struct{}{}
+			st.exec.FileInto(cmd.folder, cmd.create)
+		}
 
 	case *redirectCmd:
-		st.exec.Redirect(cmd.addr)
+		// RFC 5228 §2.10.3: redirecting to the same address twice is one delivery.
+		dest := redirectDest{addr: cmd.addr, copy: cmd.copy}
+		if _, done := st.redirected[dest]; !done {
+			st.redirected[dest] = struct{}{}
+			st.exec.Redirect(cmd.addr)
+		}
 
 	case *flagCmd:
 		st.exec.Flag(cmd.op, cmd.flags)

@@ -10,6 +10,18 @@ While the project is pre-1.0, a breaking change bumps the minor version.
 
 ### Fixed
 
+- **Duplicate delivery actions no longer deliver to the same destination
+  twice.** Each `keep`, `fileinto`, and `redirect` was passed straight to the
+  `Executor`, so a script naming the same destination more than once — two
+  `fileinto "INBOX.X"`, two `redirect a@b`, or repeated `keep` — caused two
+  deliveries there. RFC 5228 §2.10.3 requires that a message not be delivered
+  to the same destination more than once regardless of how many actions name
+  it. The evaluator now records the destinations already dispatched and
+  collapses a repeat to a single Executor call; the first occurrence executes,
+  preserving script order and interleaving with other actions, and distinct
+  destinations still each execute. A `:copy` action (RFC 3894) targets a
+  destination distinct from a consuming one, so it is not collapsed with it.
+
 - **An empty `[]` string list is now a parse error.** RFC 5228 §8.2 defines
   `string-list` as `"[" string *("," string) "]" / string`, so a bracketed list
   must contain at least one string; there is no production for an empty `[]`.

@@ -59,9 +59,13 @@ type discardCmd struct{}
 type fileintoCmd struct {
 	folder string
 	create bool
+	copy   bool // RFC 3894 :copy — targets a destination distinct from a consuming fileinto
 }
 
-type redirectCmd struct{ addr string }
+type redirectCmd struct {
+	addr string
+	copy bool // RFC 3894 :copy — targets a destination distinct from a consuming redirect
+}
 type rejectCmd struct{ reason string }
 
 // flagCmd covers setflag / addflag / removeflag from the imap4flags extension.
@@ -823,6 +827,7 @@ func (p *parser) parseFileinto() (sieveCmd, error) {
 			if err := p.requireCapability("copy", "fileinto :copy"); err != nil {
 				return nil, err
 			}
+			cmd.copy = true
 		}
 	}
 	folder, err := p.expect(tString, "a folder name")
@@ -834,6 +839,7 @@ func (p *parser) parseFileinto() (sieveCmd, error) {
 }
 
 func (p *parser) parseRedirect() (sieveCmd, error) {
+	cmd := &redirectCmd{}
 	for p.peek().kind == tTag {
 		switch p.next().str {
 		case ":copy":
@@ -841,6 +847,7 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 			if err := p.requireCapability("copy", "redirect :copy"); err != nil {
 				return nil, err
 			}
+			cmd.copy = true
 		}
 		// Other tags (:list, :notify, …) carry no argument we act on.
 	}
@@ -856,7 +863,8 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 	if r := firstControlChar(addr.str); r >= 0 {
 		return nil, fmt.Errorf("sieve: line %d: redirect address contains a forbidden control character (%#U)", addr.line, r)
 	}
-	return &redirectCmd{addr: addr.str}, p.finishStatement()
+	cmd.addr = addr.str
+	return cmd, p.finishStatement()
 }
 
 // firstControlChar returns the first control character (C0/C1, including CR, LF,
