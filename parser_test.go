@@ -111,3 +111,40 @@ if envelope :is "from" "a@b.com" {
 		}
 	}
 }
+
+func TestValidateSieve_RejectsSizeOverflow(t *testing.T) {
+	// A K/M/G quantifier is a plain multiply. Without an overflow guard, a large
+	// value silently wraps int64: 9999999999G computes ~1.07e19, which exceeds
+	// math.MaxInt64 and wraps to a negative limit. A "size :over <negative>" test
+	// then matches every message (and ":under" none), inverting the author's
+	// intended filter. RFC 5228 §2.4.1 makes an unrepresentable number a syntax
+	// error, so each of these must be rejected at parse time rather than wrapped.
+	overflow := []string{
+		`if size :over 9999999999G { discard; }`,
+		`if size :under 9999999999G { keep; }`,
+		`if size :over 8589934592G { discard; }`, // 2^33 * 2^30 == 2^63, wraps to MinInt64
+		`if size :over 9999999999999999M { discard; }`,
+		`if size :over 99999999999999999999K { discard; }`,
+	}
+	for _, s := range overflow {
+		if err := Validate(s); err == nil {
+			t.Errorf("expected Validate to reject an overflowing quantified size:\n%s", s)
+		}
+	}
+}
+
+func TestValidateSieve_AcceptsRepresentableSizes(t *testing.T) {
+	// Values that fit in int64 after the quantifier multiply must still parse,
+	// including the largest representable G-quantified value (8G < MaxInt64).
+	good := []string{
+		`if size :over 1K { discard; }`,
+		`if size :over 500M { discard; }`,
+		`if size :over 8G { discard; }`,
+		`if size :under 0G { keep; }`,
+	}
+	for _, s := range good {
+		if err := Validate(s); err != nil {
+			t.Errorf("Validate rejected a representable quantified size: %v\n%s", err, s)
+		}
+	}
+}

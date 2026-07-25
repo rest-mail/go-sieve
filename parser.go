@@ -13,6 +13,7 @@ package sieve
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"unicode"
@@ -389,15 +390,25 @@ func (l *lexer) readNumber() (int64, error) {
 		return 0, l.errf("invalid number %q", digits)
 	}
 	if l.pos < len(l.src) {
+		var factor int64
 		switch l.src[l.pos] {
 		case 'K', 'k':
-			n *= 1024
-			l.pos++
+			factor = 1024
 		case 'M', 'm':
-			n *= 1024 * 1024
-			l.pos++
+			factor = 1024 * 1024
 		case 'G', 'g':
-			n *= 1024 * 1024 * 1024
+			factor = 1024 * 1024 * 1024
+		}
+		if factor != 0 {
+			// Guard the quantifier multiply: n is non-negative, so an overflow
+			// would wrap to a negative (or truncated) limit and silently invert
+			// a size test. RFC 5228 §2.4.1 makes an unrepresentable number a
+			// syntax error, so reject it rather than wrap.
+			if n > math.MaxInt64/factor {
+				lit := l.src[start : l.pos+1] // digits plus the quantifier
+				return 0, l.errf("number %q overflows int64", lit)
+			}
+			n *= factor
 			l.pos++
 		}
 	}
