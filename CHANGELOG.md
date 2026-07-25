@@ -10,6 +10,21 @@ While the project is pre-1.0, a breaking change bumps the minor version.
 
 ### Fixed
 
+- **An unsupported comparator is rejected, and `i;ascii-numeric` no longer
+  silently degrades to case-insensitive matching outside `:is`.** A comparator a
+  script named with `:comparator` that the implementation does not support was
+  quietly treated as the default `i;ascii-casemap`; RFC 5228 §2.7.3 requires an
+  error instead, and one is now raised at parse time (only `i;octet`,
+  `i;ascii-casemap`, and `i;ascii-numeric` are accepted). The numeric comparator
+  `i;ascii-numeric` was honoured only by the `:is` match type and fell back to
+  case-insensitive matching under `:contains`, `:matches`, and `:regex`. RFC 4790
+  §9.1 gives `i;ascii-numeric` only equality and ordering, with no substring
+  operation, so pairing it with those substring match types is now a parse error
+  rather than a misleading text match. Its `:is` numeric equality — including the
+  rule that any value not starting with a digit is positive infinity, so two
+  non-numeric values are equal but a number never equals a non-number — is
+  unchanged.
+
 - **`discard` no longer terminates the script or drops mail the script asked to
   deliver, and the implicit keep is now modelled.** RFC 5228 §4.4 makes `discard`
   compatible with every other action — it only cancels the implicit keep — but
