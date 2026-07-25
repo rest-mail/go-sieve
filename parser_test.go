@@ -113,6 +113,42 @@ if envelope :is "from" "a@b.com" {
 	}
 }
 
+func TestLexQuotedString_RejectsBareCRAndNUL(t *testing.T) {
+	// RFC 5228 §8.1: quoted-safe = CRLF / octet-not-qspecial, where
+	// octet-not-qspecial excludes NUL, CR and LF. A bare CR (not part of a
+	// CRLF), a lone LF, and a NUL octet are therefore not valid quoted-chars and
+	// must be a lex error, consistent with how a lone LF is already rejected.
+	bad := []struct {
+		name string
+		src  string
+	}{
+		{"bare-cr", "\"a\rb\""},
+		{"nul", "\"a\x00b\""},
+		{"lone-lf", "\"a\nb\""},
+	}
+	for _, tc := range bad {
+		if _, err := newLexer(tc.src).tokenize(); err == nil {
+			t.Errorf("%s: expected a lex error for %q, got none", tc.name, tc.src)
+		}
+	}
+}
+
+func TestLexQuotedString_AcceptsCRLF(t *testing.T) {
+	// A CRLF pair inside a quoted string is permitted (quoted-safe = CRLF), so a
+	// multi-line quoted string must lex and preserve the CRLF in its value.
+	src := "\"line1\r\nline2\""
+	toks, err := newLexer(src).tokenize()
+	if err != nil {
+		t.Fatalf("expected a CRLF inside a quoted string to lex, got error: %v", err)
+	}
+	if len(toks) < 1 || toks[0].kind != tString {
+		t.Fatalf("expected a string token first, got %+v", toks)
+	}
+	if want := "line1\r\nline2"; toks[0].str != want {
+		t.Errorf("quoted string value = %q, want %q", toks[0].str, want)
+	}
+}
+
 func TestValidateSieve_RejectsSizeOverflow(t *testing.T) {
 	// A K/M/G quantifier is a plain multiply. Without an overflow guard, a large
 	// value silently wraps int64: 9999999999G computes ~1.07e19, which exceeds
