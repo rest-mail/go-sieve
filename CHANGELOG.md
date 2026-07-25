@@ -10,6 +10,23 @@ While the project is pre-1.0, a breaking change bumps the minor version.
 
 ### Fixed
 
+- **`vacation :seconds` keeps its precision, and a null reverse-path suppresses
+  the auto-reply.** Two `vacation` bugs are fixed. A `:seconds` interval
+  (RFC 6131) was converted to whole days by integer division, so any sub-day
+  value collapsed to zero and the reply-suppression window was lost; the interval
+  is now carried as a duration and honoured at second granularity, while `:days`
+  stays day-granular. And a message with a null reverse-path (SMTP
+  `MAIL FROM:<>`, which marks a bounce or auto-generated message) previously fell
+  back to the `From` header for a reply target, so it still triggered an
+  auto-reply and risked a mail loop; per RFC 5230 §4.6 and RFC 3834 no vacation
+  response is now sent for such a message.
+
+  As part of this, the `Vacation` struct's `Days int` field is replaced by
+  `Interval time.Duration` (**breaking**): the Executor receives the full
+  suppression period rather than a day count, and is only called when a reply is
+  permitted (a null reverse-path or an otherwise-undeterminable target now
+  suppresses the call instead of being handed to the host).
+
 - **An unsupported comparator is rejected, and `i;ascii-numeric` no longer
   silently degrades to case-insensitive matching outside `:is`.** A comparator a
   script named with `:comparator` that the implementation does not support was
