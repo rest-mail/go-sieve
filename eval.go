@@ -101,8 +101,16 @@ type Address struct {
 // host resolves any override (e.g. a gateway-supplied sender) before populating
 // these fields.
 type Envelope struct {
+	// From is the SMTP reverse-path (MAIL FROM) address. An empty From with
+	// FromNull unset means the envelope sender is absent (no MAIL FROM was
+	// seen); the envelope "from" test then produces no value to match.
 	From string
-	To   []string
+	// FromNull marks a null reverse-path (SMTP "MAIL FROM:<>", i.e. a bounce).
+	// Per RFC 5228 §5.4 the envelope "from" value is then the empty string, so
+	// `envelope :is "from" ""` matches. Set it (with From left empty) to
+	// distinguish a genuine null reverse-path from a merely absent sender.
+	FromNull bool
+	To       []string
 }
 
 // Body is a (possibly multipart) message body used by the body test and size.
@@ -479,6 +487,12 @@ func envelopeValues(msg *Message, name string) []string {
 	case "from":
 		if msg.Envelope.From != "" {
 			return []string{msg.Envelope.From}
+		}
+		// A null reverse-path (MAIL FROM:<>) is the empty string, not an
+		// absent value: RFC 5228 §5.4 requires `:is "from" ""` to match it.
+		// A genuinely absent sender (no MAIL FROM) yields no value.
+		if msg.Envelope.FromNull {
+			return []string{""}
 		}
 	case "to":
 		return msg.Envelope.To

@@ -901,6 +901,69 @@ if envelope :is "from" "other@example.com" {
 	}
 }
 
+func TestSieve_EnvelopeFrom_NullReversePath(t *testing.T) {
+	// RFC 5228 §5.4 / RFC 5231: a null reverse-path (SMTP "MAIL FROM:<>", a
+	// bounce) has an empty-string envelope "from" value, so the canonical
+	// bounce-detection idiom `envelope :is "from" ""` MUST match it.
+	script := `require ["envelope", "fileinto"];
+if envelope :is "from" "" {
+  fileinto "Bounce";
+}`
+	email := sieveEmail()
+	email.Envelope.From = ""
+	email.Envelope.FromNull = true
+	if got := folderOf(runSieve(t, script, email)); got != "Bounce" {
+		t.Errorf("expected null reverse-path to match :is \"\", got %q", got)
+	}
+}
+
+func TestSieve_EnvelopeFrom_AbsentDoesNotMatchEmpty(t *testing.T) {
+	// A genuinely absent envelope sender (no MAIL FROM at all) is distinct from
+	// a null reverse-path: it produces no value and must not match :is "".
+	script := `require ["envelope", "fileinto"];
+if envelope :is "from" "" {
+  fileinto "ShouldNotMatch";
+}`
+	email := sieveEmail()
+	email.Envelope.From = ""
+	email.Envelope.FromNull = false
+	if got := folderOf(runSieve(t, script, email)); got == "ShouldNotMatch" {
+		t.Error("absent envelope sender must not match :is \"\"")
+	}
+}
+
+func TestSieve_EnvelopeFrom_NullReversePath_NoFalseMatch(t *testing.T) {
+	// A null reverse-path is the empty string only: it must not match a
+	// non-empty key.
+	script := `require ["envelope", "fileinto"];
+if envelope :is "from" "someone@example.com" {
+  fileinto "ShouldNotMatch";
+}`
+	email := sieveEmail()
+	email.Envelope.From = ""
+	email.Envelope.FromNull = true
+	if got := folderOf(runSieve(t, script, email)); got == "ShouldNotMatch" {
+		t.Error("null reverse-path must not match a non-empty key")
+	}
+}
+
+func TestSieve_EnvelopeFrom_NullReversePath_Parts(t *testing.T) {
+	// The :localpart and :domain of a null reverse-path are both the empty
+	// string (RFC 5231), so each part matches :is "".
+	for _, part := range []string{":localpart", ":domain"} {
+		script := `require ["envelope", "fileinto"];
+if envelope ` + part + ` :is "from" "" {
+  fileinto "EmptyPart";
+}`
+		email := sieveEmail()
+		email.Envelope.From = ""
+		email.Envelope.FromNull = true
+		if got := folderOf(runSieve(t, script, email)); got != "EmptyPart" {
+			t.Errorf("expected %s of null reverse-path to match \"\", got %q", part, got)
+		}
+	}
+}
+
 func TestSieve_EnvelopeFrom_Resolved(t *testing.T) {
 	// The host resolves any gateway-supplied envelope sender before evaluating.
 	script := `require ["envelope", "fileinto"];

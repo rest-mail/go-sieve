@@ -10,6 +10,15 @@ While the project is pre-1.0, a breaking change bumps the minor version.
 
 ### Fixed
 
+- **`envelope :is "from" ""` now matches a null reverse-path.** A null
+  reverse-path (SMTP `MAIL FROM:<>`, i.e. a bounce) has an empty-string
+  envelope `from` value (RFC 5228 §5.4), but it was treated as absent, so the
+  canonical bounce-detection idiom `if envelope :is "from" ""` never matched
+  and `:localpart`/`:domain` on it misbehaved. `Envelope` gains a `FromNull`
+  field: set it (with `From` left empty) to represent a null reverse-path, which
+  now produces a single empty-string value that matches `""`. A genuinely
+  absent sender (empty `From`, `FromNull` unset) still produces no value.
+
 - **`address` test now parses non-structured headers as RFC 5322 addresses.**
   When the `address` test was applied to a header outside the structured set
   (From/To/Cc/Bcc) — e.g. `Resent-From` — the raw header value was split on the
