@@ -199,6 +199,14 @@ func (s *Script) Evaluate(msg *Message, exec Executor) Outcome {
 	if s == nil {
 		return Outcome{Disposition: Continue}
 	}
+	// A nil message has no headers, body, or envelope to test against. Every
+	// test dereferences msg (msg.Headers, msg.Body, …), so evaluating one
+	// against a nil pointer would panic. Treat "no message" as nothing to
+	// decide and take the implicit keep: Continue tells the host to deliver
+	// normally, honouring whatever the Executor recorded (here, nothing).
+	if msg == nil {
+		return Outcome{Disposition: Continue}
+	}
 	st := &evalState{
 		msg:        msg,
 		exec:       exec,
@@ -422,10 +430,42 @@ func headerSize(h Headers) int64 {
 	return size
 }
 
+// Body traversal is bounded so a message supplied by the host cannot turn the
+// recursive walk of its MIME structure into a denial of service (issue #23).
+const (
+	// maxBodyDepth caps how many levels deep the body test and the size
+	// reconstruction descend into nested multipart structure. Real messages
+	// nest only a handful of levels; a subtree deeper than this is treated as
+	// having no further parts rather than recursed into, so a pathologically
+	// deep Parts chain cannot exhaust the goroutine stack.
+	maxBodyDepth = 100
+	// maxBodyParts caps the total number of MIME parts a single body traversal
+	// visits, so a part-heavy message cannot burn unbounded CPU. Once the budget
+	// is spent the remaining parts are treated as absent.
+	maxBodyParts = 10000
+)
+
 func bodySize(b Body) int64 {
+	budget := maxBodyParts
+	return bodySizeBounded(b, maxBodyDepth, &budget)
+}
+
+// bodySizeBounded sums the content octets of a body and its parts, descending at
+// most depthLeft further levels and visiting at most *budget more parts across
+// the whole walk. Beyond either bound a subtree is treated as having no further
+// content, so reconstructing an approximate wire size for a pathologically deep
+// or part-heavy message cannot exhaust the stack or burn unbounded CPU.
+func bodySizeBounded(b Body, depthLeft int, budget *int) int64 {
 	size := int64(len(b.Content))
+	if depthLeft <= 0 {
+		return size
+	}
 	for _, p := range b.Parts {
-		size += bodySize(p)
+		if *budget <= 0 {
+			break
+		}
+		*budget--
+		size += bodySizeBounded(p, depthLeft-1, budget)
 	}
 	return size
 }
@@ -818,13 +858,31 @@ func extractBodyText(msg *Message) string {
 }
 
 // findPartContent recursively searches body parts for a matching content type
-// and returns the first match's content.
+// and returns the first match's content. The search is bounded in both nesting
+// depth and total parts visited so a pathologically deep or part-heavy MIME
+// structure cannot turn it into a denial of service (issue #23).
 func findPartContent(parts []Body, contentType string) string {
+	budget := maxBodyParts
+	return findPartContentBounded(parts, contentType, maxBodyDepth, &budget)
+}
+
+// findPartContentBounded searches parts for the first matching content type,
+// descending at most depthLeft further levels and visiting at most *budget more
+// parts across the whole walk. Beyond either bound the deeper or remaining parts
+// are treated as absent rather than recursed into.
+func findPartContentBounded(parts []Body, contentType string, depthLeft int, budget *int) string {
+	if depthLeft <= 0 {
+		return ""
+	}
 	for _, p := range parts {
+		if *budget <= 0 {
+			return ""
+		}
+		*budget--
 		if strings.HasPrefix(strings.ToLower(p.ContentType), contentType) && p.Content != "" {
 			return p.Content
 		}
-		if found := findPartContent(p.Parts, contentType); found != "" {
+		if found := findPartContentBounded(p.Parts, contentType, depthLeft-1, budget); found != "" {
 			return found
 		}
 	}
