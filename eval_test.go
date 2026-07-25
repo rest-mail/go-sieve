@@ -409,6 +409,40 @@ if header :matches "Subject" "50% off\\*" { fileinto "Literal"; }`
 	}
 }
 
+func TestSieve_MatchesQuestionMarkIsOctetNotRune(t *testing.T) {
+	// RFC 5228 §2.7.1: under :matches, "?" matches a single character, which in
+	// this evaluator's octet-string model (i;octet, i;ascii-casemap) is exactly
+	// one octet. A 2-octet UTF-8 character (é = 0xC3 0xA9) must therefore need
+	// two "?" wildcards, not one. The former regexp-based matcher compiled "?"
+	// to ".", which matches a whole decoded rune, so a single "?" wrongly
+	// matched the 2-octet character and "??" wrongly failed.
+	const eAcute = "\xc3\xa9" // é, precomposed U+00E9, 2 octets
+	cases := []struct {
+		name    string
+		subject string
+		pattern string
+		want    bool
+	}{
+		{"one_question_does_not_match_2octet_char", eAcute, "?", false},
+		{"two_questions_match_2octet_char", eAcute, "??", true},
+		{"ascii_one_question_matches_one_octet", "a", "?", true},
+		{"one_question_matches_second_octet_of_pair", eAcute, "\xc3?", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			email := sieveEmail()
+			email.Headers.Subject = tc.subject
+			script := `require "fileinto";
+if header :matches "Subject" "` + tc.pattern + `" { fileinto "M"; }`
+			matched := folderOf(runSieve(t, script, email)) == "M"
+			if matched != tc.want {
+				t.Errorf("subject %q pattern %q: matched=%v want=%v",
+					tc.subject, tc.pattern, matched, tc.want)
+			}
+		})
+	}
+}
+
 // ── address parts ────────────────────────────────────────────────────
 
 func TestSieve_AddressLocalpart(t *testing.T) {

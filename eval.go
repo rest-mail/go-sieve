@@ -757,36 +757,74 @@ func asciiCasemapFold(s string) string {
 	return string(b)
 }
 
-// wildcardMatch implements Sieve :matches semantics: '*' matches zero or more
-// characters, '?' matches exactly one, and a backslash escapes the next
-// character. It compiles the pattern to an anchored regular expression.
+// wildcardMatch implements Sieve :matches semantics (RFC 5228 §2.7.1): '*'
+// matches zero or more characters, '?' matches exactly one, and a backslash
+// escapes the next character. Both value and pattern are octet strings under
+// this evaluator's comparator model (i;octet, i;ascii-casemap), so a
+// "character" is a single octet: '?' matches exactly one byte and '*' scans
+// byte by byte. A multi-byte UTF-8 sequence is therefore NOT one '?' — it takes
+// as many '?' as it has octets. The whole value must be matched (anchored).
+//
+// It runs a linear scan with a single backtrack point for the most recent '*',
+// which is sufficient because '*' is the only construct that consumes a
+// variable number of octets.
 func wildcardMatch(value, pattern string) bool {
-	var b strings.Builder
-	b.WriteString(`\A`)
-	runes := []rune(pattern)
-	for i := 0; i < len(runes); i++ {
-		switch runes[i] {
-		case '\\':
-			if i+1 < len(runes) {
-				b.WriteString(regexp.QuoteMeta(string(runes[i+1])))
-				i++
-			} else {
-				b.WriteString(regexp.QuoteMeta(`\`))
+	// vi, pi index value and pattern by octet. star records the pattern index
+	// just after the most recent '*'; starMatch records how much of value that
+	// '*' has been credited so far, so a later mismatch can extend it by one
+	// octet and retry.
+	vi, pi := 0, 0
+	star, starMatch := -1, 0
+	for vi < len(value) {
+		if pi < len(pattern) {
+			switch pattern[pi] {
+			case '*':
+				star, starMatch = pi, vi
+				pi++
+				continue
+			case '?':
+				// '?' matches exactly one octet of value.
+				vi++
+				pi++
+				continue
+			case '\\':
+				// A backslash escapes the following octet, matching it
+				// literally; a trailing backslash is itself a literal '\'.
+				lit := byte('\\')
+				adv := 1
+				if pi+1 < len(pattern) {
+					lit = pattern[pi+1]
+					adv = 2
+				}
+				if value[vi] == lit {
+					vi++
+					pi += adv
+					continue
+				}
+			default:
+				if value[vi] == pattern[pi] {
+					vi++
+					pi++
+					continue
+				}
 			}
-		case '*':
-			b.WriteString(`(?s:.*)`)
-		case '?':
-			b.WriteString(`(?s:.)`)
-		default:
-			b.WriteString(regexp.QuoteMeta(string(runes[i])))
 		}
-	}
-	b.WriteString(`\z`)
-	re, err := regexp.Compile(b.String())
-	if err != nil {
+		// Literal/'?' mismatch (or pattern exhausted): backtrack to the last
+		// '*' and let it swallow one more octet, if there was one.
+		if star >= 0 {
+			pi = star + 1
+			starMatch++
+			vi = starMatch
+			continue
+		}
 		return false
 	}
-	return re.MatchString(value)
+	// Value fully consumed: the remaining pattern matches only if it is nothing
+	// but '*' (each matching the empty string).
+	for pi < len(pattern) && pattern[pi] == '*' {
+		pi++
+	}
+	return pi == len(pattern)
 }
 
 // ── Body text extraction ─────────────────────────────────────────────
