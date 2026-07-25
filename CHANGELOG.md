@@ -29,6 +29,14 @@ While the project is pre-1.0, a breaking change bumps the minor version.
   `net/mail.ParseAddressList` and evaluated on the parsed addr-spec; values that
   do not parse as an address are skipped (RFC 5228 §5.1, §2.7.4).
 
+- **`header` and `exists` tests now unfold and trim header values.** Header
+  values were compared verbatim, so a value with surrounding whitespace or a
+  folded continuation line failed an otherwise-correct match — `header :is
+  "X-Test" "foo"` was false for `X-Test:   foo`, and a value folded across
+  lines never matched its logical text. Values are now unfolded (RFC 5322
+  §2.2.3, folding whitespace collapsed to a single space) and stripped of
+  leading and trailing whitespace before matching, as RFC 5228 §5.7 requires.
+
 ## v0.2.0
 
 ### Breaking

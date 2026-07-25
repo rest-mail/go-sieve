@@ -487,6 +487,45 @@ if header :is :comparator "i;ascii-numeric" "X-Priority" "2" { fileinto "Prio"; 
 	}
 }
 
+// ── header whitespace / unfolding ────────────────────────────────────
+
+func TestSieve_HeaderTrimsWhitespace(t *testing.T) {
+	// RFC 5228 §5.7: the header test ignores leading and trailing whitespace
+	// in the header value. A value padded with spaces must still match :is.
+	email := sieveEmail()
+	email.Headers.Raw = map[string][]string{"X-Test": {"   foo   "}}
+	script := `require "fileinto";
+if header :is "X-Test" "foo" { fileinto "Trimmed"; }`
+	if got := folderOf(runSieve(t, script, email)); got != "Trimmed" {
+		t.Errorf("expected whitespace-padded header to match :is, got %q", got)
+	}
+}
+
+func TestSieve_HeaderTrimsWhitespaceContains(t *testing.T) {
+	// :contains against a leading-space value: with the value trimmed, an
+	// anchored key that includes the leading padding must no longer match.
+	email := sieveEmail()
+	email.Headers.Raw = map[string][]string{"X-Test": {"   foo"}}
+	script := `require "fileinto";
+if header :contains "X-Test" "  foo" { fileinto "Padded"; }`
+	if got := folderOf(runSieve(t, script, email)); got == "Padded" {
+		t.Error("leading whitespace should be stripped before :contains")
+	}
+}
+
+func TestSieve_HeaderUnfoldsContinuation(t *testing.T) {
+	// RFC 5322 §2.2.3 unfolding: a folded header (CRLF + folding whitespace)
+	// is a single logical value. header :is must compare against the unfolded
+	// value with the fold collapsed to a single space, not the raw CRLF/WSP.
+	email := sieveEmail()
+	email.Headers.Raw = map[string][]string{"X-Test": {"foo\r\n bar"}}
+	script := `require "fileinto";
+if header :is "X-Test" "foo bar" { fileinto "Unfolded"; }`
+	if got := folderOf(runSieve(t, script, email)); got != "Unfolded" {
+		t.Errorf("expected folded header to unfold before matching, got %q", got)
+	}
+}
+
 // ── string lists ─────────────────────────────────────────────────────
 
 func TestSieve_KeyList(t *testing.T) {
