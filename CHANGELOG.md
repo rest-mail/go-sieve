@@ -6,7 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 While the project is pre-1.0, a breaking change bumps the minor version.
 
-## Unreleased
+## [Unreleased]
+
+## [0.3.0] - 2026-07-25
+
+### BREAKING CHANGES
+
+- **The evaluation `Outcome` now drives the RFC 5228 implicit keep, and hosts
+  must honour it.** `Outcome` gains two fields, `ImplicitKeep bool` and
+  `Error error`. On a `Continue` outcome a host MUST now deliver to the default
+  mailbox when `Outcome.ImplicitKeep` is set, rather than relying on an explicit
+  keep action being reported (RFC 5228 §2.10.2 implicit-keep model). This also
+  fixes a mail-loss bug in which a `discard` combined with a delivering action
+  dropped the deliveries the script had asked for. A runtime error during
+  evaluation now fails safe to the implicit keep and is reported via
+  `Outcome.Error` instead of losing the message (§2.10.6). Hosts that assumed
+  "no delivering action reported means the script handled delivery" must be
+  updated to check `Outcome.ImplicitKeep`.
+
+- **`Vacation.Days int` is replaced by `Vacation.Interval time.Duration`.** The
+  reply-suppression period is now carried as a duration so a `:seconds` interval
+  (RFC 6131) keeps sub-day precision instead of collapsing to whole days by
+  integer division. Callers must switch from reading a day count to reading the
+  duration field.
+
+### Added
+
+- **`encoded-character` extension (`${hex:..}` / `${unicode:..}`).** A script
+  that declares `require "encoded-character"` may now embed octets and Unicode
+  code points inside string constants (RFC 5228 §2.4.2.4): `${hex:HH HH ...}` is
+  replaced by the named octets and `${unicode:XXXX ...}` by the UTF-8 encoding
+  of the named code points, so a key written as `${hex:24 24}` now matches
+  `"$$"`. Previously the capability was rejected and the sequences were compared
+  as their literal bytes. Decoding runs once, left to right, at parse time; a
+  surrogate or out-of-range code point is an error, and a `${...}` run that does
+  not match the grammar is left literal. Without the `require`, the sequences are
+  untouched.
 
 ### Fixed
 
@@ -109,6 +144,56 @@ While the project is pre-1.0, a breaking change bumps the minor version.
   lines never matched its logical text. Values are now unfolded (RFC 5322
   §2.2.3, folding whitespace collapsed to a single space) and stripped of
   leading and trailing whitespace before matching, as RFC 5228 §5.7 requires.
+
+- **Duplicate or inapplicable tagged arguments on a test are now rejected.** A
+  repeated match type, a repeated comparator, a repeated or misplaced address
+  part, a duplicate body transform, or any tagged argument not defined for the
+  test (or for `size`) was previously accepted last-wins or silently consumed,
+  masking script mistakes. These are now parse errors, and supplying both
+  `:over` and `:under` to `size` is rejected (RFC 5228 §2.7.1, §2.7.3, §2.7.4,
+  §5.7, §5.9).
+
+- **A nil message no longer panics, and body traversal is bounded.** Evaluating
+  a test against a nil message dereferenced it and panicked; evaluation now
+  guards the entry point and takes the implicit keep instead. The body test and
+  the size reconstruction walked the MIME part tree with no limit, so a deeply
+  nested or part-heavy structure supplied by the host could exhaust the goroutine
+  stack or burn unbounded CPU; both walks are now bounded by nesting depth and by
+  total parts visited, beyond which the deeper or remaining parts are treated as
+  absent.
+
+- **`:matches "?"` matches exactly one octet, not one decoded character.** The
+  `?` wildcard was compiled to a regexp in which `.` spans a whole UTF-8 rune, so
+  a two-octet character counted as a single position — `?` wrongly matched it and
+  `??` wrongly failed. This contradicts the octet-string model of the `i;octet`
+  and `i;ascii-casemap` comparators (RFC 5228 §2.7.1). Matching is now a direct
+  byte-level glob: `?` matches one octet, `*` scans octet by octet, and a
+  backslash escapes the following octet; `*` semantics and literal matching are
+  unchanged.
+
+- **`i;ascii-casemap` folds case only within US-ASCII.** The default comparator
+  used Go's Unicode-aware case folding, so distinct Unicode characters compared
+  equal to ASCII letters — long s (U+017F) folded to `s`, the Kelvin sign
+  (U+212A) to `k` — letting a filter keyed on ASCII text be evaded with
+  look-alikes or over-match. Case is now folded only for A–Z ⇄ a–z; every octet
+  ≥ 0x80 and every non-letter ASCII octet is compared byte-exact (RFC 4790 §9.2,
+  RFC 5228 §2.7.3). `i;octet` and `i;ascii-numeric` are unchanged.
+
+- **The `size` test counts the whole message, including header octets.** `size`
+  summed only the body and attachment octets, so the header block and the blank
+  separator line were excluded and `:over`/`:under` thresholds were wrong for any
+  real message. The size is now the entire message as it appears on the wire
+  (RFC 5228 §5.9). `Message` gains a `RawSize` field a host can set to supply the
+  exact wire size, which is then used verbatim; otherwise the size is
+  reconstructed from the serialized header block, the CRLF separator, and the
+  body.
+
+- **Quoted strings reject a bare CR and NUL and accept a CRLF line break.** The
+  quoted-string lexer treated a lone LF as an error but copied a bare CR and a
+  NUL octet straight into the value, while rejecting a valid CRLF line break as
+  an unterminated string — inverting RFC 5228 §8.1. A CRLF pair inside a quoted
+  string is now accepted (and counted for line numbering), and a bare CR, a lone
+  LF, or a NUL octet is a lex error reported at the string's start line.
 
 ## v0.2.0
 
