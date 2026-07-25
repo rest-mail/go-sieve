@@ -144,6 +144,15 @@ are testable; `Envelope` supplies the SMTP identities the `envelope` test reads;
 Full API reference:
 [pkg.go.dev/github.com/rest-mail/go-sieve](https://pkg.go.dev/github.com/rest-mail/go-sieve).
 
+## Changelog
+
+Recent releases — see [CHANGELOG.md](CHANGELOG.md) for the complete history.
+
+- **v0.3.0** (2026-07-25) — breaking: evaluation `Outcome.ImplicitKeep` host-contract (fixes discard mail-loss) + `Vacation.Days`→`Interval`; comparator and encoded-character conformance.
+- **v0.2.0** (2026-07-25) — breaking: `require` is now enforced; parser recursion bounded and redirect-target/size-quantifier hardening.
+- **v0.1.1** (2026-07-23) — documentation and packaging polish for the initial release.
+- **v0.1.0** (2026-07-23) — initial public release: RFC 5228 Sieve parser and evaluator.
+
 ## License
 
 [MIT](LICENSE) © 2026 rest-mail
