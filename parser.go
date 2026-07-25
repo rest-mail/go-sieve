@@ -149,6 +149,39 @@ const (
 	defaultAddressPart = ":all"
 )
 
+// DefaultMaxDepth is the default limit on how deeply tests and control blocks
+// may nest before [Parse] rejects a script. The parser and evaluator both
+// recurse over this nesting, so an unbounded script would otherwise exhaust the
+// goroutine stack and crash the host process (a denial-of-service vector when
+// script content is user-supplied). RFC 5228 §2.10.7 explicitly sanctions a
+// finite limit and requires implementations to support only 15 levels; 64
+// leaves generous headroom for real scripts while capping the recursion a
+// crafted script can drive. Override it per-call with [WithMaxDepth].
+const DefaultMaxDepth = 64
+
+// Option configures optional [Parse] / [Validate] behaviour.
+type Option func(*parseOptions)
+
+type parseOptions struct {
+	maxDepth int
+}
+
+func defaultParseOptions() parseOptions {
+	return parseOptions{maxDepth: DefaultMaxDepth}
+}
+
+// WithMaxDepth overrides [DefaultMaxDepth], the maximum nesting depth of tests
+// (not / allof / anyof) and control blocks (if / elsif / else) the parser will
+// accept before returning an error. A non-positive value restores the default.
+func WithMaxDepth(n int) Option {
+	return func(o *parseOptions) {
+		if n <= 0 {
+			n = DefaultMaxDepth
+		}
+		o.maxDepth = n
+	}
+}
+
 // ── Tokenizer ────────────────────────────────────────────────────────
 
 type tokKind int
@@ -443,19 +476,30 @@ type parser struct {
 	toks     []token
 	pos      int
 	requires []string
+
+	maxDepth   int // nesting cap for tests and blocks
+	testDepth  int // current test-expression nesting
+	blockDepth int // current control-block nesting
 }
 
 // Parse parses a Sieve script into an evaluable [Script]. It is strict about
 // the constructs it understands and lenient about unknown extensions (see the
-// package overview).
-func Parse(src string) (*Script, error) { return parseSieveScript(src) }
+// package overview). Nesting of tests and control blocks is capped at
+// [DefaultMaxDepth] (override with [WithMaxDepth]); a script that exceeds the
+// cap is rejected rather than allowed to exhaust the stack at parse or
+// evaluation time.
+func Parse(src string, opts ...Option) (*Script, error) { return parseSieveScript(src, opts...) }
 
-func parseSieveScript(src string) (*Script, error) {
+func parseSieveScript(src string, opts ...Option) (*Script, error) {
+	cfg := defaultParseOptions()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 	toks, err := newLexer(src).tokenize()
 	if err != nil {
 		return nil, err
 	}
-	p := &parser{toks: toks}
+	p := &parser{toks: toks, maxDepth: cfg.maxDepth}
 	cmds, err := p.parseCommands(false)
 	if err != nil {
 		return nil, err
@@ -618,6 +662,12 @@ func (p *parser) parseIf() (sieveCmd, error) {
 }
 
 func (p *parser) parseBlock() ([]sieveCmd, error) {
+	p.blockDepth++
+	if p.blockDepth > p.maxDepth {
+		return nil, p.errf("nesting too deep: control blocks nested more than %d levels", p.maxDepth)
+	}
+	defer func() { p.blockDepth-- }()
+
 	if _, err := p.expect(tLBrace, "{"); err != nil {
 		return nil, err
 	}
@@ -797,6 +847,12 @@ func (p *parser) skipUnknownCommand() error {
 // ── Test parsing ─────────────────────────────────────────────────────
 
 func (p *parser) parseTest() (sieveTest, error) {
+	p.testDepth++
+	if p.testDepth > p.maxDepth {
+		return nil, p.errf("nesting too deep: test expressions nested more than %d levels", p.maxDepth)
+	}
+	defer func() { p.testDepth-- }()
+
 	t := p.peek()
 	if t.kind != tIdent {
 		return nil, p.errf("expected a test, got %s", p.describe(t))
