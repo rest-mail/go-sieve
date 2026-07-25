@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // ── AST ──────────────────────────────────────────────────────────────
@@ -717,7 +718,26 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 	if err != nil {
 		return nil, err
 	}
+	// RFC 5228 §2.10.6: it is an error to execute redirect with an argument that
+	// is not a valid sieve-address. In particular a target carrying CR, LF, NUL
+	// or any other control character (readily smuggled in via a "text:" literal)
+	// would let a host that builds SMTP commands or message headers from the
+	// address be tricked into command/header injection, so reject it here.
+	if r := firstControlChar(addr.str); r >= 0 {
+		return nil, fmt.Errorf("sieve: line %d: redirect address contains a forbidden control character (%#U)", addr.line, r)
+	}
 	return &redirectCmd{addr: addr.str}, p.finishStatement()
+}
+
+// firstControlChar returns the first control character (C0/C1, including CR, LF,
+// TAB and NUL) in s, or -1 if s contains none.
+func firstControlChar(s string) rune {
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			return r
+		}
+	}
+	return -1
 }
 
 func (p *parser) parseReject() (sieveCmd, error) {

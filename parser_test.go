@@ -50,6 +50,42 @@ if header :matches "Subject" "*urgent*" { addflag "\\Flagged"; }`,
 	}
 }
 
+func TestValidateSieve_RejectsRedirectControlChars(t *testing.T) {
+	// A "text:" multi-line literal lets control characters into the redirect
+	// target. A host that builds SMTP commands or message headers from the
+	// address is then exposed to command/header injection. RFC 5228 §2.10.6
+	// makes executing redirect with a non-conforming sieve-address an error, so
+	// each of these scripts must be rejected at parse time.
+	inject := []struct {
+		name   string
+		script string
+	}{
+		{"newline", "redirect text:\nvictim@example.com\nTo: attacker@evil.com\n.\n;"},
+		{"trailing-newline", "redirect text:\nvictim@example.com\n.\n;"},
+		{"nul", "redirect text:\nvictim@example.com\x00evil\n.\n;"},
+		{"carriage-return", "redirect text:\nvictim\rTo: attacker@evil.com\n.\n;"},
+	}
+	for _, tc := range inject {
+		if err := Validate(tc.script); err == nil {
+			t.Errorf("%s: expected Validate to reject redirect with a control character in the address:\n%s", tc.name, tc.script)
+		}
+	}
+}
+
+func TestValidateSieve_AcceptsNormalRedirect(t *testing.T) {
+	good := []string{
+		`redirect "ops@example.com";`,
+		`require ["copy"];
+redirect :copy "copy@example.com";`,
+		`redirect "Ops Team <ops@example.com>";`,
+	}
+	for _, s := range good {
+		if err := Validate(s); err != nil {
+			t.Errorf("Validate rejected a valid redirect: %v\n%s", err, s)
+		}
+	}
+}
+
 func TestValidateSieve_Valid(t *testing.T) {
 	scripts := []string{
 		`require "fileinto";
