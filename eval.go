@@ -72,6 +72,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Message is the neutral view of an email the evaluator tests against. A host
@@ -179,11 +180,20 @@ type Outcome struct {
 // evaluator computes ReplyTo (the envelope sender, falling back to the From
 // header); the Executor is responsible for de-duplication and for actually
 // sending the auto-reply.
+//
+// A Vacation is only reported when a reply is permitted: the evaluator suppresses
+// it entirely for a message with a null reverse-path (see the RFC 5230 §4.6 /
+// RFC 3834 note on vacationReplyTo), so the Executor never has to make that
+// decision.
 type Vacation struct {
-	Days    int
-	Subject string
-	Body    string
-	ReplyTo string
+	// Interval is the minimum period that must elapse before another auto-reply
+	// is sent to the same sender (RFC 5230 :days / RFC 6131 :seconds). It is a
+	// duration so a :seconds argument keeps its sub-day precision; the Executor
+	// uses it for de-duplication.
+	Interval time.Duration
+	Subject  string
+	Body     string
+	ReplyTo  string
 }
 
 // Executor applies the (non-terminal) actions a Sieve script selects. The host
@@ -375,12 +385,16 @@ func (st *evalState) runCmd(c sieveCmd) (halt bool) {
 		st.exec.Flag(cmd.op, cmd.flags)
 
 	case *vacationCmd:
-		st.exec.Vacation(Vacation{
-			Days:    cmd.days,
-			Subject: cmd.subject,
-			Body:    cmd.body,
-			ReplyTo: st.vacationReplyTo(),
-		})
+		// A null reverse-path (or no usable reply address) suppresses the
+		// auto-reply entirely — see vacationReplyTo.
+		if replyTo, ok := st.vacationReplyTo(); ok {
+			st.exec.Vacation(Vacation{
+				Interval: cmd.interval,
+				Subject:  cmd.subject,
+				Body:     cmd.body,
+				ReplyTo:  replyTo,
+			})
+		}
 
 	case *notifyCmd:
 		st.exec.Notify(cmd.method, cmd.message)
@@ -446,14 +460,28 @@ func (st *evalState) finalize() Outcome {
 	}
 }
 
-// vacationReplyTo picks the address a vacation auto-reply should go to: the
-// envelope sender, falling back to the first From address.
-func (st *evalState) vacationReplyTo() string {
+// vacationReplyTo picks the address a vacation auto-reply should go to and
+// reports whether one may be sent at all.
+//
+// Per RFC 5230 §4.6 and RFC 3834, a vacation response MUST NOT be sent when the
+// triggering message has a null reverse-path (SMTP "MAIL FROM:<>"), which marks a
+// bounce or other auto-generated message; replying would risk a mail loop. That
+// case suppresses the reply (ok == false) rather than falling back to a header.
+//
+// Otherwise the reply targets the envelope sender, falling back to the first From
+// header address. If no address can be determined the reply is suppressed too.
+func (st *evalState) vacationReplyTo() (addr string, ok bool) {
+	if st.msg.Envelope.FromNull {
+		return "", false
+	}
 	replyTo := st.msg.Envelope.From
 	if replyTo == "" && len(st.msg.Headers.From) > 0 {
 		replyTo = st.msg.Headers.From[0].Address
 	}
-	return replyTo
+	if replyTo == "" {
+		return "", false
+	}
+	return replyTo, true
 }
 
 // ── Test evaluation ──────────────────────────────────────────────────

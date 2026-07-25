@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ── Test harness ─────────────────────────────────────────────────────
@@ -42,8 +43,9 @@ func (e *recExec) Vacation(v Vacation) {
 	e.meta["vacation_reply_to"] = v.ReplyTo
 	e.meta["vacation_reply_subject"] = v.Subject
 	e.meta["vacation_reply_body"] = v.Body
-	if v.Days > 0 {
-		e.meta["vacation_days"] = strconv.Itoa(v.Days)
+	if v.Interval > 0 {
+		e.meta["vacation_days"] = strconv.Itoa(int(v.Interval / (24 * time.Hour)))
+		e.meta["vacation_seconds"] = strconv.Itoa(int(v.Interval / time.Second))
 	}
 	e.applied = append(e.applied, "vacation:"+v.ReplyTo)
 }
@@ -1263,6 +1265,48 @@ vacation :days 14
 	}
 	if r.meta["vacation_days"] != "14" {
 		t.Errorf("expected vacation_days=14, got %q", r.meta["vacation_days"])
+	}
+}
+
+// TestSieve_Vacation_SecondsGranularity checks RFC 6131 vacation-seconds: a
+// :seconds argument sets the reply-suppression interval at second granularity
+// and is not truncated to whole days (which would collapse a sub-day value to 0).
+func TestSieve_Vacation_SecondsGranularity(t *testing.T) {
+	script := `require "vacation";
+vacation :seconds 3600 "I am away.";`
+	r := runSieve(t, script, sieveEmail())
+	if r.meta["vacation_reply_body"] != "I am away." {
+		t.Errorf("expected vacation body, got %q", r.meta["vacation_reply_body"])
+	}
+	if r.meta["vacation_seconds"] != "3600" {
+		t.Errorf("expected interval 3600s (1 hour), got %q seconds", r.meta["vacation_seconds"])
+	}
+	// A one-hour window is well under a day; the old code truncated it to 0 days.
+	if r.meta["vacation_days"] != "0" {
+		t.Errorf("expected sub-day interval (0 whole days), got days=%q", r.meta["vacation_days"])
+	}
+}
+
+// TestSieve_Vacation_NullReversePathSuppressed checks RFC 5230 §4.6 / RFC 3834: a
+// message with a null reverse-path (SMTP MAIL FROM:<>, a bounce) MUST NOT get a
+// vacation auto-reply, even when a usable From header is present — replying could
+// cause a mail loop.
+func TestSieve_Vacation_NullReversePathSuppressed(t *testing.T) {
+	script := `require "vacation";
+vacation :days 1 "I am away.";`
+	email := sieveEmail()
+	email.Envelope.From = ""
+	email.Envelope.FromNull = true // MAIL FROM:<>
+	// A valid From header is still present; the reply must not fall back to it.
+	r := runSieve(t, script, email)
+	if got := r.meta["vacation_reply_to"]; got != "" {
+		t.Errorf("null reverse-path must suppress the vacation reply, but replied to %q", got)
+	}
+	if r.meta["vacation_reply_body"] != "" {
+		t.Errorf("null reverse-path must suppress the vacation reply, but a reply body was recorded")
+	}
+	if r.disposition != Continue {
+		t.Errorf("expected Continue disposition, got %v", r.disposition)
 	}
 }
 

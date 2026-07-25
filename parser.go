@@ -18,6 +18,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -75,9 +76,12 @@ type flagCmd struct {
 }
 
 type vacationCmd struct {
-	days    int
-	subject string
-	body    string
+	// interval is the minimum period between auto-replies to the same sender.
+	// It is carried as a duration so a :seconds argument (RFC 6131) keeps its
+	// sub-day precision instead of being truncated to whole days.
+	interval time.Duration
+	subject  string
+	body     string
 }
 
 type notifyCmd struct {
@@ -929,7 +933,7 @@ func (p *parser) parseFlag(op string) (sieveCmd, error) {
 }
 
 func (p *parser) parseVacation() (sieveCmd, error) {
-	cmd := &vacationCmd{days: 7} // RFC 5230 default
+	cmd := &vacationCmd{interval: 7 * 24 * time.Hour} // RFC 5230 default (7 days)
 	for p.peek().kind == tTag {
 		switch p.next().str {
 		case ":days":
@@ -937,13 +941,15 @@ func (p *parser) parseVacation() (sieveCmd, error) {
 			if err != nil {
 				return nil, err
 			}
-			cmd.days = int(n.num)
+			cmd.interval = time.Duration(n.num) * 24 * time.Hour
 		case ":seconds":
+			// RFC 6131 vacation-seconds: the interval is given in seconds and
+			// must be honoured at second granularity, not collapsed to days.
 			n, err := p.expect(tNumber, "a seconds count")
 			if err != nil {
 				return nil, err
 			}
-			cmd.days = int(n.num / 86400)
+			cmd.interval = time.Duration(n.num) * time.Second
 		case ":subject":
 			s, err := p.expect(tString, "a subject")
 			if err != nil {

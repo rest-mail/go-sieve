@@ -127,8 +127,11 @@ The terminal dispositions are not methods — `reject` refuses the message and
 alongside a delivering action does not drop the message; it only cancels the
 implicit keep, so `Outcome.ImplicitKeep` tells you whether to also deliver to the
 default mailbox. For a `vacation` action the evaluator computes
-`Vacation.ReplyTo` (the envelope sender, falling back to the `From` header);
-de-duplication and actually sending the auto-reply remain your responsibility.
+`Vacation.ReplyTo` (the envelope sender, falling back to the `From` header) and
+reports the minimum reply interval as `Vacation.Interval` (a duration, so a
+`:seconds` argument keeps its precision); a message with a null reverse-path
+(`MAIL FROM:<>`) gets no `Vacation` call at all. De-duplication and actually
+sending the auto-reply remain your responsibility.
 
 Adapt your own email representation into the neutral `Message` before evaluating:
 `Headers` carries the common structured fields plus a `Raw` map consulted
