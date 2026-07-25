@@ -1222,7 +1222,35 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 			return opts, p.errf("unexpected tagged argument %q on this test", tag)
 		}
 	}
+	if err := checkComparatorMatchType(opts.comparator, opts.matchType); err != nil {
+		return opts, p.errf("%s", err)
+	}
 	return opts, nil
+}
+
+// checkComparatorMatchType rejects a comparator used with a match type it does
+// not define. A comparator is not a free substitute across every match type
+// (RFC 5228 §2.7.3): each comparator declares which operations it supports, and
+// using one with an unsupported operation is an error rather than a silent
+// fall-back to the default comparator.
+//
+// Of the three comparators this package implements, only i;ascii-numeric is
+// restricted. RFC 4790 §9.1 defines it purely for equality and ordering of
+// decimal integers and states it has no substring operation, so it cannot back
+// the substring match types :contains and :matches (RFC 5228 §2.7.1) or the
+// non-standard :regex match type — the numeric interpretation is meaningless
+// for a substring or wildcard/regex pattern. It therefore applies only to the
+// equality match type :is here. (An ordering use would require the relational
+// extension's :value/:count, RFC 5231, which this package does not implement.)
+// i;octet and i;ascii-casemap support every match type and are unrestricted.
+func checkComparatorMatchType(comparator, matchType string) error {
+	if comparator == "i;ascii-numeric" {
+		switch matchType {
+		case ":contains", ":matches", ":regex":
+			return fmt.Errorf("the i;ascii-numeric comparator does not support the %s match type: it has only equality and ordering, no substring operation (RFC 4790 §9.1)", matchType)
+		}
+	}
+	return nil
 }
 
 func (p *parser) parseHeaderTest() (sieveTest, error) {
