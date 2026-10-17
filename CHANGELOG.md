@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Breaking
+
+- **`Executor.Redirect` now receives the redirect's `:copy` tag:
+  `Redirect(addr string, copy bool)`.** A host could not tell a bare `redirect`
+  (forward only) from `redirect :copy` (forward and keep), and could only guess
+  from a script-wide `require "copy"`, which says nothing about any one redirect.
+  Every `Executor` implementation must add the parameter. Forward the message
+  either way; whether it is also kept is still decided by
+  `Outcome.ImplicitKeep` and any explicit `Keep`.
+
+### Fixed
+
+- **`fileinto :copy` and `redirect :copy` no longer cancel the implicit keep.**
+  RFC 3894 §3: a `:copy` action "does not cancel the implicit keep"; it files or
+  forwards a copy in addition to whatever else happens to the message. Both
+  cancelled it like their bare forms, so a script whose only action was
+  `redirect :copy` forwarded the message and lost the local copy. Now
+  `Outcome.ImplicitKeep` stays set after `:copy` actions alone. A `:copy` action
+  never restores a keep already cancelled by `keep`, `discard`, or a bare
+  `fileinto`/`redirect`, in either order.
+
 ## [0.3.0] - 2026-07-25
 
 ### Breaking

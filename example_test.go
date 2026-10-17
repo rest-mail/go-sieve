@@ -17,7 +17,7 @@ type mailbox struct {
 
 func (m *mailbox) Keep()                               {}
 func (m *mailbox) FileInto(folder string, create bool) { m.folder = folder }
-func (m *mailbox) Redirect(addr string)                {}
+func (m *mailbox) Redirect(addr string, copy bool)     {}
 func (m *mailbox) Flag(op string, flags []string)      { m.flags = flags }
 func (m *mailbox) Vacation(v sieve.Vacation)           {}
 func (m *mailbox) Notify(method, message string)       {}

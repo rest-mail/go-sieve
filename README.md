@@ -26,7 +26,9 @@ reported through the returned `Outcome` rather than the Executor.
 
 Delivery follows RFC 5228's implicit-keep model: unless the script cancels it
 (with `keep`, `fileinto`, `redirect`, or `discard`), the message is delivered to
-the default mailbox, reported as `Outcome.ImplicitKeep`. A `discard` only cancels
+the default mailbox, reported as `Outcome.ImplicitKeep`. A `fileinto` or
+`redirect` tagged `:copy` (RFC 3894) leaves the implicit keep in effect, but does
+not bring it back once another action has cancelled it. A `discard` only cancels
 that keep — it does not stop the script, so any other delivering action still
 takes effect. A runtime error during evaluation fails safe to the implicit keep
 (`Outcome.Error`) rather than losing the message.
@@ -76,7 +78,7 @@ type mailbox struct {
 
 func (m *mailbox) Keep()                               {}
 func (m *mailbox) FileInto(folder string, create bool) { m.folder = folder }
-func (m *mailbox) Redirect(addr string)                {}
+func (m *mailbox) Redirect(addr string, copy bool)     {}
 func (m *mailbox) Flag(op string, flags []string)      { m.flags = flags }
 func (m *mailbox) Vacation(v sieve.Vacation)           {}
 func (m *mailbox) Notify(method, message string)       {}
@@ -126,7 +128,10 @@ The terminal dispositions are not methods — `reject` refuses the message and
 `Outcome.Disposition` (with `Outcome.RejectReason` for a reject). A `discard`
 alongside a delivering action does not drop the message; it only cancels the
 implicit keep, so `Outcome.ImplicitKeep` tells you whether to also deliver to the
-default mailbox. For a `vacation` action the evaluator computes
+default mailbox. `Redirect(addr, copy)` reports each redirect's own `:copy` tag;
+forward the message either way, and leave the keep decision to
+`Outcome.ImplicitKeep` (a script-wide `require "copy"` says nothing about any one
+redirect). For a `vacation` action the evaluator computes
 `Vacation.ReplyTo` (the envelope sender, falling back to the `From` header) and
 reports the minimum reply interval as `Vacation.Interval` (a duration, so a
 `:seconds` argument keeps its precision); a message with a null reverse-path

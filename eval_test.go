@@ -13,8 +13,15 @@ import (
 // into a metadata map, the way a mail host would apply them, so the evaluator's
 // behaviour can be asserted directly.
 type recExec struct {
-	meta    map[string]string
-	applied []string
+	meta      map[string]string
+	applied   []string
+	redirects []redirectCall
+}
+
+// redirectCall records one Redirect callback with its per-action :copy flag.
+type redirectCall struct {
+	addr string
+	copy bool
 }
 
 func newRecExec() *recExec { return &recExec{meta: map[string]string{}} }
@@ -29,9 +36,10 @@ func (e *recExec) FileInto(folder string, create bool) {
 	e.applied = append(e.applied, "fileinto:"+folder)
 }
 
-func (e *recExec) Redirect(addr string) {
+func (e *recExec) Redirect(addr string, copy bool) {
 	e.meta["redirect_to"] = addr
 	e.applied = append(e.applied, "redirect:"+addr)
+	e.redirects = append(e.redirects, redirectCall{addr: addr, copy: copy})
 }
 
 func (e *recExec) Flag(op string, flags []string) {
