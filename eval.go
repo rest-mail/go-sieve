@@ -34,7 +34,8 @@
 //
 // The evaluator applies the RFC 5228 §2.10.2 implicit keep: unless the script
 // cancels it with keep, fileinto, redirect, or discard, the message is delivered
-// to the default mailbox, signalled by [Outcome.ImplicitKeep]. A discard only
+// to the default mailbox, signalled by [Outcome.ImplicitKeep]. A fileinto or
+// redirect tagged :copy (RFC 3894 §3) does not cancel it. A discard only
 // cancels that keep — it does not stop the script, so later actions still run.
 // A runtime error during evaluation fails safe to the implicit keep (§2.10.6),
 // reported via [Outcome.Error], rather than losing the message.
@@ -162,12 +163,14 @@ type Outcome struct {
 	Disposition  Disposition
 	RejectReason string // set only when Disposition == Reject
 	// ImplicitKeep reports that the RFC 5228 §2.10.2 implicit keep is in effect:
-	// the script cancelled no keep and performed no fileinto, redirect, or
-	// discard, so the host must deliver the message to the default mailbox in
-	// addition to honouring any actions the Executor recorded. It is only ever set
+	// the script performed no keep, discard, or fileinto or redirect without
+	// :copy, so the host must deliver the message to the default mailbox in
+	// addition to honouring any actions the Executor recorded. A fileinto or
+	// redirect tagged :copy leaves it in effect (RFC 3894 §3), but does not
+	// restore it once another action has cancelled it. It is only ever set
 	// alongside Disposition == Continue. It is also set on the §2.10.6 fail-safe
-	// keep (see Error). When a delivering action ran, or a discard dropped the
-	// message, ImplicitKeep is false.
+	// keep (see Error). When a keep, discard, or non-:copy fileinto or redirect
+	// ran, ImplicitKeep is false.
 	ImplicitKeep bool
 	// Error is non-nil when evaluation was aborted by a runtime error — for
 	// example an Executor callback panicked. Per RFC 5228 §2.10.6 the message is
@@ -208,8 +211,11 @@ type Executor interface {
 	Keep()
 	// FileInto delivers into the named folder, creating it when create is set.
 	FileInto(folder string, create bool)
-	// Redirect forwards the message to addr.
-	Redirect(addr string)
+	// Redirect forwards the message to addr. copy reports that the action was
+	// tagged :copy (RFC 3894): it forwards a copy without cancelling the implicit
+	// keep. Whether the message is also kept is decided by Outcome.ImplicitKeep
+	// and any explicit Keep, never by copy alone.
+	Redirect(addr string, copy bool)
 	// Flag applies an imap4flags operation ("setflag", "addflag", "removeflag").
 	Flag(op string, flags []string)
 	// Vacation records a vacation auto-reply request.
@@ -232,10 +238,10 @@ func Validate(script string, opts ...Option) error {
 // selects, and returns the terminal [Outcome].
 //
 // It applies the RFC 5228 §2.10.2 implicit-keep model: unless the script cancels
-// it (with keep, fileinto, redirect, or discard) the message is delivered to the
-// default mailbox, reported via [Outcome.ImplicitKeep]. Per §2.10.6, a runtime
-// error during evaluation fails safe to that implicit keep rather than losing the
-// message.
+// it (with keep, discard, or a fileinto or redirect without :copy) the message is
+// delivered to the default mailbox, reported via [Outcome.ImplicitKeep]. Per
+// §2.10.6, a runtime error during evaluation fails safe to that implicit keep
+// rather than losing the message.
 func (s *Script) Evaluate(msg *Message, exec Executor) (out Outcome) {
 	// A nil script and a nil message both leave nothing to decide. A nil message
 	// in particular has no headers, body, or envelope to test against, and every
@@ -285,9 +291,11 @@ type evalState struct {
 	// rather than inline, so that discard does not terminate the script and a
 	// later delivering action can still take effect.
 	//
-	//   implicitKeep — true until a keep, fileinto, redirect, or discard cancels
-	//                  it. When still true at the end, the message is delivered to
-	//                  the default mailbox (Outcome.ImplicitKeep).
+	//   implicitKeep — true until a keep, discard, or a fileinto or redirect
+	//                  without :copy cancels it (RFC 3894 §3: :copy does not).
+	//                  Nothing sets it back. When still true at the end, the
+	//                  message is delivered to the default mailbox
+	//                  (Outcome.ImplicitKeep).
 	//   delivered    — a keep, fileinto, or redirect ran, so the message has an
 	//                  explicit destination. Delivering actions win over discard.
 	//   discarded    — discard ran; it cancels the implicit keep but does not
@@ -415,10 +423,13 @@ func (st *evalState) deliverKeep() {
 	}
 }
 
-// deliverFileInto records a fileinto: it cancels the implicit keep and files the
-// message. RFC 5228 §2.10.3: filing into the same mailbox twice is one delivery.
+// deliverFileInto records a fileinto: it files the message and, unless tagged
+// :copy (RFC 3894 §3), cancels the implicit keep. RFC 5228 §2.10.3: filing into
+// the same mailbox twice is one delivery.
 func (st *evalState) deliverFileInto(cmd *fileintoCmd) {
-	st.implicitKeep = false
+	if !cmd.copy {
+		st.implicitKeep = false
+	}
 	st.delivered = true
 	dest := fileintoDest{folder: cmd.folder, copy: cmd.copy}
 	if _, done := st.filedInto[dest]; !done {
@@ -427,16 +438,18 @@ func (st *evalState) deliverFileInto(cmd *fileintoCmd) {
 	}
 }
 
-// deliverRedirect records a redirect: it cancels the implicit keep and forwards
-// the message. RFC 5228 §2.10.3: redirecting to the same address twice is one
-// delivery.
+// deliverRedirect records a redirect: it forwards the message and, unless tagged
+// :copy (RFC 3894 §3), cancels the implicit keep. RFC 5228 §2.10.3: redirecting
+// to the same address twice is one delivery.
 func (st *evalState) deliverRedirect(cmd *redirectCmd) {
-	st.implicitKeep = false
+	if !cmd.copy {
+		st.implicitKeep = false
+	}
 	st.delivered = true
 	dest := redirectDest{addr: cmd.addr, copy: cmd.copy}
 	if _, done := st.redirected[dest]; !done {
 		st.redirected[dest] = struct{}{}
-		st.exec.Redirect(cmd.addr)
+		st.exec.Redirect(cmd.addr, cmd.copy)
 	}
 }
 
@@ -447,7 +460,8 @@ func (st *evalState) finalize() Outcome {
 	case st.rejected:
 		return Outcome{Disposition: Reject, RejectReason: st.rejectReason}
 	case st.implicitKeep:
-		// Nothing cancelled the implicit keep: deliver to the default mailbox.
+		// Nothing cancelled the implicit keep: deliver to the default mailbox, in
+		// addition to any :copy fileinto or redirect the Executor recorded.
 		return Outcome{Disposition: Continue, ImplicitKeep: true}
 	case st.delivered:
 		// A keep, fileinto, or redirect ran: deliver per the recorded actions. If
