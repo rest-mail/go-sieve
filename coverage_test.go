@@ -96,15 +96,15 @@ type errorPanicExec struct {
 func (e errorPanicExec) FileInto(string, bool) { panic(e.err) }
 
 // TestVacation_ReplyTo checks which address a vacation reply goes to: the
-// envelope sender, else the first From address, and none when there is neither.
+// envelope sender only; an absent envelope must not fall back to From.
 //
 // checklist: SIEVE-EXT-01
 func TestVacation_ReplyTo(t *testing.T) {
 	script := `require "vacation"; vacation "away";`
 	msg := sieveEmail()
 	msg.Envelope.From = ""
-	if got := runSieve(t, script, msg).meta["vacation_reply_to"]; got != "sender@example.com" {
-		t.Errorf("reply-to = %q, want the From header's address", got)
+	if got := runSieve(t, script, msg).meta["vacation_reply_to"]; got != "" {
+		t.Errorf("reply-to = %q without an envelope sender", got)
 	}
 	msg.Headers.From = nil
 	if _, ok := runSieve(t, script, msg).meta["vacation_reply_to"]; ok {
@@ -120,7 +120,6 @@ func TestExtensionArguments_Parse(t *testing.T) {
 	good := []string{
 		`require "vacation"; vacation :days 2 :subject "s" :from "a@b" :handle "h" :addresses ["a@b", "c@d"] :mime "body";`,
 		`require "vacation"; vacation :seconds 30 "body";`,
-		`require "vacation"; vacation;`,
 		`require "notify"; notify :method "mailto:a@b" :message "m" :options ["x"] :from "a@b" :importance "1" :id "i";`,
 		`require "notify"; notify "mailto:a@b";`,
 		`require ["fileinto", "imap4flags", "copy", "mailbox"]; fileinto :create :copy :flags ["\\Seen"] "x";`,

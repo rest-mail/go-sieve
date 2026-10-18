@@ -16,6 +16,7 @@ package sieve
 import (
 	"fmt"
 	"math"
+	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -82,9 +83,15 @@ type vacationCmd struct {
 	// interval is the minimum period between auto-replies to the same sender.
 	// It is carried as a duration so a :seconds argument (RFC 6131) keeps its
 	// sub-day precision instead of being truncated to whole days.
-	interval time.Duration
-	subject  string
-	body     string
+	interval   time.Duration
+	subject    string
+	body       string
+	from       string
+	addresses  []string
+	mime       bool
+	handle     string
+	handleSet  bool
+	subjectSet bool
 }
 
 type notifyCmd struct {
@@ -997,49 +1004,65 @@ func (p *parser) parseFlag(op string) (sieveCmd, error) {
 	return &flagCmd{op: op, flags: flags}, p.finishStatement()
 }
 
+// Vacation uses a site minimum of one day and maximum of 365 days (RFC 5230
+// §4.1). Clamp the number before converting to Duration to avoid overflow.
 func (p *parser) parseVacation() (sieveCmd, error) {
-	cmd := &vacationCmd{interval: 7 * 24 * time.Hour} // RFC 5230 default (7 days)
+	cmd := &vacationCmd{interval: 7 * 24 * time.Hour}
+	seen := map[string]bool{}
 	for p.peek().kind == tTag {
-		switch p.next().str {
+		tag := p.next().str
+		if seen[tag] {
+			return nil, p.errf("duplicate vacation argument %q", tag)
+		}
+		seen[tag] = true
+		switch tag {
 		case ":days":
 			n, err := p.expect(tNumber, "a day count")
 			if err != nil {
 				return nil, err
 			}
-			cmd.interval = time.Duration(n.num) * 24 * time.Hour
+			days := min(max(n.num, 1), 365)
+			cmd.interval = time.Duration(days) * 24 * time.Hour
 		case ":seconds":
-			// RFC 6131 vacation-seconds: the interval is given in seconds and
-			// must be honoured at second granularity, not collapsed to days.
+			// RFC 6131: retain second granularity.
 			n, err := p.expect(tNumber, "a seconds count")
 			if err != nil {
 				return nil, err
 			}
 			cmd.interval = time.Duration(n.num) * time.Second
-		case ":subject":
-			s, err := p.expect(tString, "a subject")
+		case ":subject", ":from", ":handle":
+			s, err := p.expect(tString, "a string")
 			if err != nil {
 				return nil, err
 			}
-			cmd.subject = s.str
-		case ":from", ":handle":
-			if _, err := p.expect(tString, "a string"); err != nil {
-				return nil, err
+			switch tag {
+			case ":subject":
+				cmd.subject, cmd.subjectSet = s.str, true
+			case ":from":
+				if _, err := mail.ParseAddressList(s.str); err != nil {
+					return nil, p.errf("invalid vacation :from mailbox-list: %v", err)
+				}
+				cmd.from = s.str
+			case ":handle":
+				cmd.handle, cmd.handleSet = s.str, true
 			}
 		case ":addresses":
-			if _, err := p.parseStringList(); err != nil {
+			addresses, err := p.parseStringList()
+			if err != nil {
 				return nil, err
 			}
+			cmd.addresses = addresses
 		case ":mime":
-			// no argument
+			cmd.mime = true
+		default:
+			return nil, p.errf("unknown vacation argument %q", tag)
 		}
 	}
-	if p.peek().kind == tString {
-		body, err := p.decodeStringConstant(p.next())
-		if err != nil {
-			return nil, err
-		}
-		cmd.body = body
+	body, err := p.expect(tString, "a vacation reason")
+	if err != nil {
+		return nil, err
 	}
+	cmd.body = body.str
 	return cmd, p.finishStatement()
 }
 

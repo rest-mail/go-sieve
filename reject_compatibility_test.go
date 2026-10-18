@@ -60,7 +60,11 @@ func TestReject_VacationExclusiveBranches(t *testing.T) {
 			}
 			for subject, want := range map[string]string{"spam": tc.spam, "hello": tc.hello} {
 				exec := newRecExec()
-				out := script.Evaluate(&Message{Headers: Headers{Subject: subject}, Envelope: Envelope{From: "sender@example.com"}}, exec)
+				// Vacation replies only to mail addressed to the user (RFC 5230 §4.5).
+				out := script.Evaluate(&Message{
+					Headers:  Headers{Subject: subject, To: []Address{{Address: "recipient@example.com"}}},
+					Envelope: Envelope{From: "sender@example.com", To: []string{"recipient@example.com"}},
+				}, exec)
 				if out.Error != nil {
 					t.Fatalf("Evaluate: %v", out.Error)
 				}

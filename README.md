@@ -131,12 +131,28 @@ implicit keep, so `Outcome.ImplicitKeep` tells you whether to also deliver to th
 default mailbox. `Redirect(addr, copy)` reports each redirect's own `:copy` tag;
 forward the message either way, and leave the keep decision to
 `Outcome.ImplicitKeep` (a script-wide `require "copy"` says nothing about any one
-redirect). For a `vacation` action the evaluator computes
-`Vacation.ReplyTo` (the envelope sender, falling back to the `From` header) and
-reports the minimum reply interval as `Vacation.Interval` (a duration, so a
-`:seconds` argument keeps its precision); a message with a null reverse-path
-(`MAIL FROM:<>`) gets no `Vacation` call at all. De-duplication and actually
-sending the auto-reply remain your responsibility.
+redirect). For a `vacation` action the evaluator reports the SMTP envelope
+sender in `Vacation.ReplyTo` and the minimum reply interval in
+`Vacation.Interval`. `:days` defaults to 7 and is clamped to 1..365 days before
+conversion to a duration; `:seconds` retains its precision. A missing or null
+reverse-path gets no callback. Neither do messages not addressed personally to
+an envelope recipient or a `:addresses` alias, mailing-list and automated mail,
+bulk/list/junk mail, or excluded system senders. Supply only the evaluated user's
+final envelope recipient identities and preserve the original recipient and
+automation headers in `Message`.
+Only one vacation action may execute per evaluation; a second returns an error
+and the implicit keep, including when the first action was suppressed.
+
+The callback preserves `Subject`, `From`, `Body`, `MIME`, and `Handle`.
+`SubjectSet` and `HandleSet` distinguish explicit empty strings from omitted
+tags. The host owns persistent tracking: use the explicit handle when
+`HandleSet`, otherwise the original subject/from/MIME/reason arguments, together
+with the recipient user and sender. Do not include a generated default subject
+in that identity, and honor `Interval` when sending. The host also validates
+and serializes MIME, encodes non-ASCII subjects, generates defaults and threading
+headers, and sends the reply with `Auto-Submitted: auto-replied` and a null SMTP
+reverse-path. See the separate RFC 5230 section in [CHECKLIST.md](CHECKLIST.md)
+for the complete library/host contract.
 
 Adapt your own email representation into the neutral `Message` before evaluating:
 `Headers` carries the common structured fields plus a `Raw` map consulted

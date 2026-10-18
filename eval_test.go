@@ -1385,7 +1385,7 @@ vacation :seconds 3600 "I am away.";`
 // vacation auto-reply, even when a usable From header is present — replying could
 // cause a mail loop.
 //
-// checklist: SIEVE-EXT-01
+// checklist: SIEVE-EXT-01 VACATION-16
 func TestSieve_Vacation_NullReversePathSuppressed(t *testing.T) {
 	script := `require "vacation";
 vacation :days 1 "I am away.";`
