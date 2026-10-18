@@ -49,6 +49,8 @@ func nestedBlockScript(depth int) string {
 // TestParse_RejectsDeeplyNestedTests proves that a test expression nested far
 // beyond DefaultMaxDepth is rejected at parse time rather than parsed into an
 // unbounded AST (the DoS in issue #6).
+//
+// checklist: SIEVE-CMD-05
 func TestParse_RejectsDeeplyNestedTests(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -70,6 +72,8 @@ func TestParse_RejectsDeeplyNestedTests(t *testing.T) {
 }
 
 // TestParse_RejectsDeeplyNestedBlocks proves nested control blocks are bounded.
+//
+// checklist: SIEVE-CMD-05
 func TestParse_RejectsDeeplyNestedBlocks(t *testing.T) {
 	_, err := Parse(nestedBlockScript(DefaultMaxDepth + 50))
 	if err == nil {
@@ -82,6 +86,8 @@ func TestParse_RejectsDeeplyNestedBlocks(t *testing.T) {
 
 // TestParse_AcceptsNestingUpToLimit confirms the cap does not reject scripts at
 // or below the limit (no false positives for legitimately deep scripts).
+//
+// checklist: SIEVE-CMD-05
 func TestParse_AcceptsNestingUpToLimit(t *testing.T) {
 	// DefaultMaxDepth-1 "not" wrappers plus the inner "true" == DefaultMaxDepth
 	// test-parse levels, which is exactly at the limit.
@@ -94,6 +100,8 @@ func TestParse_AcceptsNestingUpToLimit(t *testing.T) {
 }
 
 // TestParse_WithMaxDepth checks the limit is configurable.
+//
+// checklist: SIEVE-CMD-05
 func TestParse_WithMaxDepth(t *testing.T) {
 	src := nestedNotScript(20)
 	if _, err := Parse(src, WithMaxDepth(5)); err == nil {
@@ -112,6 +120,8 @@ func TestParse_WithMaxDepth(t *testing.T) {
 // millions of nested tests must return an error, not overflow the goroutine
 // stack and crash the process. On the unfixed parser this recurses without
 // bound and aborts the test binary with a fatal stack-overflow.
+//
+// checklist: SIEVE-CMD-05
 func TestParse_DeeplyNestedDoesNotCrash(t *testing.T) {
 	const huge = 2_000_000
 	if _, err := Parse(nestedNotScript(huge)); err == nil {

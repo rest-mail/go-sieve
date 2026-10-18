@@ -8,6 +8,8 @@ import "testing"
 // *Message. On the unfixed evaluator the first test evaluated reads msg.Headers
 // on a nil pointer and panics (nil dereference); the guard must turn that into
 // a clean, defined result — the implicit keep (Continue) — instead.
+//
+// checklist: SIEVE-ACT-07
 func TestEvaluate_NilMessage_DoesNotPanic(t *testing.T) {
 	// A script that actually evaluates a test, so a missing nil guard is
 	// exercised rather than skipped.
@@ -38,6 +40,8 @@ if header :contains "Subject" "test" { fileinto "X"; }`
 
 // TestEvaluate_NilMessage_NilScriptStillGuarded keeps the existing nil-Script
 // guarantee intact alongside the new nil-message guard.
+//
+// checklist: SIEVE-ACT-07
 func TestEvaluate_NilMessage_NilScriptStillGuarded(t *testing.T) {
 	var s *Script
 	out := s.Evaluate(nil, newRecExec())
@@ -62,6 +66,8 @@ func deepBodyChain(depth int, leaf string) Body {
 // maxBodyDepth: an unbounded walk (the old code) recurses all the way down and
 // matches; a depth-bounded walk stops first and, treating the deeper structure
 // as absent, does not match.
+//
+// checklist: SIEVE-EXT-03
 func TestEvaluate_BodyTest_DepthBounded(t *testing.T) {
 	const marker = "deeplyburiedneedle"
 	email := sieveEmail()
@@ -79,6 +85,8 @@ if body :contains "` + marker + `" { fileinto "TooDeep"; }`
 
 // TestEvaluate_BodyTest_DepthWithinCapStillMatches guards against the cap being
 // so tight that ordinary, modestly nested messages stop matching.
+//
+// checklist: SIEVE-EXT-03
 func TestEvaluate_BodyTest_DepthWithinCapStillMatches(t *testing.T) {
 	const marker = "reachableneedle"
 	email := sieveEmail()
@@ -97,6 +105,8 @@ if body :contains "` + marker + `" { fileinto "Reachable"; }`
 // matching part sits past maxBodyParts siblings in a single (shallow) multipart:
 // an unbounded walk visits every sibling and matches; the budgeted walk stops
 // once the cap is spent and does not.
+//
+// checklist: SIEVE-EXT-03
 func TestEvaluate_BodyTest_PartCountBounded(t *testing.T) {
 	const marker = "beyondbudgetneedle"
 	email := sieveEmail()
@@ -123,6 +133,8 @@ if body :contains "` + marker + `" { fileinto "TooMany"; }`
 // reconstruction (bodySize) is likewise depth-bounded. A large payload buried
 // past the cap is counted by the old unbounded sum (so :over fires) but not by
 // the bounded walk (so it does not).
+//
+// checklist: SIEVE-TST-10
 func TestEvaluate_SizeTest_BodyDepthBounded(t *testing.T) {
 	payload := make([]byte, 4000)
 	for i := range payload {

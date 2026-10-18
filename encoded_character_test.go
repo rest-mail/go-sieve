@@ -13,6 +13,8 @@ import (
 
 // TestEncodedCharacter_HexDecodesInStringConstant covers the core case: with
 // require "encoded-character", ${hex:24 24} decodes to the two "$" octets.
+//
+// checklist: SIEVE-LEX-06
 func TestEncodedCharacter_HexDecodesInStringConstant(t *testing.T) {
 	script := `require ["encoded-character", "fileinto"];
 if true { fileinto "${hex:24 24}"; }`
@@ -24,6 +26,8 @@ if true { fileinto "${hex:24 24}"; }`
 
 // TestEncodedCharacter_HexKeyMatchesHeader mirrors the issue report: a key
 // written as ${hex:24 24} must compare equal to the literal "$$".
+//
+// checklist: SIEVE-LEX-06
 func TestEncodedCharacter_HexKeyMatchesHeader(t *testing.T) {
 	script := `require "encoded-character";
 if header :is "Subject" "${hex:24 24}" { discard; }`
@@ -37,6 +41,8 @@ if header :is "Subject" "${hex:24 24}" { discard; }`
 
 // TestEncodedCharacter_UnicodeDecodesToUTF8 covers ${unicode:...}: a code point
 // is replaced by its UTF-8 encoding (U+1F4A9 is a 4-octet sequence).
+//
+// checklist: SIEVE-LEX-06
 func TestEncodedCharacter_UnicodeDecodesToUTF8(t *testing.T) {
 	script := `require ["encoded-character", "fileinto"];
 if true { fileinto "pile-${unicode:1F4A9}"; }`
@@ -49,6 +55,8 @@ if true { fileinto "pile-${unicode:1F4A9}"; }`
 
 // TestEncodedCharacter_MalformedLeftLiteral covers §2.4.2.4: a ${...} run that
 // does not match the grammar is left literal rather than raising an error.
+//
+// checklist: SIEVE-LEX-06
 func TestEncodedCharacter_MalformedLeftLiteral(t *testing.T) {
 	script := `require ["encoded-character", "fileinto"];
 if true { fileinto "a${hex:zz}b"; }`
@@ -60,6 +68,8 @@ if true { fileinto "a${hex:zz}b"; }`
 
 // TestEncodedCharacter_NotRequiredStaysLiteral guards against over-decoding:
 // without require "encoded-character" the sequence is left untouched.
+//
+// checklist: SIEVE-LEX-06
 func TestEncodedCharacter_NotRequiredStaysLiteral(t *testing.T) {
 	script := `require "fileinto";
 if true { fileinto "x${hex:20}y"; }`
@@ -72,6 +82,8 @@ if true { fileinto "x${hex:20}y"; }`
 // TestDecodeEncodedCharacters_RFCExamples walks the worked examples from
 // RFC 5228 §2.4.2.4, including the case-insensitive keywords, the left-to-right
 // (non-recursive) transform, and the several forms that must stay literal.
+//
+// checklist: SIEVE-LEX-06
 func TestDecodeEncodedCharacters_RFCExamples(t *testing.T) {
 	cases := []struct {
 		in, want string
@@ -106,6 +118,8 @@ func TestDecodeEncodedCharacters_RFCExamples(t *testing.T) {
 // TestDecodeEncodedCharacters_OutOfRangeUnicode covers the one case that is an
 // error rather than a literal: a well-formed ${unicode:...} whose value is a
 // surrogate or exceeds U+10FFFF.
+//
+// checklist: SIEVE-LEX-06
 func TestDecodeEncodedCharacters_OutOfRangeUnicode(t *testing.T) {
 	for _, in := range []string{
 		"${unicode:D800}",       // first surrogate
@@ -123,6 +137,8 @@ func TestDecodeEncodedCharacters_OutOfRangeUnicode(t *testing.T) {
 // TestEncodedCharacter_InvalidUnicodeIsError covers §2.4.2.4: a well-formed
 // ${unicode:...} whose value is a surrogate (D800..DFFF) or exceeds 10FFFF is an
 // error, not a literal.
+//
+// checklist: SIEVE-LEX-06
 func TestEncodedCharacter_InvalidUnicodeIsError(t *testing.T) {
 	bad := []string{
 		`require "encoded-character"; if header :is "Subject" "${unicode:DF01}" { keep; }`,

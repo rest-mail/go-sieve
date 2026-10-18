@@ -9,6 +9,8 @@ import "testing"
 // not the script tries to declare the bogus name with require: an undeclared
 // comparator is unavailable, and a require of an unsupported comparator
 // capability is itself an error.
+//
+// checklist: SIEVE-MT-06
 func TestComparator_UnknownRejected(t *testing.T) {
 	bad := []struct {
 		name   string
@@ -35,6 +37,8 @@ if header :is :comparator "i;bogus" "Subject" "x" { keep; }`},
 // operation, so combining it with :contains, :matches, or :regex is an error
 // rather than a casemap match. (This package has no relational :value/:count
 // extension, so :is is the only match type i;ascii-numeric applies to.)
+//
+// checklist: SIEVE-MT-07
 func TestComparator_AsciiNumericRejectsSubstringMatchTypes(t *testing.T) {
 	bad := []struct {
 		name   string
@@ -66,6 +70,8 @@ if body :comparator "i;ascii-numeric" :contains "5" { keep; }`},
 // supported comparators must keep working with the match types they do define.
 // i;octet and i;ascii-casemap support every match type; i;ascii-numeric supports
 // the equality match type :is.
+//
+// checklist: SIEVE-MT-05 SIEVE-MT-07
 func TestComparator_ValidCombinationsStillParse(t *testing.T) {
 	good := []struct {
 		name   string
@@ -93,6 +99,8 @@ if header :comparator "i;ascii-numeric" "X-Priority" "1" { keep; }`},
 // not, and every value that does not start with a digit is "positive infinity",
 // so two non-numeric values are equal to each other but a numeric value never
 // equals a non-numeric one.
+//
+// checklist: SIEVE-MT-07
 func TestComparator_AsciiNumericIsSemantics(t *testing.T) {
 	numericEq := func(headerVal, key string) bool {
 		email := sieveEmail()

@@ -14,6 +14,8 @@ import (
 
 // TestRequire_RejectsUnsupportedExtension covers RFC 5228 §2.10.5: a script that
 // requires a capability this implementation does not provide MUST NOT run.
+//
+// checklist: SIEVE-CMD-03
 func TestRequire_RejectsUnsupportedExtension(t *testing.T) {
 	bad := []string{
 		`require "nonexistent-extension"; keep;`,
@@ -32,6 +34,8 @@ if true { fileinto "X"; }`,
 // TestRequire_RejectsUndeclaredExtensionUse covers RFC 5228 §2.10.5: an
 // extension command/test/comparator/tagged-argument that was not declared with
 // require MUST be treated as unavailable, i.e. rejected.
+//
+// checklist: SIEVE-ACT-09 SIEVE-CMD-01 SIEVE-CMD-03
 func TestRequire_RejectsUndeclaredExtensionUse(t *testing.T) {
 	bad := []struct {
 		name   string
@@ -65,6 +69,8 @@ if body :contains "x" { keep; }`},
 // TestRequire_RejectsMisplacedRequire covers RFC 5228 §3.2: it is an error for a
 // require to appear after any other command, or anywhere other than the start of
 // the script (in particular, inside a block).
+//
+// checklist: SIEVE-CMD-03
 func TestRequire_RejectsMisplacedRequire(t *testing.T) {
 	bad := []struct {
 		name   string
@@ -87,6 +93,8 @@ if true { require "envelope"; }`},
 // TestRequire_RejectsUnknownCommandsAndTests covers the silent-skip bug: a typo
 // or a command/test from an undeclared extension must be a parse error, not a
 // silent no-op.
+//
+// checklist: SIEVE-CMD-01
 func TestRequire_RejectsUnknownCommandsAndTests(t *testing.T) {
 	bad := []struct {
 		name   string
@@ -106,6 +114,8 @@ func TestRequire_RejectsUnknownCommandsAndTests(t *testing.T) {
 
 // TestRequire_AcceptsProperlyDeclaredScripts guards against over-rejection: once
 // an extension is declared with require, using it must still be accepted.
+//
+// checklist: SIEVE-ACT-09 SIEVE-CMD-03
 func TestRequire_AcceptsProperlyDeclaredScripts(t *testing.T) {
 	good := []string{
 		`require "fileinto";
@@ -144,6 +154,8 @@ discard;`,
 
 // TestRequire_ErrorMentionsCapability is a light check that the enforcement
 // error is actionable (names the offending capability), not just any error.
+//
+// checklist: SIEVE-CMD-03
 func TestRequire_ErrorMentionsCapability(t *testing.T) {
 	err := Validate(`if true { fileinto "X"; }`)
 	if err == nil {

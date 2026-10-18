@@ -10,6 +10,7 @@ import (
 // keep another action cancelled, and the Executor learns each redirect's own
 // :copy flag rather than inferring it from a script-wide require "copy".
 
+// checklist: SIEVE-ACT-06 SIEVE-EXT-04
 func TestSieve_CopyImplicitKeep(t *testing.T) {
 	tests := []struct {
 		name         string

@@ -154,6 +154,7 @@ func sieveEmail() *Message {
 
 // ── if / elsif / else ────────────────────────────────────────────────
 
+// checklist: SIEVE-CMD-02 SIEVE-LEX-09
 func TestSieve_IfElsifElse(t *testing.T) {
 	script := `require "fileinto";
 if header :contains "Subject" "invoice" {
@@ -181,6 +182,7 @@ if header :contains "Subject" "invoice" {
 	}
 }
 
+// checklist: SIEVE-CMD-02
 func TestSieve_ElsifOnlyFirstMatchRuns(t *testing.T) {
 	// Both branches would match; only the first should fire.
 	script := `require "fileinto";
@@ -196,6 +198,7 @@ if header :contains "Subject" "test" {
 
 // ── allof / anyof / not ──────────────────────────────────────────────
 
+// checklist: SIEVE-TST-03
 func TestSieve_Allof(t *testing.T) {
 	script := `require "fileinto";
 if allof (header :contains "Subject" "test", address :is "From" "sender@example.com") {
@@ -206,6 +209,7 @@ if allof (header :contains "Subject" "test", address :is "From" "sender@example.
 	}
 }
 
+// checklist: SIEVE-TST-03
 func TestSieve_Allof_OneFalse(t *testing.T) {
 	script := `require "fileinto";
 if allof (header :contains "Subject" "test", address :is "From" "nobody@example.com") {
@@ -216,6 +220,7 @@ if allof (header :contains "Subject" "test", address :is "From" "nobody@example.
 	}
 }
 
+// checklist: SIEVE-TST-04
 func TestSieve_Anyof(t *testing.T) {
 	script := `require "fileinto";
 if anyof (header :contains "Subject" "nope", header :contains "Subject" "test") {
@@ -226,6 +231,7 @@ if anyof (header :contains "Subject" "nope", header :contains "Subject" "test") 
 	}
 }
 
+// checklist: SIEVE-TST-04
 func TestSieve_Anyof_NoneTrue(t *testing.T) {
 	script := `require "fileinto";
 if anyof (header :contains "Subject" "nope", header :contains "Subject" "nada") {
@@ -236,6 +242,7 @@ if anyof (header :contains "Subject" "nope", header :contains "Subject" "nada") 
 	}
 }
 
+// checklist: SIEVE-TST-09
 func TestSieve_Not(t *testing.T) {
 	script := `require "fileinto";
 if not header :contains "Subject" "spam" {
@@ -246,6 +253,7 @@ if not header :contains "Subject" "spam" {
 	}
 }
 
+// checklist: SIEVE-TST-09
 func TestSieve_NotAnyofNested(t *testing.T) {
 	script := `require "fileinto";
 if not anyof (header :contains "Subject" "spam", header :contains "Subject" "junk") {
@@ -258,6 +266,7 @@ if not anyof (header :contains "Subject" "spam", header :contains "Subject" "jun
 
 // ── true / false ─────────────────────────────────────────────────────
 
+// checklist: SIEVE-TST-07
 func TestSieve_TrueFalse(t *testing.T) {
 	if got := folderOf(runSieve(t, `require "fileinto";
 if true { fileinto "Yes"; }`, sieveEmail())); got != "Yes" {
@@ -271,6 +280,7 @@ if false { fileinto "No"; }`, sieveEmail())); got == "No" {
 
 // ── exists ───────────────────────────────────────────────────────────
 
+// checklist: SIEVE-TST-06
 func TestSieve_Exists(t *testing.T) {
 	script := `require "fileinto";
 if exists "Subject" { fileinto "HasSubject"; }`
@@ -279,6 +289,7 @@ if exists "Subject" { fileinto "HasSubject"; }`
 	}
 }
 
+// checklist: SIEVE-TST-06
 func TestSieve_Exists_AllRequired(t *testing.T) {
 	// exists is true only if every listed header is present.
 	script := `require "fileinto";
@@ -288,6 +299,7 @@ if exists ["Subject", "X-Missing"] { fileinto "Both"; }`
 	}
 }
 
+// checklist: SIEVE-TST-06
 func TestSieve_Exists_RawHeader(t *testing.T) {
 	script := `require "fileinto";
 if exists "X-Custom" { fileinto "Custom"; }`
@@ -300,6 +312,7 @@ if exists "X-Custom" { fileinto "Custom"; }`
 
 // ── size ─────────────────────────────────────────────────────────────
 
+// checklist: SIEVE-TST-10
 func TestSieve_Size(t *testing.T) {
 	email := sieveEmail() // body is a few dozen bytes
 	if got := folderOf(runSieve(t, `require "fileinto";
@@ -312,6 +325,7 @@ if size :under 5 { fileinto "Small"; }`, sieveEmail())); got == "Small" {
 	}
 }
 
+// checklist: SIEVE-LEX-08 SIEVE-TST-10
 func TestSieve_Size_Quantifier(t *testing.T) {
 	email := sieveEmail()
 	email.Body.Content = strings.Repeat("x", 2048) // 2 KiB
@@ -326,6 +340,7 @@ if size :over 1K { fileinto "Over1K"; }`, small)); got == "Over1K" {
 	}
 }
 
+// checklist: SIEVE-TST-10
 func TestSieve_Size_IncludesAttachments(t *testing.T) {
 	email := sieveEmail()
 	email.Attachments = []Attachment{{Size: 5000}}
@@ -353,6 +368,7 @@ func sizedEmail() *Message {
 	}
 }
 
+// checklist: SIEVE-TST-10
 func TestSieve_Size_IncludesHeaders(t *testing.T) {
 	// :over — false when only the body (50 octets) is counted, true once the
 	// header octets are included and the whole message exceeds 100.
@@ -368,6 +384,7 @@ if size :under 100 { fileinto "Small"; }`, sizedEmail())); got == "Small" {
 	}
 }
 
+// checklist: SIEVE-TST-10
 func TestSieve_Size_UsesRawSizeWhenSet(t *testing.T) {
 	// A host-supplied exact wire size takes precedence over the reconstruction.
 	big := sieveEmail()
@@ -389,6 +406,7 @@ if size :under 1K { fileinto "Small"; }`, small)); got != "Small" {
 
 // ── :matches wildcards ───────────────────────────────────────────────
 
+// checklist: SIEVE-MT-03
 func TestSieve_MatchesStar(t *testing.T) {
 	script := `require "fileinto";
 if header :matches "Subject" "Test *" { fileinto "M"; }`
@@ -397,6 +415,7 @@ if header :matches "Subject" "Test *" { fileinto "M"; }`
 	}
 }
 
+// checklist: SIEVE-MT-03
 func TestSieve_MatchesQuestionMark(t *testing.T) {
 	script := `require "fileinto";
 if header :matches "Subject" "Te?t message" { fileinto "Q"; }`
@@ -405,6 +424,7 @@ if header :matches "Subject" "Te?t message" { fileinto "Q"; }`
 	}
 }
 
+// checklist: SIEVE-MT-03
 func TestSieve_MatchesAnchored(t *testing.T) {
 	// :matches is anchored: a partial pattern must not match.
 	script := `require "fileinto";
@@ -414,6 +434,7 @@ if header :matches "Subject" "message" { fileinto "NoMatch"; }`
 	}
 }
 
+// checklist: SIEVE-MT-03
 func TestSieve_MatchesEscapedWildcard(t *testing.T) {
 	// "\\*" in the source becomes "\*" after string parsing, a literal star.
 	email := sieveEmail()
@@ -425,6 +446,7 @@ if header :matches "Subject" "50% off\\*" { fileinto "Literal"; }`
 	}
 }
 
+// checklist: SIEVE-MT-03
 func TestSieve_MatchesQuestionMarkIsOctetNotRune(t *testing.T) {
 	// RFC 5228 §2.7.1: under :matches, "?" matches a single character, which in
 	// this evaluator's octet-string model (i;octet, i;ascii-casemap) is exactly
@@ -461,6 +483,7 @@ if header :matches "Subject" "` + tc.pattern + `" { fileinto "M"; }`
 
 // ── address parts ────────────────────────────────────────────────────
 
+// checklist: SIEVE-MT-08 SIEVE-TST-01
 func TestSieve_AddressLocalpart(t *testing.T) {
 	script := `require "fileinto";
 if address :localpart :is "From" "sender" { fileinto "Local"; }`
@@ -469,6 +492,7 @@ if address :localpart :is "From" "sender" { fileinto "Local"; }`
 	}
 }
 
+// checklist: SIEVE-MT-08 SIEVE-TST-01
 func TestSieve_AddressDomain(t *testing.T) {
 	script := `require "fileinto";
 if address :domain :is "From" "example.com" { fileinto "Domain"; }`
@@ -477,6 +501,7 @@ if address :domain :is "From" "example.com" { fileinto "Domain"; }`
 	}
 }
 
+// checklist: SIEVE-MT-08 SIEVE-TST-01
 func TestSieve_AddressAllDefault(t *testing.T) {
 	script := `require "fileinto";
 if address :is "From" "sender@example.com" { fileinto "All"; }`
@@ -485,6 +510,7 @@ if address :is "From" "sender@example.com" { fileinto "All"; }`
 	}
 }
 
+// checklist: SIEVE-TST-01
 func TestSieve_AddressCc(t *testing.T) {
 	script := `require "fileinto";
 if address :domain :is "Cc" "cc.example.com" { fileinto "CcDomain"; }`
@@ -495,6 +521,7 @@ if address :domain :is "Cc" "cc.example.com" { fileinto "CcDomain"; }`
 	}
 }
 
+// checklist: SIEVE-MT-08 SIEVE-TST-05
 func TestSieve_EnvelopeDomainPart(t *testing.T) {
 	script := `require ["envelope", "fileinto"];
 if envelope :domain :is "from" "example.com" { fileinto "EnvDom"; }`
@@ -510,6 +537,7 @@ if envelope :domain :is "from" "example.com" { fileinto "EnvDom"; }`
 // unparsed header value. It must instead parse the RFC 5322 address and derive
 // :all/:localpart/:domain from the addr-spec, excluding display names/comments.
 
+// checklist: SIEVE-TST-01
 func TestSieve_AddressRawHeader_DisplayName(t *testing.T) {
 	email := sieveEmail()
 	// Quoted display name that itself looks like an address, plus the real
@@ -533,6 +561,7 @@ if address :all :contains "Resent-From" "a@b" { fileinto "Display"; }`, email));
 	}
 }
 
+// checklist: SIEVE-TST-01
 func TestSieve_AddressRawHeader_AngleAddr(t *testing.T) {
 	email := sieveEmail()
 	// Quoted local-part containing '@', wrapped in angle brackets.
@@ -544,6 +573,7 @@ if address :domain :is "Resent-Sender" "example.com" { fileinto "Dom"; }`, email
 	}
 }
 
+// checklist: SIEVE-TST-02
 func TestSieve_AddressRawHeader_Unparseable(t *testing.T) {
 	email := sieveEmail()
 	email.Headers.Raw = map[string][]string{"Resent-From": {"not an address"}}
@@ -557,6 +587,7 @@ if address :localpart :is "Resent-From" "not an address" { fileinto "Bad"; }`, e
 
 // ── comparators ──────────────────────────────────────────────────────
 
+// checklist: SIEVE-MT-05
 func TestSieve_ComparatorOctetCaseSensitive(t *testing.T) {
 	// Subject is "Test message"; octet comparison is case-sensitive.
 	script := `require "fileinto";
@@ -566,6 +597,7 @@ if header :is :comparator "i;octet" "Subject" "test message" { fileinto "NoMatch
 	}
 }
 
+// checklist: SIEVE-MT-05
 func TestSieve_ComparatorCasemapDefault(t *testing.T) {
 	script := `require "fileinto";
 if header :is "Subject" "test message" { fileinto "CI"; }`
@@ -574,6 +606,7 @@ if header :is "Subject" "test message" { fileinto "CI"; }`
 	}
 }
 
+// checklist: SIEVE-MT-07
 func TestSieve_ComparatorAsciiNumeric(t *testing.T) {
 	email := sieveEmail()
 	email.Headers.Raw = map[string][]string{"X-Priority": {"1"}}
@@ -595,6 +628,8 @@ if header :is :comparator "i;ascii-numeric" "X-Priority" "2" { fileinto "Prio"; 
 // letter (e.g. long s ſ U+017F → s, Kelvin sign K U+212A → k) must be compared
 // byte-exact and therefore must NOT match an ASCII key — otherwise a filter can
 // be evaded with look-alikes. ASCII A/a case-insensitivity must still hold.
+//
+// checklist: SIEVE-MT-05
 func TestSieve_ComparatorAsciiCasemapAsciiOnly(t *testing.T) {
 	t.Run("is_longS_must_not_fold_to_s", func(t *testing.T) {
 		email := sieveEmail()
@@ -649,6 +684,7 @@ if header :matches "X-Test" "a?c" { fileinto "Matches"; }`
 
 // ── header whitespace / unfolding ────────────────────────────────────
 
+// checklist: SIEVE-TST-08
 func TestSieve_HeaderTrimsWhitespace(t *testing.T) {
 	// RFC 5228 §5.7: the header test ignores leading and trailing whitespace
 	// in the header value. A value padded with spaces must still match :is.
@@ -661,6 +697,7 @@ if header :is "X-Test" "foo" { fileinto "Trimmed"; }`
 	}
 }
 
+// checklist: SIEVE-TST-08
 func TestSieve_HeaderTrimsWhitespaceContains(t *testing.T) {
 	// :contains against a leading-space value: with the value trimmed, an
 	// anchored key that includes the leading padding must no longer match.
@@ -673,6 +710,7 @@ if header :contains "X-Test" "  foo" { fileinto "Padded"; }`
 	}
 }
 
+// checklist: SIEVE-TST-08
 func TestSieve_HeaderUnfoldsContinuation(t *testing.T) {
 	// RFC 5322 §2.2.3 unfolding: a folded header (CRLF + folding whitespace)
 	// is a single logical value. header :is must compare against the unfolded
@@ -688,6 +726,7 @@ if header :is "X-Test" "foo bar" { fileinto "Unfolded"; }`
 
 // ── string lists ─────────────────────────────────────────────────────
 
+// checklist: SIEVE-LEX-07 SIEVE-TST-08
 func TestSieve_KeyList(t *testing.T) {
 	script := `require "fileinto";
 if header :contains "Subject" ["foo", "test", "bar"] { fileinto "List"; }`
@@ -696,6 +735,7 @@ if header :contains "Subject" ["foo", "test", "bar"] { fileinto "List"; }`
 	}
 }
 
+// checklist: SIEVE-LEX-07 SIEVE-TST-08
 func TestSieve_HeaderList(t *testing.T) {
 	script := `require "fileinto";
 if header :contains ["X-Label", "Subject"] "message" { fileinto "HL"; }`
@@ -706,6 +746,7 @@ if header :contains ["X-Label", "Subject"] "message" { fileinto "HL"; }`
 
 // ── fileinto :create ─────────────────────────────────────────────────
 
+// checklist: SIEVE-EXT-05
 func TestSieve_FileintoCreate(t *testing.T) {
 	script := `require ["fileinto", "mailbox"];
 if header :contains "Subject" "test" { fileinto :create "Archive/2026"; }`
@@ -720,6 +761,7 @@ if header :contains "Subject" "test" { fileinto :create "Archive/2026"; }`
 
 // ── imap4flags ───────────────────────────────────────────────────────
 
+// checklist: SIEVE-EXT-02
 func TestSieve_SetAndAddFlag(t *testing.T) {
 	script := `require "imap4flags";
 if true {
@@ -733,6 +775,7 @@ if true {
 	}
 }
 
+// checklist: SIEVE-EXT-02
 func TestSieve_RemoveFlag(t *testing.T) {
 	script := `require "imap4flags";
 if true {
@@ -745,6 +788,7 @@ if true {
 	}
 }
 
+// checklist: SIEVE-EXT-02
 func TestSieve_SetFlagEscaped(t *testing.T) {
 	// "\\Seen" in source is the IMAP system flag \Seen.
 	script := `require "imap4flags";
@@ -757,6 +801,7 @@ if true { setflag "\\Seen"; }`
 
 // ── redirect with tag ────────────────────────────────────────────────
 
+// checklist: SIEVE-ACT-06 SIEVE-EXT-04
 func TestSieve_RedirectCopyTag(t *testing.T) {
 	script := `require ["copy"];
 if true { redirect :copy "copy@example.com"; }`
@@ -768,6 +813,7 @@ if true { redirect :copy "copy@example.com"; }`
 
 // ── stop across top-level commands ───────────────────────────────────
 
+// checklist: SIEVE-CMD-04
 func TestSieve_TopLevelStop(t *testing.T) {
 	script := `require "fileinto";
 if true { fileinto "First"; }
@@ -780,6 +826,7 @@ if true { fileinto "Second"; }`
 
 // ── multi-line string ────────────────────────────────────────────────
 
+// checklist: SIEVE-LEX-05
 func TestSieve_MultiLineString(t *testing.T) {
 	script := "require \"vacation\";\n" +
 		"vacation :subject \"OOO\"\n" +
@@ -795,6 +842,7 @@ func TestSieve_MultiLineString(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-LEX-05
 func TestSieve_MultiLineDotStuffing(t *testing.T) {
 	script := "require \"vacation\";\n" +
 		"vacation :subject \"OOO\"\n" +
@@ -811,6 +859,7 @@ func TestSieve_MultiLineDotStuffing(t *testing.T) {
 
 // ── comments and escapes ─────────────────────────────────────────────
 
+// checklist: SIEVE-LEX-01
 func TestSieve_Comments(t *testing.T) {
 	script := `require "fileinto";
 # hash comment
@@ -824,6 +873,7 @@ if header :contains "Subject" "test" { # trailing comment
 	}
 }
 
+// checklist: SIEVE-LEX-03
 func TestSieve_EscapedQuoteInString(t *testing.T) {
 	email := sieveEmail()
 	email.Headers.Subject = `say "hi"`
@@ -836,6 +886,7 @@ if header :is "Subject" "say \"hi\"" { fileinto "Quoted"; }`
 
 // ── extension leniency ───────────────────────────────────────────────
 
+// checklist: SIEVE-CMD-01 SIEVE-LEX-04
 func TestSieve_UnknownCommandRejected(t *testing.T) {
 	// An unknown command (from an undeclared extension, or a typo) must be a
 	// parse error, not a silent no-op that lets the rest of the script run.
@@ -847,6 +898,7 @@ if header :contains "Subject" "test" { fileinto "StillWorks"; }`
 	}
 }
 
+// checklist: SIEVE-CMD-01
 func TestSieve_UnknownTestRejected(t *testing.T) {
 	// An unknown test must be a parse error, not silently treated as false.
 	script := `require "fileinto";
@@ -862,6 +914,7 @@ if spamtest :value "gt" "5" {
 
 // ── terminal dispositions ────────────────────────────────────────────
 
+// checklist: SIEVE-ACT-05
 func TestSieve_Discard(t *testing.T) {
 	script := `if header :is "Subject" "Test message" {
   discard;
@@ -871,6 +924,7 @@ func TestSieve_Discard(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-EXT-05
 func TestSieve_Reject(t *testing.T) {
 	script := `require "reject";
 if header :is "Subject" "Test message" {
@@ -887,6 +941,7 @@ if header :is "Subject" "Test message" {
 
 // ── header / redirect basics ─────────────────────────────────────────
 
+// checklist: SIEVE-TST-08
 func TestSieve_HeaderContains(t *testing.T) {
 	script := `require "fileinto";
 if header :contains "Subject" "Test" {
@@ -901,6 +956,7 @@ if header :contains "Subject" "Test" {
 	}
 }
 
+// checklist: SIEVE-ACT-03
 func TestSieve_Redirect(t *testing.T) {
 	script := `if header :contains "Subject" "Test" {
   redirect "other@example.com";
@@ -916,6 +972,7 @@ func TestSieve_Redirect(t *testing.T) {
 
 // ── body extension ───────────────────────────────────────────────────
 
+// checklist: SIEVE-EXT-03
 func TestSieve_BodyContains(t *testing.T) {
 	script := `require ["body", "fileinto"];
 if body :contains "test message" {
@@ -927,6 +984,7 @@ if body :contains "test message" {
 	}
 }
 
+// checklist: SIEVE-EXT-03
 func TestSieve_BodyContains_NoMatch(t *testing.T) {
 	script := `require ["body", "fileinto"];
 if body :contains "nonexistent phrase" {
@@ -938,6 +996,7 @@ if body :contains "nonexistent phrase" {
 	}
 }
 
+// checklist: SIEVE-EXT-03
 func TestSieve_BodyContains_HTMLStripped(t *testing.T) {
 	script := `require ["body", "fileinto"];
 if body :contains "important" {
@@ -953,6 +1012,7 @@ if body :contains "important" {
 	}
 }
 
+// checklist: SIEVE-EXT-03
 func TestSieve_BodyContains_MultipartPlainPreferred(t *testing.T) {
 	script := `require ["body", "fileinto"];
 if body :contains "plain text content" {
@@ -972,6 +1032,7 @@ if body :contains "plain text content" {
 	}
 }
 
+// checklist: SIEVE-EXT-03
 func TestSieve_BodyIs(t *testing.T) {
 	script := `require ["body", "fileinto"];
 if body :is "Hello, this is a test message body." {
@@ -985,6 +1046,7 @@ if body :is "Hello, this is a test message body." {
 
 // ── regex extension ──────────────────────────────────────────────────
 
+// checklist: SIEVE-EXT-06
 func TestSieve_HeaderRegex(t *testing.T) {
 	script := `require ["regex", "fileinto"];
 if header :regex "Subject" ".*[Tt]est.*" {
@@ -996,6 +1058,7 @@ if header :regex "Subject" ".*[Tt]est.*" {
 	}
 }
 
+// checklist: SIEVE-EXT-06
 func TestSieve_HeaderRegex_NoMatch(t *testing.T) {
 	script := `require ["regex", "fileinto"];
 if header :regex "Subject" "^URGENT:.*" {
@@ -1007,6 +1070,7 @@ if header :regex "Subject" "^URGENT:.*" {
 	}
 }
 
+// checklist: SIEVE-EXT-06
 func TestSieve_HeaderRegex_CaseInsensitive(t *testing.T) {
 	script := `require ["regex", "fileinto"];
 if header :regex "Subject" "^test message$" {
@@ -1020,6 +1084,7 @@ if header :regex "Subject" "^test message$" {
 	}
 }
 
+// checklist: SIEVE-EXT-06
 func TestSieve_BodyRegex(t *testing.T) {
 	script := `require ["body", "regex", "fileinto"];
 if body :regex "test.*body" {
@@ -1031,6 +1096,7 @@ if body :regex "test.*body" {
 	}
 }
 
+// checklist: SIEVE-EXT-06
 func TestSieve_AddressRegex(t *testing.T) {
 	script := `require ["regex", "fileinto"];
 if address :regex "From" "sender@.*\.com" {
@@ -1042,6 +1108,7 @@ if address :regex "From" "sender@.*\.com" {
 	}
 }
 
+// checklist: SIEVE-ACT-08
 func TestSieve_InvalidRegex_Skipped(t *testing.T) {
 	script := `require ["regex", "fileinto"];
 if header :regex "Subject" "[invalid" {
@@ -1056,6 +1123,7 @@ if header :regex "Subject" "[invalid" {
 
 // ── envelope extension ───────────────────────────────────────────────
 
+// checklist: SIEVE-TST-05
 func TestSieve_EnvelopeFrom_Is(t *testing.T) {
 	script := `require ["envelope", "fileinto"];
 if envelope :is "from" "sender@example.com" {
@@ -1067,6 +1135,7 @@ if envelope :is "from" "sender@example.com" {
 	}
 }
 
+// checklist: SIEVE-TST-05
 func TestSieve_EnvelopeTo_Is(t *testing.T) {
 	script := `require ["envelope", "fileinto"];
 if envelope :is "to" "recipient@example.com" {
@@ -1078,6 +1147,7 @@ if envelope :is "to" "recipient@example.com" {
 	}
 }
 
+// checklist: SIEVE-TST-05
 func TestSieve_EnvelopeFrom_Contains(t *testing.T) {
 	script := `require ["envelope", "fileinto"];
 if envelope :contains "from" "example.com" {
@@ -1089,6 +1159,7 @@ if envelope :contains "from" "example.com" {
 	}
 }
 
+// checklist: SIEVE-TST-05
 func TestSieve_EnvelopeFrom_NoMatch(t *testing.T) {
 	script := `require ["envelope", "fileinto"];
 if envelope :is "from" "other@example.com" {
@@ -1100,6 +1171,7 @@ if envelope :is "from" "other@example.com" {
 	}
 }
 
+// checklist: SIEVE-TST-05
 func TestSieve_EnvelopeFrom_NullReversePath(t *testing.T) {
 	// RFC 5228 §5.4 / RFC 5231: a null reverse-path (SMTP "MAIL FROM:<>", a
 	// bounce) has an empty-string envelope "from" value, so the canonical
@@ -1116,6 +1188,7 @@ if envelope :is "from" "" {
 	}
 }
 
+// checklist: SIEVE-TST-05
 func TestSieve_EnvelopeFrom_AbsentDoesNotMatchEmpty(t *testing.T) {
 	// A genuinely absent envelope sender (no MAIL FROM at all) is distinct from
 	// a null reverse-path: it produces no value and must not match :is "".
@@ -1131,6 +1204,7 @@ if envelope :is "from" "" {
 	}
 }
 
+// checklist: SIEVE-TST-05
 func TestSieve_EnvelopeFrom_NullReversePath_NoFalseMatch(t *testing.T) {
 	// A null reverse-path is the empty string only: it must not match a
 	// non-empty key.
@@ -1146,6 +1220,7 @@ if envelope :is "from" "someone@example.com" {
 	}
 }
 
+// checklist: SIEVE-TST-05
 func TestSieve_EnvelopeFrom_NullReversePath_Parts(t *testing.T) {
 	// The :localpart and :domain of a null reverse-path are both the empty
 	// string (RFC 5231), so each part matches :is "".
@@ -1163,6 +1238,7 @@ if envelope ` + part + ` :is "from" "" {
 	}
 }
 
+// checklist: SIEVE-TST-05
 func TestSieve_EnvelopeFrom_Resolved(t *testing.T) {
 	// The host resolves any gateway-supplied envelope sender before evaluating.
 	script := `require ["envelope", "fileinto"];
@@ -1177,6 +1253,7 @@ if envelope :is "from" "gateway-sender@example.com" {
 	}
 }
 
+// checklist: SIEVE-TST-05
 func TestSieve_EnvelopeTo_Resolved(t *testing.T) {
 	script := `require ["envelope", "fileinto"];
 if envelope :is "to" "special-rcpt@example.com" {
@@ -1190,6 +1267,7 @@ if envelope :is "to" "special-rcpt@example.com" {
 	}
 }
 
+// checklist: SIEVE-EXT-06
 func TestSieve_EnvelopeRegex(t *testing.T) {
 	script := `require ["envelope", "regex", "fileinto"];
 if envelope :regex "from" ".*@example\.com" {
@@ -1203,6 +1281,7 @@ if envelope :regex "from" ".*@example\.com" {
 
 // ── vacation extension ───────────────────────────────────────────────
 
+// checklist: SIEVE-EXT-01
 func TestSieve_Vacation_Basic(t *testing.T) {
 	script := `require "vacation";
 vacation :days 7 :subject "Out of Office" "I am currently on vacation.";`
@@ -1225,6 +1304,7 @@ vacation :days 7 :subject "Out of Office" "I am currently on vacation.";`
 	}
 }
 
+// checklist: SIEVE-EXT-01
 func TestSieve_Vacation_DefaultDays(t *testing.T) {
 	script := `require "vacation";
 vacation :subject "Away" "Gone fishing.";`
@@ -1234,6 +1314,7 @@ vacation :subject "Away" "Gone fishing.";`
 	}
 }
 
+// checklist: SIEVE-EXT-01
 func TestSieve_Vacation_Conditional(t *testing.T) {
 	script := `require "vacation";
 if header :contains "Subject" "Test" {
@@ -1248,6 +1329,7 @@ if header :contains "Subject" "Test" {
 	}
 }
 
+// checklist: SIEVE-EXT-01
 func TestSieve_Vacation_UsesEnvelopeSender(t *testing.T) {
 	script := `require "vacation";
 vacation :subject "Out" "Away.";`
@@ -1259,6 +1341,7 @@ vacation :subject "Out" "Away.";`
 	}
 }
 
+// checklist: SIEVE-EXT-01
 func TestSieve_Vacation_MultiLine(t *testing.T) {
 	script := `require "vacation";
 vacation :days 14
@@ -1279,6 +1362,8 @@ vacation :days 14
 // TestSieve_Vacation_SecondsGranularity checks RFC 6131 vacation-seconds: a
 // :seconds argument sets the reply-suppression interval at second granularity
 // and is not truncated to whole days (which would collapse a sub-day value to 0).
+//
+// checklist: SIEVE-EXT-01
 func TestSieve_Vacation_SecondsGranularity(t *testing.T) {
 	script := `require "vacation";
 vacation :seconds 3600 "I am away.";`
@@ -1299,6 +1384,8 @@ vacation :seconds 3600 "I am away.";`
 // message with a null reverse-path (SMTP MAIL FROM:<>, a bounce) MUST NOT get a
 // vacation auto-reply, even when a usable From header is present — replying could
 // cause a mail loop.
+//
+// checklist: SIEVE-EXT-01
 func TestSieve_Vacation_NullReversePathSuppressed(t *testing.T) {
 	script := `require "vacation";
 vacation :days 1 "I am away.";`
@@ -1320,6 +1407,7 @@ vacation :days 1 "I am away.";`
 
 // ── notify extension ─────────────────────────────────────────────────
 
+// checklist: SIEVE-EXT-07
 func TestSieve_Notify_Basic(t *testing.T) {
 	script := `require "notify";
 notify :method "mailto:admin@example.com" :message "New mail received";`
@@ -1336,6 +1424,7 @@ notify :method "mailto:admin@example.com" :message "New mail received";`
 	}
 }
 
+// checklist: SIEVE-EXT-07
 func TestSieve_Notify_Conditional(t *testing.T) {
 	script := `require "notify";
 if header :contains "Subject" "URGENT" {
@@ -1349,6 +1438,7 @@ if header :contains "Subject" "URGENT" {
 	}
 }
 
+// checklist: SIEVE-EXT-07
 func TestSieve_Notify_NoMatch(t *testing.T) {
 	script := `require "notify";
 if header :contains "Subject" "URGENT" {
@@ -1360,6 +1450,7 @@ if header :contains "Subject" "URGENT" {
 	}
 }
 
+// checklist: SIEVE-EXT-07
 func TestSieve_Notify_MultiLine(t *testing.T) {
 	script := `require "notify";
 notify :method "mailto:alerts@example.com"
@@ -1375,6 +1466,7 @@ notify :method "mailto:alerts@example.com"
 
 // ── combined extensions ──────────────────────────────────────────────
 
+// checklist: SIEVE-ACT-08
 func TestSieve_CombinedExtensions(t *testing.T) {
 	script := `require ["vacation", "notify", "body", "envelope", "fileinto"];
 if body :contains "urgent" {
@@ -1402,6 +1494,7 @@ vacation :days 5 :subject "Away" "On vacation.";`
 	}
 }
 
+// checklist: SIEVE-CMD-04
 func TestSieve_Stop(t *testing.T) {
 	script := `require ["body", "fileinto"];
 if body :contains "test" {
@@ -1419,6 +1512,7 @@ if body :contains "test" {
 
 // ── extractBodyText ──────────────────────────────────────────────────
 
+// checklist: SIEVE-EXT-03
 func TestExtractBodyText_PlainText(t *testing.T) {
 	msg := &Message{Body: Body{ContentType: "text/plain", Content: "Hello world"}}
 	if got := extractBodyText(msg); got != "Hello world" {
@@ -1426,6 +1520,7 @@ func TestExtractBodyText_PlainText(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-EXT-03
 func TestExtractBodyText_HTML(t *testing.T) {
 	msg := &Message{Body: Body{ContentType: "text/html", Content: "<p>Hello <b>world</b></p>"}}
 	got := extractBodyText(msg)
@@ -1434,6 +1529,7 @@ func TestExtractBodyText_HTML(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-EXT-03
 func TestExtractBodyText_Multipart(t *testing.T) {
 	msg := &Message{Body: Body{
 		ContentType: "multipart/alternative",
@@ -1447,6 +1543,7 @@ func TestExtractBodyText_Multipart(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-EXT-03
 func TestExtractBodyText_MultipartHTMLOnly(t *testing.T) {
 	msg := &Message{Body: Body{
 		ContentType: "multipart/alternative",
@@ -1460,6 +1557,7 @@ func TestExtractBodyText_MultipartHTMLOnly(t *testing.T) {
 
 // ── stripHTMLTags ────────────────────────────────────────────────────
 
+// checklist: SIEVE-EXT-03
 func TestStripHTMLTags(t *testing.T) {
 	tests := []struct {
 		input    string
@@ -1505,6 +1603,7 @@ func evalApplied(t *testing.T, script string) []string {
 	return ex.applied
 }
 
+// checklist: SIEVE-ACT-02
 func TestSieve_DuplicateFileintoDeliversOnce(t *testing.T) {
 	applied := evalApplied(t, `require "fileinto";
 if true {
@@ -1516,6 +1615,7 @@ if true {
 	}
 }
 
+// checklist: SIEVE-ACT-02
 func TestSieve_DistinctFileintoDeliversEach(t *testing.T) {
 	applied := evalApplied(t, `require "fileinto";
 if true {
@@ -1530,6 +1630,7 @@ if true {
 	}
 }
 
+// checklist: SIEVE-ACT-03
 func TestSieve_DuplicateRedirectDeliversOnce(t *testing.T) {
 	applied := evalApplied(t, `if true {
   redirect "dup@example.com";
@@ -1540,6 +1641,7 @@ func TestSieve_DuplicateRedirectDeliversOnce(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-ACT-03
 func TestSieve_DistinctRedirectDeliversEach(t *testing.T) {
 	applied := evalApplied(t, `if true {
   redirect "a@example.com";
@@ -1553,6 +1655,7 @@ func TestSieve_DistinctRedirectDeliversEach(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-ACT-01
 func TestSieve_DuplicateKeepDeliversOnce(t *testing.T) {
 	applied := evalApplied(t, `if true {
   keep;
@@ -1565,6 +1668,8 @@ func TestSieve_DuplicateKeepDeliversOnce(t *testing.T) {
 
 // A :copy fileinto targets a destination distinct from a consuming fileinto to
 // the same mailbox (RFC 3894), so the two are not collapsed.
+//
+// checklist: SIEVE-ACT-02 SIEVE-EXT-04
 func TestSieve_FileintoCopyDistinctFromConsuming(t *testing.T) {
 	applied := evalApplied(t, `require ["fileinto", "copy"];
 if true {

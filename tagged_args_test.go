@@ -9,6 +9,8 @@ import "testing"
 // for a command is a syntax error. Previously these were silently accepted
 // (last one wins, or the stray tag was consumed and ignored), masking script
 // mistakes; each must now be a parse error.
+//
+// checklist: SIEVE-LEX-04 SIEVE-MT-04
 func TestValidateSieve_RejectsDuplicateOrInapplicableTags(t *testing.T) {
 	bad := []struct {
 		name   string
@@ -54,6 +56,8 @@ if body :domain "y" { keep; }`},
 
 // TestValidateSieve_AcceptsSingleTaggedArgs guards against over-rejection: every
 // valid single-tag (or single-of-each-group) script must still parse.
+//
+// checklist: SIEVE-LEX-04
 func TestValidateSieve_AcceptsSingleTaggedArgs(t *testing.T) {
 	good := []string{
 		`if header :is "Subject" "y" { keep; }`,

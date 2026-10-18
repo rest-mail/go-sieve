@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `CHECKLIST.md` maps every requirement of RFC 5228 to the test that proves it, checked in CI by `internal/checklist`; a 95% statement-coverage gate (exceptions in `COVERAGE.md`) and fuzz targets `FuzzParse` and `FuzzDecodeEncodedCharacters`.
+
 ### Breaking
 
 - **`Executor.Redirect` now receives the redirect's `:copy` tag:
@@ -18,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A string list with a trailing comma (`["a",]`) is rejected; RFC 5228 §8.1 puts a string after every comma.
 - **`fileinto :copy` and `redirect :copy` no longer cancel the implicit keep.**
   RFC 3894 §3: a `:copy` action "does not cancel the implicit keep"; it files or
   forwards a copy in addition to whatever else happens to the message. Both
