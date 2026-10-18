@@ -13,12 +13,11 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 `go run ./internal/checklist`; the format is described in the
 [README](README.md#the-rfc-checklist).
 
-RFC 5429 (`reject` and `ereject`) is checked clause by clause in its own
-section. Not covered yet: the requirements of the other extensions the package
-implements (RFC 5230 vacation, 5232 imap4flags, 5173 body, 3894 copy, 5490
-mailbox) are each one row in the extensions section, mapping the existing tests,
-and have not been checked clause by clause. The `Received` and loop requirements
-of `redirect` belong to the host.
+RFC 5429 (`reject` and `ereject`) and RFC 5230 (`vacation`) are checked clause
+by clause in their own sections. Not covered yet: RFC 5232 imap4flags, 5173 body,
+3894 copy and 5490 mailbox are each one row in the extensions section, mapping
+the existing tests, and have not been checked clause by clause. The `Received`
+and loop requirements of `redirect` belong to the host.
 
 
 ## Lexical structure (§2.2–2.4)
@@ -133,3 +132,74 @@ clauses are n/a here. A section number alone is RFC 5429.
 | REJECT-09 | 2.4 | SHOULD NOT | Do not permit `reject` together with actions that deliver the message (`keep`, `fileinto`, `redirect`). | n/a: permitted, as §2.4 allows for archiving; a delivering action before the `reject` has already been handed to the host, and the `Outcome` is still Reject. |
 | REJECT-10 | 2.4 | MUST NOT | An action that modifies the body has no effect on the content of a DSN or MDN. | n/a: the library implements no body-modifying action, and the DSN or MDN is the host's. |
 | REJECT-11 | 2.5 | MUST | A multi-line reason is returned as a multi-line SMTP/LMTP reply, no line over the SMTP limit (CRLFs MAY be inserted), with enhanced status code 5.7.1 or 5.7.0 if RFC 2034 is supported. | n/a: the host's job; the library returns the reason, CRLFs included, unchanged. |
+
+
+## RFC 5230 vacation extension
+
+[RFC 5230](https://www.rfc-editor.org/rfc/rfc5230) requirements, including
+normative argument grammar and message semantics. Section numbers in this table
+refer to RFC 5230. The existing SIEVE-EXT-01 row remains an overview (its
+`:seconds` case belongs to RFC 6131). The §4.7 reject/refuse incompatibility is
+tracked exclusively by REJECT-07 above and PR #56; this section does not change
+that behavior or duplicate its row.
+
+The library selects actions; the host owns delivery and persistent tracking.
+The host must supply the evaluated user's final envelope recipients and original
+headers, apply the
+tracking rules below, validate and serialize the response, and add its required
+headers. Host responsibilities are not claims of implementation conformance.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| VACATION-01 | 3 | Normative | The capability identifier is `vacation`; the action requires its declaration. | `TestVacation_Syntax` |
+| VACATION-02 | 4 | Normative | A reason string is required, including when empty; no extra positional argument is allowed. | `TestVacation_Syntax` |
+| VACATION-03 | 4, 4.1 | Normative | `:days` takes a Sieve number, in days. | `TestVacation_Syntax`, `TestVacation_DaysBounds` |
+| VACATION-04 | 4, 4.3 | Normative | `:subject` takes a string; preserve its value and distinguish an explicit empty subject from omission for the host. | `TestVacation_Syntax`, `TestVacation_CallbackArguments` |
+| VACATION-05 | 4.3 | SHOULD | Check the syntax of the `:from` mailbox-list and report an invalid value as an error. | `TestVacation_Syntax` |
+| VACATION-06 | 4, 4.5 | Normative | `:addresses` takes a string-list of additional recipient identities. | `TestVacation_Syntax`, `TestVacation_PersonalRecipient` |
+| VACATION-07 | 4, 4.4 | Normative | `:mime` takes no argument and marks the reason as a MIME entity including headers and content. | `TestVacation_Syntax`, `TestVacation_CallbackArguments` |
+| VACATION-08 | 4, 4.2 | Normative | `:handle` takes a string; retain the explicit handle, including an empty one, for the host's tracking. | `TestVacation_Syntax`, `TestVacation_CallbackArguments` |
+| VACATION-09 | 4; RFC 5228 §2.4.2 | Normative | Only defined tags are allowed and each may occur at most once. | `TestVacation_Syntax` |
+| VACATION-10 | 4.1 | Normative | The normal minimum is one day; values below it use that minimum. | `TestVacation_DaysBounds` |
+| VACATION-11 | 4.1 | MAY | A site may choose a different minimum, strictly greater than zero. | n/a: not selected: the library uses the normal one-day minimum; it exposes no site minimum setting. |
+| VACATION-12 | 4.1 | MAY | A site may define a maximum; this implementation selects 365 days. | `TestVacation_DaysBounds` |
+| VACATION-13 | 4.1 | MUST | A configured maximum is greater than seven days (365 here). | `TestVacation_DaysBounds` |
+| VACATION-14 | 4.1 | SHOULD | A configured maximum is greater than thirty days (365 here). | `TestVacation_DaysBounds` |
+| VACATION-15 | 4.1 | Normative | Omitting `:days` uses the greater of seven days and the minimum; a value above the maximum is clamped before duration conversion. | `TestVacation_DaysBounds` |
+| VACATION-16 | 4, 4.2 | Normative | The response destination is the SMTP envelope sender; never substitute From or Reply-To. Suppress null or unavailable reverse-paths. | `TestVacation_EnvelopeDestination`, `TestSieve_Vacation_NullReversePathSuppressed` |
+| VACATION-17 | 4.2, 8 | MUST NOT | Send the same response to a sender more frequently than the interval, unless the script changes. | n/a: host's job: Executor owns persistent tracking storage and time; Vacation supplies Interval, ReplyTo and response identity arguments. |
+| VACATION-18 | 4.2 | Normative | For tracking, identical explicit handles identify the same response even when other arguments differ. | n/a: host's job: the library reports Handle and HandleSet without discarding an empty handle (proved by VACATION-08); Executor performs tracking. |
+| VACATION-19 | 4.2 | Normative | Without a handle, synthesize response identity from the original :subject, :from, :mime and reason arguments. | n/a: host's job: the unchanged arguments, including SubjectSet, are reported (VACATION-04, VACATION-07, VACATION-26); Executor constructs its storage key. |
+| VACATION-20 | 4.2 | REQUIRED | Different response identities can elicit separate replies even within the interval for the same sender. | n/a: host's job: persistent de-duplication is outside this evaluator; it reports each selected action. |
+| VACATION-21 | 4.2 | MUST NOT | Expand variables before deriving the response-tracking identity. | n/a: the variables extension (RFC 5229) is unsupported; no variable expansion occurs. |
+| VACATION-22 | 4.2 | MAY | Reset previous-response records when a script changes. | n/a: host's job: script lifecycle and persistent tracking records are host-owned. |
+| VACATION-23 | 4.2 | MUST NOT | Limit remembered responses to fewer than 1000. | n/a: host's job: the library has no persistent response store or storage limit. |
+| VACATION-24 | 4.2 | SHOULD | When response tracking is bounded, discard the oldest records first. | n/a: host's job: eviction policy belongs to the persistent response store. |
+| VACATION-25 | 4.3 | MUST | Encode subject text as RFC 2047 encoded words if and only if it contains non-ASCII characters. | n/a: host's job: the library passes UTF-8 Subject unchanged and generates no response headers. |
+| VACATION-26 | 4.3, 5.7 | Normative | Preserve the supplied :from mailbox-list and take the response body from the reason string. | `TestVacation_CallbackArguments` |
+| VACATION-27 | 4.3, 5.3 | MUST | When :subject is omitted, generate a default, normally "Auto: " followed by the original subject. | n/a: host's job: SubjectSet identifies omission; Executor generates the outgoing subject using the original Message. |
+| VACATION-28 | 4.3 | MAY | Restrict permitted :from identities, preferably ignoring disallowed identities rather than failing. | n/a: not selected: the library checks syntax but leaves account/identity authorization to the host. |
+| VACATION-29 | 4.4, 5 | Normative | Without :mime the reason is UTF-8 text; with :mime it is a complete MIME entity. | `TestVacation_CallbackArguments` |
+| VACATION-30 | 4.5, 8 | MUST NOT | Respond unless a recipient identity occurs in To, Cc, Bcc, Resent-To, Resent-Cc or Resent-Bcc; the final envelope recipient is an identity. | `TestVacation_PersonalRecipient` |
+| VACATION-31 | 4.5 | Normative | `:addresses` adds recipient identities to those already known, rather than replacing them. | `TestVacation_PersonalRecipient` |
+| VACATION-32 | 4.6 | MAY | Suppress replies based on other headers or content indicating a response is inappropriate; bulk/list/junk Precedence is suppressed. | `TestVacation_Suppression` |
+| VACATION-33 | 4.6 | MUST | Maintain an implementation-defined list of system addresses excluded from replies (MAILER-DAEMON, LISTSERV, majordomo, owner-* and *-request here). | `TestVacation_Suppression` |
+| VACATION-34 | 4.6 | MUST NOT | Send vacation replies to an address on the system-address exclusion list. | `TestVacation_Suppression` |
+| VACATION-35 | 4.6 | SHOULD NOT | Respond to messages carrying any List-Id, List-Help, List-Subscribe, List-Unsubscribe, List-Post, List-Owner or List-Archive field. | `TestVacation_Suppression` |
+| VACATION-36 | 4.6 | SHOULD NOT | Respond when Auto-Submitted has a value other than no, including auto-generated and auto-replied. | `TestVacation_Suppression` |
+| VACATION-37 | 4.7 | Normative | Vacation does not cancel the implicit keep. | `TestVacation_ActionInteraction` |
+| VACATION-38 | 4.7 | MUST | A second executed vacation action fails the script with an error; an unexecuted branch does not count. | `TestVacation_ActionInteraction` |
+| VACATION-39 | 4.7 | MUST NOT | Treat vacation with discard, keep, fileinto or redirect as an error. | `TestVacation_ActionInteraction` |
+| VACATION-40 | 5 | MUST | Accept UTF-8 input for response content. | `TestVacation_CallbackArguments` |
+| VACATION-41 | 5 | MAY | Transcode generated responses to other character sets. | n/a: host's job: response serialization and character-set selection are outside the library. |
+| VACATION-42 | 5 | SHOULD | Reject :mime actions whose MIME headers contain 8-bit material; outgoing MIME headers conform to MIME conventions. | n/a: host's job: Executor validates the supplied MIME entity before sending; the library reports Body and MIME without serializing a message. |
+| VACATION-43 | 5.1 | SHOULD | Use a null SMTP MAIL FROM for the response. | n/a: host's job: the library opens no SMTP transaction. |
+| VACATION-44 | 5.1 | SHOULD | Use NOTIFY=NEVER on RCPT TO when the SMTP NOTARY extension is available. | n/a: host's job: SMTP capability negotiation and transport are outside the library. |
+| VACATION-45 | 5.2 | SHOULD | Set Date to the response generation time. | n/a: host's job: the library generates no response headers. |
+| VACATION-46 | 5.3 | SHOULD | Use an appropriate fixed subject when both :subject and the original Subject are absent. | n/a: host's job: SubjectSet identifies omission; the host has the original Message and creates the reply headers. |
+| VACATION-47 | 5.4 | SHOULD | Default the response From to the script owner unless :from overrides it. | n/a: host's job: the library reports From; the host knows the script owner and generates headers. |
+| VACATION-48 | 5.5 | SHOULD | Set response To to the response recipient. | n/a: host's job: ReplyTo supplies the destination; Executor constructs the outgoing To header. |
+| VACATION-49 | 5.6; RFC 3834 | SHOULD | Include Auto-Submitted: auto-replied in the outgoing vacation response. | n/a: host's job: the library reports an action and never constructs an outgoing message or headers. |
+| VACATION-50 | 5.8 | MUST | Set In-Reply-To to the original Message-ID when it exists. | n/a: host's job: the host retains the original Message and generates the response headers. |
+| VACATION-51 | 5.8 | SHOULD | Update References with the original Message-ID when it exists. | n/a: host's job: the host generates response threading headers from the original Message. |
+| VACATION-52 | 5.8 | Normative | Without an original Message-ID, In-Reply-To and References need not be generated or changed. | n/a: host's job: optional threading headers are generated by Executor, not the evaluator. |

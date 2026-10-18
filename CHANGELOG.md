@@ -12,9 +12,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `reject` (`false`), retaining `Disposition == Reject` and `RejectReason` for
   both. Hosts can apply the separate refusal policies in RFC 5429 §2.1 and §2.2.
 
+- A separate RFC 5230 checklist maps vacation requirements to tests or explains
+  the host responsibility. Vacation callbacks now retain `From`, `MIME`,
+  `Handle`, `HandleSet`, and `SubjectSet`, so the host can generate responses
+  and implement the specified response-tracking identity.
+
 - `CHECKLIST.md` maps every requirement of RFC 5228, and each clause of RFC 5429 (`reject`, `ereject`), to the test that proves it, checked in CI by `internal/checklist`; a 95% statement-coverage gate (exceptions in `COVERAGE.md`) and fuzz targets `FuzzParse` and `FuzzDecodeEncodedCharacters`.
 
 ### Breaking
+
+- **Vacation enforces RFC 5230 argument and safety rules.** A reason is required;
+  duplicate/unknown tags and invalid `:from` mailbox-lists are errors. `:days`
+  is clamped to 1..365 before duration conversion, preventing overflow.
+  Replies require a personal recipient in the original addressing headers,
+  matched against final envelope recipients plus `:addresses` aliases. List,
+  automated, bulk and excluded system mail is suppressed. An absent envelope
+  sender no longer falls back to the From header, and a second executed
+  vacation action returns an evaluation error with the implicit keep.
 
 - **`keep` with an argument and `reject`/`ereject` without a reason are refused
   at parse time.** RFC 5228 §4.3 gives `keep` no arguments, so `keep "x";` is now
