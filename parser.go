@@ -1367,6 +1367,11 @@ func (p *parser) parseStringList() ([]string, error) {
 		list = append(list, s.str)
 		if p.peek().kind == tComma {
 			p.next()
+			// RFC 5228 §8.1: string-list = "[" string *("," string) "]", so a
+			// comma must be followed by another string.
+			if p.peek().kind == tRBracket {
+				return nil, p.errf("expected a string after the comma, got ]")
+			}
 			continue
 		}
 		break

@@ -19,6 +19,8 @@ func (p panicExec) FileInto(folder string, create bool) {
 // still happen ... 'fileinto'+'discard' is equivalent to 'fileinto'." Before the
 // fix, discard halted the script, so the fileinto never ran and the message was
 // lost.
+//
+// checklist: SIEVE-ACT-02 SIEVE-ACT-05
 func TestSieve_DiscardThenFileintoStillDelivers(t *testing.T) {
 	script := `require "fileinto";
 if header :is "Subject" "Test message" {
@@ -39,6 +41,8 @@ if header :is "Subject" "Test message" {
 
 // The reverse order (fileinto then discard) must also deliver: discard only
 // cancels the implicit keep, it does not withdraw an already-recorded delivery.
+//
+// checklist: SIEVE-ACT-02 SIEVE-ACT-05
 func TestSieve_FileintoThenDiscardStillDelivers(t *testing.T) {
 	script := `require "fileinto";
 if true {
@@ -55,6 +59,8 @@ if true {
 }
 
 // discard must no longer stop the script: an action after it still runs.
+//
+// checklist: SIEVE-ACT-05
 func TestSieve_DiscardDoesNotStopScript(t *testing.T) {
 	script := `require "fileinto";
 if true {
@@ -68,6 +74,8 @@ if true {
 
 // (b) A bare discard (nothing else) drops the message: the implicit keep is
 // cancelled and no delivering action was taken.
+//
+// checklist: SIEVE-ACT-05
 func TestSieve_BareDiscardDropsMessage(t *testing.T) {
 	script := `if true { discard; }`
 	r := runSieve(t, script, sieveEmail())
@@ -81,6 +89,8 @@ func TestSieve_BareDiscardDropsMessage(t *testing.T) {
 
 // (c) A script that takes no delivering action (empty, or all tests fall through)
 // delivers via the implicit keep to the default mailbox.
+//
+// checklist: SIEVE-ACT-06
 func TestSieve_NoActionImpliesImplicitKeep(t *testing.T) {
 	// A script whose only command's test does not match, so no action fires.
 	script := `require "fileinto";
@@ -100,6 +110,8 @@ if header :is "Subject" "does-not-match" {
 }
 
 // An entirely empty script also delivers via the implicit keep.
+//
+// checklist: SIEVE-ACT-06
 func TestSieve_EmptyScriptImpliesImplicitKeep(t *testing.T) {
 	r := runSieve(t, ``, sieveEmail())
 	if r.disposition != Continue {
@@ -112,6 +124,8 @@ func TestSieve_EmptyScriptImpliesImplicitKeep(t *testing.T) {
 
 // (d) `stop` before any action ends processing, but the implicit keep (not yet
 // cancelled) still delivers to the default mailbox.
+//
+// checklist: SIEVE-ACT-06 SIEVE-CMD-04
 func TestSieve_StopBeforeActionKeepsImplicitly(t *testing.T) {
 	script := `require "fileinto";
 stop;
@@ -130,6 +144,8 @@ if true { fileinto "Unreached"; }`
 
 // A `discard` before `stop` cancels the implicit keep; stop then ends processing
 // with no delivering action, so the message is dropped (not implicitly kept).
+//
+// checklist: SIEVE-ACT-05 SIEVE-CMD-04
 func TestSieve_DiscardThenStopDrops(t *testing.T) {
 	script := `require "fileinto";
 if true {
@@ -146,6 +162,8 @@ if true { fileinto "Unreached"; }`
 // (e) A runtime error mid-script (an Executor callback panics) must not lose the
 // message: RFC 5228 §2.10.6 requires a fail-safe implicit keep, with the error
 // reported so the host can notify the user.
+//
+// checklist: SIEVE-ACT-07
 func TestSieve_RuntimeErrorKeepsMessage(t *testing.T) {
 	s, err := Parse(`require "fileinto";
 if true { fileinto "Boom"; }`)

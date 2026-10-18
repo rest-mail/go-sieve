@@ -2,6 +2,7 @@ package sieve
 
 import "testing"
 
+// checklist: SIEVE-CMD-01
 func TestParseSieveScript_RequiresAndCommands(t *testing.T) {
 	script := `require ["fileinto", "envelope"];
 if true { keep; }
@@ -18,6 +19,7 @@ discard;`
 	}
 }
 
+// checklist: SIEVE-CMD-01
 func TestValidateSieve_Errors(t *testing.T) {
 	bad := []string{
 		`if true { keep;`,                      // unterminated block
@@ -34,6 +36,7 @@ func TestValidateSieve_Errors(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-LEX-10
 func TestValidateSieve_AcceptsNewConstructs(t *testing.T) {
 	good := []string{
 		`if allof (exists "Subject", size :over 1K) { discard; }`,
@@ -51,6 +54,7 @@ if header :is "Subject" "x" { fileinto "A"; } elsif true { fileinto "B"; } else 
 	}
 }
 
+// checklist: SIEVE-LEX-07
 func TestValidateSieve_RejectsEmptyStringList(t *testing.T) {
 	// RFC 5228 §8.2: string-list = "[" string *("," string) "]" / string — a
 	// bracketed list must contain at least one string. An empty "[]" has no
@@ -78,6 +82,7 @@ if true { setflag []; }`},
 	}
 }
 
+// checklist: SIEVE-ACT-03
 func TestValidateSieve_RejectsRedirectControlChars(t *testing.T) {
 	// A "text:" multi-line literal lets control characters into the redirect
 	// target. A host that builds SMTP commands or message headers from the
@@ -100,6 +105,7 @@ func TestValidateSieve_RejectsRedirectControlChars(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-ACT-03
 func TestValidateSieve_AcceptsNormalRedirect(t *testing.T) {
 	good := []string{
 		`redirect "ops@example.com";`,
@@ -114,6 +120,7 @@ redirect :copy "copy@example.com";`,
 	}
 }
 
+// checklist: SIEVE-LEX-10
 func TestValidateSieve_Valid(t *testing.T) {
 	scripts := []string{
 		`require "fileinto";
@@ -140,6 +147,7 @@ if envelope :is "from" "a@b.com" {
 	}
 }
 
+// checklist: SIEVE-LEX-03
 func TestLexQuotedString_RejectsBareCRAndNUL(t *testing.T) {
 	// RFC 5228 §8.1: quoted-safe = CRLF / octet-not-qspecial, where
 	// octet-not-qspecial excludes NUL, CR and LF. A bare CR (not part of a
@@ -160,6 +168,7 @@ func TestLexQuotedString_RejectsBareCRAndNUL(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-LEX-03
 func TestLexQuotedString_AcceptsCRLF(t *testing.T) {
 	// A CRLF pair inside a quoted string is permitted (quoted-safe = CRLF), so a
 	// multi-line quoted string must lex and preserve the CRLF in its value.
@@ -176,6 +185,7 @@ func TestLexQuotedString_AcceptsCRLF(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-LEX-08
 func TestValidateSieve_RejectsSizeOverflow(t *testing.T) {
 	// A K/M/G quantifier is a plain multiply. Without an overflow guard, a large
 	// value silently wraps int64: 9999999999G computes ~1.07e19, which exceeds
@@ -197,6 +207,7 @@ func TestValidateSieve_RejectsSizeOverflow(t *testing.T) {
 	}
 }
 
+// checklist: SIEVE-LEX-08
 func TestValidateSieve_AcceptsRepresentableSizes(t *testing.T) {
 	// Values that fit in int64 after the quantifier multiply must still parse,
 	// including the largest representable G-quantified value (8G < MaxInt64).

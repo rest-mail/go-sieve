@@ -144,6 +144,53 @@ Adapt your own email representation into the neutral `Message` before evaluating
 are testable; `Envelope` supplies the SMTP identities the `envelope` test reads;
 `Body` and `Attachments` feed the `body` and `size` tests.
 
+## The RFC checklist
+
+[CHECKLIST.md](CHECKLIST.md) lists the requirements of RFC 5228 item by item,
+and a small program, [`internal/checklist`](internal/checklist/main.go), checks
+it against the tests in CI. It is the same program as
+[go-spf](https://github.com/rest-mail/go-spf)'s,
+[go-mtasts](https://github.com/rest-mail/go-mtasts)'s and the other `go-*`
+libraries'.
+
+The checklist is a Markdown file holding one or more tables whose header is
+exactly:
+
+```markdown
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| SIEVE-CMD-04 | 3.3 | Normative | `stop` ends the script, from any depth of nesting. | `TestSieve_Stop` |
+| SIEVE-ACT-04 | 4.3 | SHOULD | An implementation keeps a redirect from looping. | n/a: the host's job. |
+```
+
+- **ID** is unique, upper case, and ends in a number.
+- **Section** is the RFC section (or sections) the requirement comes from.
+- **Level** is the RFC 2119 keyword it carries, or `Normative` for normative
+  text without a keyword.
+- **Requirement** says what is required, in one line (no `|`).
+- **Tests** lists the test functions that cover it, separated by commas, or
+  says `n/a:` and why it does not apply.
+
+Each test names the items it covers in its doc comment:
+
+```go
+// checklist: SIEVE-CMD-04
+func TestSieve_Stop(t *testing.T) {
+```
+
+`go run ./internal/checklist [-file CHECKLIST.md] [package dir ...]` scans the
+`_test.go` files of the given package directories (default `.`) and fails when:
+
+- an ID is used twice, or a row is malformed;
+- an item names no test and is not marked `n/a`;
+- an item lists a test that does not exist, or that does not name the item;
+- a test names an item that does not exist, is `n/a`, or does not list it;
+- a `Test` or `Fuzz` function names no item (`Example` functions may).
+
+CI also fails below 95% statement coverage (the statements left uncovered are
+listed in [COVERAGE.md](COVERAGE.md)) and fuzzes each fuzz target (`FuzzParse`,
+`FuzzDecodeEncodedCharacters`) for 30 seconds.
+
 ## Documentation
 
 Full API reference:
@@ -153,6 +200,7 @@ Full API reference:
 
 Recent releases — see [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
+- **Unreleased** — checked against RFC 5228 item by item; a string list with a trailing comma is now rejected; an RFC checklist, a 95% coverage gate and fuzzing.
 - **v0.3.0** (2026-07-25) — breaking: evaluation `Outcome.ImplicitKeep` host-contract (fixes discard mail-loss) + `Vacation.Days`→`Interval`; comparator and encoded-character conformance.
 - **v0.2.0** (2026-07-25) — breaking: `require` is now enforced; parser recursion bounded and redirect-target/size-quantifier hardening.
 - **v0.1.1** (2026-07-23) — documentation and packaging polish for the initial release.
