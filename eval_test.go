@@ -924,7 +924,7 @@ func TestSieve_Discard(t *testing.T) {
 	}
 }
 
-// checklist: SIEVE-EXT-05
+// checklist: SIEVE-EXT-05 REJECT-02
 func TestSieve_Reject(t *testing.T) {
 	script := `require "reject";
 if header :is "Subject" "Test message" {
