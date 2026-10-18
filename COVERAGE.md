@@ -1,7 +1,7 @@
 # Coverage exceptions
 
-CI fails when statement coverage of `./...` falls below 95%. Coverage is 97.1%
-(the package alone 96.9%); the statements below are the ones left uncovered.
+CI fails when statement coverage of `./...` falls below 95%. Coverage is 97.6%
+(the package alone 97.4%); the statements below are the ones left uncovered.
 Add an entry here whenever you leave a statement uncovered.
 
 ## Left uncovered on purpose

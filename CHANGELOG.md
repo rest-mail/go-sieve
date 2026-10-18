@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `Outcome.ExtendedReject` distinguishes an executed `ereject` (`true`) from
+  `reject` (`false`), retaining `Disposition == Reject` and `RejectReason` for
+  both. Hosts can apply the separate refusal policies in RFC 5429 §2.1 and §2.2.
+
 - `CHECKLIST.md` maps every requirement of RFC 5228, and each clause of RFC 5429 (`reject`, `ereject`), to the test that proves it, checked in CI by `internal/checklist`; a 95% statement-coverage gate (exceptions in `COVERAGE.md`) and fuzz targets `FuzzParse` and `FuzzDecodeEncodedCharacters`.
 
 ### Breaking
@@ -28,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `Outcome.ImplicitKeep` and any explicit `Keep`.
 
 ### Fixed
+
+- `Parse` and `Validate` reject `reject`/`ereject` combined with `vacation` on
+  the same control path, in either order, before any host callback (RFC 5429
+  §2.4). Alternatives of one `if`/`elsif`/`else` remain valid; independent
+  conditions are conservatively assumed able to match together.
 
 - A string list with a trailing comma (`["a",]`) is rejected; RFC 5228 §8.1 puts a string after every comma.
 - **`fileinto :copy` and `redirect :copy` no longer cancel the implicit keep.**
