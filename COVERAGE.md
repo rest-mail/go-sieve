@@ -15,10 +15,9 @@ Add an entry here whenever you leave a statement uncovered.
 These are known gaps, not exclusions: error returns that propagate a failure of
 a helper (`return nil, err` after `expect` or `parseStringList` in
 `parseIf`, `parseBlock`, `parseTestList`, `parseSizeTest`, `parseFileinto`,
-`parseReject`, `parseNotify`, `parseVacation`, `parseBodyTest`), the helper
-itself being covered through other callers; the `ereject` action
-(`parseCommand`), `require` inside a block (`parseRequire`), a second match type
-or body transform and the `:content` argument (`parseMatchOptions`), and a few
+`parseNotify`, `parseVacation`, `parseBodyTest`), the helper itself being
+covered through other callers; `require` inside a block (`parseRequire`), a
+second match type or body transform and the `:content` argument (`parseMatchOptions`), and a few
 defensive branches of the lexer and of `decodeEncodedCharacters` and
 `asciiNumeric`. The same table will shrink as the extension requirements
-(RFC 5230, 5232, 5173, 3894, 5429, 5490) are checked item by item.
+(RFC 5230, 5232, 5173, 3894, 5490) are checked item by item.

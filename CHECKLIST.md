@@ -13,12 +13,12 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 `go run ./internal/checklist`; the format is described in the
 [README](README.md#the-rfc-checklist).
 
-Not covered yet: the requirements of the extensions the package implements
-(RFC 5230 vacation, 5232 imap4flags, 5173 body, 3894 copy, 5429 reject, 5490
-mailbox) are each one row in the last section, mapping the existing tests, and
-have not been checked clause by clause. The `Received` and loop requirements of
-`redirect` belong to the host. One known deviation from the grammar is recorded
-as SIEVE-ACT-10.
+RFC 5429 (`reject` and `ereject`) is checked clause by clause in its own
+section. Not covered yet: the requirements of the other extensions the package
+implements (RFC 5230 vacation, 5232 imap4flags, 5173 body, 3894 copy, 5490
+mailbox) are each one row in the extensions section, mapping the existing tests,
+and have not been checked clause by clause. The `Received` and loop requirements
+of `redirect` belong to the host.
 
 
 ## Lexical structure (§2.2–2.4)
@@ -89,11 +89,11 @@ as SIEVE-ACT-10.
 | SIEVE-ACT-07 | 2.10.6 | MUST | When an error occurs while the script runs, the message is kept rather than lost. | `TestSieve_RuntimeErrorKeepsMessage`, `TestEvaluate_NilMessage_DoesNotPanic`, `TestEvaluate_NilMessage_NilScriptStillGuarded`, `TestEvaluate_PanicWithErrorValue` |
 | SIEVE-ACT-08 | 2.10.4 | Normative | Actions run in script order, each tests the message as received (actions do not change it), and a test that cannot match does not stop the script. | `TestSieve_CombinedExtensions`, `TestSieve_InvalidRegex_Skipped` |
 | SIEVE-ACT-09 | 6.1 | Normative | `fileinto`, `reject`, `envelope`, `vacation` and the other extensions are only usable once declared, each under its capability string. | `TestRequire_AcceptsProperlyDeclaredScripts`, `TestRequire_RejectsUndeclaredExtensionUse` |
-| SIEVE-ACT-10 | 4.1, 8.2 | Normative | `keep` takes no positional arguments of its own. | n/a: a known gap. The parser skips any arguments of `keep` so that `keep :flags …` (imap4flags) loads; `keep "x";` is accepted although the grammar of RFC 5228 §8.2 has no argument for it. Tracked in the PR description. |
+| SIEVE-ACT-10 | 4.3, 8.2 | Normative | `keep` takes no positional arguments of its own; `keep "x";` is an error. The only argument accepted is `:flags` (RFC 5232 §5), once `imap4flags` is declared. | `TestKeep_RefusesArguments` |
 
 ## Beyond RFC 5228: the extensions the package implements
 
-The package also implements extensions that RFC 5228 only allows. Each has a row below mapping its existing tests; checking each extension's own RFC requirement by requirement (RFC 5230, 5232, 5173, 3894, 5429, 5490) is not done yet and is listed as a gap in the pull request.
+The package also implements extensions that RFC 5228 only allows. Each has a row below mapping its existing tests; checking each extension's own RFC requirement by requirement (RFC 5230, 5232, 5173, 3894, 5490) is not done yet. RFC 5429 has its own section after this one.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
@@ -101,6 +101,35 @@ The package also implements extensions that RFC 5228 only allows. Each has a row
 | SIEVE-EXT-02 | RFC 5232 | Normative | `setflag`, `addflag` and `removeflag` change the flag set that later `keep` and `fileinto` use. | `TestSieve_SetAndAddFlag`, `TestSieve_RemoveFlag`, `TestSieve_SetFlagEscaped`, `TestExtensionArguments_Parse` |
 | SIEVE-EXT-03 | RFC 5173 | Normative | `body` tests the text of the message body (HTML tags stripped, the plain part of a multipart preferred) with a match type and comparator. | `TestSieve_BodyContains`, `TestSieve_BodyContains_NoMatch`, `TestSieve_BodyContains_HTMLStripped`, `TestSieve_BodyContains_MultipartPlainPreferred`, `TestSieve_BodyIs`, `TestExtractBodyText_PlainText`, `TestExtractBodyText_HTML`, `TestExtractBodyText_Multipart`, `TestExtractBodyText_MultipartHTMLOnly`, `TestStripHTMLTags`, `TestEvaluate_BodyTest_DepthBounded`, `TestEvaluate_BodyTest_DepthWithinCapStillMatches`, `TestEvaluate_BodyTest_PartCountBounded` |
 | SIEVE-EXT-04 | RFC 3894 | Normative | `:copy` on `fileinto` and `redirect` leaves the implicit keep in effect. | `TestSieve_RedirectCopyTag`, `TestSieve_CopyImplicitKeep`, `TestSieve_FileintoCopyDistinctFromConsuming`, `TestExtensionArguments_Parse` |
-| SIEVE-EXT-05 | RFC 5429, 5490 | Normative | `reject` refuses the message with a reason; `fileinto :create` asks the host to create the mailbox. | `TestSieve_Reject`, `TestSieve_FileintoCreate`, `TestExtensionArguments_Parse` |
+| SIEVE-EXT-05 | RFC 5429, 5490 | Normative | `reject` refuses the message with a reason (each clause of RFC 5429 is in the next section); `fileinto :create` asks the host to create the mailbox. | `TestSieve_Reject`, `TestSieve_FileintoCreate`, `TestExtensionArguments_Parse` |
 | SIEVE-EXT-06 | non-standard | Normative | `:regex` is a match type of the package, not of any RFC; an invalid expression never matches. | `TestSieve_HeaderRegex`, `TestSieve_HeaderRegex_NoMatch`, `TestSieve_HeaderRegex_CaseInsensitive`, `TestSieve_BodyRegex`, `TestSieve_AddressRegex`, `TestSieve_EnvelopeRegex`, `TestMatchOne_ComparatorsAndRegex` |
 | SIEVE-EXT-07 | non-standard | Normative | `notify` asks the host to send a notification. | `TestSieve_Notify_Basic`, `TestSieve_Notify_Conditional`, `TestSieve_Notify_NoMatch`, `TestSieve_Notify_MultiLine`, `TestExtensionArguments_Parse` |
+
+
+## RFC 5429: `reject` and `ereject`
+
+Each clause of [RFC 5429](https://www.rfc-editor.org/rfc/rfc5429). The library
+decides whether a script refuses the message and with what reason, and reports
+it as `Outcome{Disposition: Reject, RejectReason: …}`; how the refusal reaches
+the sender (an SMTP/LMTP 5XX reply, a DSN or an MDN) is the host's job, so those
+clauses are n/a here. A section number alone is RFC 5429.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| EREJECT-01 | 2.1 | Normative | `ereject <reason: string>`, under the capability `ereject`: one reason string is required. | `TestReject_RequiresReason` |
+| EREJECT-02 | 2.1 | Normative | `ereject` cancels the implicit keep and refuses the message; the reason is a UTF-8 string. | `TestReject_RefusesAndCancelsImplicitKeep` |
+| EREJECT-03 | 2.1 | MUST | Carry out the most preferable refusal possible (a 5XX reply over SMTP/LMTP, else a non-delivery report) and fall back to the lesser one if it fails. | n/a: the host's job; the library hands it the refusal and the reason. |
+| EREJECT-04 | 2.1 | SHOULD | Log each case where no non-delivery report is sent, and why. | n/a: the host's job, it decides whether a report is sent. |
+| EREJECT-05 | 2.1 | MUST NOT | `ereject` is not available where protocol-level refusal is impossible (an MUA), and is available everywhere `reject` is. | n/a: the library runs in a server (MDA/MTA) that can refuse at protocol level, and offers `ereject` together with `reject`. |
+| EREJECT-06 | 2.1.1 | MUST | Refusing at SMTP/LMTP level uses a 5XX reply (550 SHOULD be used); a reason that cannot be sent as is is replaced; after the transaction a DSN is sent, following RFC 3464 and RFC 3462, with action "failed" and the reason. | n/a: the host's job. |
+| REJECT-01 | 2.2 | Normative | `reject <reason: string>`, under the capability `reject`: one reason string is required, and a bare `reject;` is an error. | `TestReject_RequiresReason` |
+| REJECT-02 | 2.2 | Normative | `reject` cancels the implicit keep and refuses the message; the reason is a UTF-8 string, kept exactly. | `TestReject_RefusesAndCancelsImplicitKeep`, `TestSieve_Reject` |
+| REJECT-03 | 2.4 | MUST | Never execute more than one `reject` (or `ereject`) in a script. | `TestReject_OnlyOneRuns` |
+| REJECT-04 | 2.2.1 | MUST | `reject` refuses by a failure MDN (disposition "deleted", sent automatically, with the reason), or MAY refuse at SMTP/LMTP level under the conditions of §2.2; MDN logging SHOULD be done. | n/a: the host's job. |
+| REJECT-05 | 2.3 | MUST NOT | `reject` is not silently upgraded to `ereject`. | n/a: a known gap. The library does not upgrade either, but both produce the same `Outcome`, so the host cannot tell which one ran and must treat every refusal alike. |
+| REJECT-06 | 2.3 | SHOULD | Script generators use `ereject` for anti-spam and anti-virus refusals, and check the target supports it before upgrading. | n/a: addressed to script generators, not to an interpreter. |
+| REJECT-07 | 2.4 | MUST | `reject` is incompatible with `vacation`. | n/a: a known gap. `reject` halts the script, so a `vacation` after it never runs, but a `vacation` that ran before it has already been handed to the host. |
+| REJECT-08 | 2.4 | Normative | A `reject` cancels the implicit keep. | `TestReject_RefusesAndCancelsImplicitKeep` |
+| REJECT-09 | 2.4 | SHOULD NOT | Do not permit `reject` together with actions that deliver the message (`keep`, `fileinto`, `redirect`). | n/a: permitted, as §2.4 allows for archiving; a delivering action before the `reject` has already been handed to the host, and the `Outcome` is still Reject. |
+| REJECT-10 | 2.4 | MUST NOT | An action that modifies the body has no effect on the content of a DSN or MDN. | n/a: the library implements no body-modifying action, and the DSN or MDN is the host's. |
+| REJECT-11 | 2.5 | MUST | A multi-line reason is returned as a multi-line SMTP/LMTP reply, no line over the SMTP limit (CRLFs MAY be inserted), with enhanced status code 5.7.1 or 5.7.0 if RFC 2034 is supported. | n/a: the host's job; the library returns the reason, CRLFs included, unchanged. |

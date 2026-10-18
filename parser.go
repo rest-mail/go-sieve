@@ -693,8 +693,7 @@ func (p *parser) parseCommand() (sieveCmd, error) {
 	case "stop":
 		return &stopCmd{}, p.finishStatement()
 	case "keep":
-		p.skipArguments()
-		return &keepCmd{}, p.finishStatement()
+		return p.parseKeep()
 	case "discard":
 		return &discardCmd{}, p.finishStatement()
 	case "fileinto":
@@ -835,6 +834,25 @@ func (p *parser) finishStatement() error {
 	return err
 }
 
+// parseKeep parses keep. RFC 5228 §4.3 gives keep no arguments; the only one
+// accepted is the :flags tagged argument of RFC 5232 §5, once "imap4flags" is
+// declared. Anything else, such as keep "x";, is refused.
+func (p *parser) parseKeep() (sieveCmd, error) {
+	for p.peek().kind == tTag {
+		tag := p.next().str
+		if tag != ":flags" {
+			return nil, p.errf("unexpected tagged argument %q on keep", tag)
+		}
+		if err := p.requireCapability("imap4flags", "keep :flags"); err != nil {
+			return nil, err
+		}
+		if _, err := p.parseStringList(); err != nil {
+			return nil, err
+		}
+	}
+	return &keepCmd{}, p.finishStatement()
+}
+
 func (p *parser) parseFileinto() (sieveCmd, error) {
 	cmd := &fileintoCmd{}
 	for p.peek().kind == tTag {
@@ -909,16 +927,15 @@ func firstControlChar(s string) rune {
 	return -1
 }
 
+// parseReject parses reject and ereject. RFC 5429 §2.1 and §2.2 give both a
+// single required argument, reject <reason: string>, so a bare reject; is
+// refused.
 func (p *parser) parseReject() (sieveCmd, error) {
-	cmd := &rejectCmd{}
-	if p.peek().kind == tString {
-		reason, err := p.decodeStringConstant(p.next())
-		if err != nil {
-			return nil, err
-		}
-		cmd.reason = reason
+	reason, err := p.expect(tString, "a reason string")
+	if err != nil {
+		return nil, err
 	}
-	return cmd, p.finishStatement()
+	return &rejectCmd{reason: reason.str}, p.finishStatement()
 }
 
 func (p *parser) parseFlag(op string) (sieveCmd, error) {
@@ -1383,31 +1400,6 @@ func (p *parser) parseStringList() ([]string, error) {
 		return nil, fmt.Errorf("sieve: line %d: empty string list []: a string list must contain at least one string", open.line)
 	}
 	return list, nil
-}
-
-// skipArguments discards optional tagged/positional arguments of a command we
-// accept but whose arguments we ignore (e.g. keep :flags ...).
-func (p *parser) skipArguments() {
-	for {
-		switch p.peek().kind {
-		case tTag, tNumber, tString:
-			p.next()
-		case tLBracket:
-			p.skipBracketed()
-		default:
-			return
-		}
-	}
-}
-
-func (p *parser) skipBracketed() {
-	p.next() // [
-	for p.peek().kind != tRBracket && p.peek().kind != tEOF {
-		p.next()
-	}
-	if p.peek().kind == tRBracket {
-		p.next()
-	}
 }
 
 // ── encoded-character (RFC 5228 §2.4.2.4) ────────────────────────────

@@ -8,9 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- `CHECKLIST.md` maps every requirement of RFC 5228 to the test that proves it, checked in CI by `internal/checklist`; a 95% statement-coverage gate (exceptions in `COVERAGE.md`) and fuzz targets `FuzzParse` and `FuzzDecodeEncodedCharacters`.
+- `CHECKLIST.md` maps every requirement of RFC 5228, and each clause of RFC 5429 (`reject`, `ereject`), to the test that proves it, checked in CI by `internal/checklist`; a 95% statement-coverage gate (exceptions in `COVERAGE.md`) and fuzz targets `FuzzParse` and `FuzzDecodeEncodedCharacters`.
 
 ### Breaking
+
+- **`keep` with an argument and `reject`/`ereject` without a reason are refused
+  at parse time.** RFC 5228 §4.3 gives `keep` no arguments, so `keep "x";` is now
+  an error; the only argument accepted is `:flags` (RFC 5232 §5), and only once
+  `imap4flags` is declared. RFC 5429 §2.1 and §2.2 give `reject` and `ereject`
+  one required reason string, so a bare `reject;` is now an error. Scripts that
+  relied on either are refused by `Parse` and `Validate`.
 
 - **`Executor.Redirect` now receives the redirect's `:copy` tag:
   `Redirect(addr string, copy bool)`.** A host could not tell a bare `redirect`
