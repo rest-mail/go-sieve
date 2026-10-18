@@ -162,6 +162,11 @@ const (
 type Outcome struct {
 	Disposition  Disposition
 	RejectReason string // set only when Disposition == Reject
+	// ExtendedReject is true only when the executed refusal was ereject, rather
+	// than reject (RFC 5429). Both use Disposition == Reject and RejectReason.
+	// The host must preserve the distinction: ereject prefers protocol-level
+	// refusal with a DSN fallback (§2.1), while reject uses the policy in §2.2.
+	ExtendedReject bool
 	// ImplicitKeep reports that the RFC 5228 §2.10.2 implicit keep is in effect:
 	// the script performed no keep, discard, or fileinto or redirect without
 	// :copy, so the host must deliver the message to the default mailbox in
@@ -224,7 +229,8 @@ type Executor interface {
 	Notify(method, message string)
 }
 
-// Validate reports whether a Sieve script is syntactically valid. It accepts
+// Validate reports whether a Sieve script is syntactically valid and its
+// actions are compatible (see [Parse]). It accepts
 // the same [Option]s as [Parse]; nesting beyond [DefaultMaxDepth] (or the limit
 // set with [WithMaxDepth]) is reported as invalid.
 func Validate(script string, opts ...Option) error {
@@ -302,11 +308,12 @@ type evalState struct {
 	//                  stop the script. If no delivering action also ran, the
 	//                  message is dropped.
 	//   rejected     — reject ran; a terminal refusal that halts the script.
-	implicitKeep bool
-	delivered    bool
-	discarded    bool
-	rejected     bool
-	rejectReason string
+	implicitKeep   bool
+	delivered      bool
+	discarded      bool
+	rejected       bool
+	rejectReason   string
+	extendedReject bool
 
 	// Delivery de-duplication (RFC 5228 §2.10.3): "the same message MUST NOT be
 	// delivered to the same destination more than once", even when several
@@ -381,6 +388,7 @@ func (st *evalState) runCmd(c sieveCmd) (halt bool) {
 		st.implicitKeep = false
 		st.rejected = true
 		st.rejectReason = cmd.reason
+		st.extendedReject = cmd.extended
 		return true
 
 	case *fileintoCmd:
@@ -458,7 +466,7 @@ func (st *evalState) deliverRedirect(cmd *redirectCmd) {
 func (st *evalState) finalize() Outcome {
 	switch {
 	case st.rejected:
-		return Outcome{Disposition: Reject, RejectReason: st.rejectReason}
+		return Outcome{Disposition: Reject, RejectReason: st.rejectReason, ExtendedReject: st.extendedReject}
 	case st.implicitKeep:
 		// Nothing cancelled the implicit keep: deliver to the default mailbox, in
 		// addition to any :copy fileinto or redirect the Executor recorded.

@@ -126,9 +126,9 @@ clauses are n/a here. A section number alone is RFC 5429.
 | REJECT-02 | 2.2 | Normative | `reject` cancels the implicit keep and refuses the message; the reason is a UTF-8 string, kept exactly. | `TestReject_RefusesAndCancelsImplicitKeep`, `TestSieve_Reject` |
 | REJECT-03 | 2.4 | MUST | Never execute more than one `reject` (or `ereject`) in a script. | `TestReject_OnlyOneRuns` |
 | REJECT-04 | 2.2.1 | MUST | `reject` refuses by a failure MDN (disposition "deleted", sent automatically, with the reason), or MAY refuse at SMTP/LMTP level under the conditions of §2.2; MDN logging SHOULD be done. | n/a: the host's job. |
-| REJECT-05 | 2.3 | MUST NOT | `reject` is not silently upgraded to `ereject`. | n/a: a known gap. The library does not upgrade either, but both produce the same `Outcome`, so the host cannot tell which one ran and must treat every refusal alike. |
+| REJECT-05 | 2.3 | MUST NOT | `reject` is not silently upgraded to `ereject`. | `TestReject_OutcomeDistinguishesExtendedRefusal` |
 | REJECT-06 | 2.3 | SHOULD | Script generators use `ereject` for anti-spam and anti-virus refusals, and check the target supports it before upgrading. | n/a: addressed to script generators, not to an interpreter. |
-| REJECT-07 | 2.4 | MUST | `reject` is incompatible with `vacation`. | n/a: a known gap. `reject` halts the script, so a `vacation` after it never runs, but a `vacation` that ran before it has already been handed to the host. |
+| REJECT-07 | 2.4 | MUST | `reject` is incompatible with `vacation`. | `TestReject_VacationIncompatible`, `TestReject_VacationExclusiveBranches` |
 | REJECT-08 | 2.4 | Normative | A `reject` cancels the implicit keep. | `TestReject_RefusesAndCancelsImplicitKeep` |
 | REJECT-09 | 2.4 | SHOULD NOT | Do not permit `reject` together with actions that deliver the message (`keep`, `fileinto`, `redirect`). | n/a: permitted, as §2.4 allows for archiving; a delivering action before the `reject` has already been handed to the host, and the `Outcome` is still Reject. |
 | REJECT-10 | 2.4 | MUST NOT | An action that modifies the body has no effect on the content of a DSN or MDN. | n/a: the library implements no body-modifying action, and the DSN or MDN is the host's. |

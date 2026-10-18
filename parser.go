@@ -67,7 +67,10 @@ type redirectCmd struct {
 	addr string
 	copy bool // RFC 3894 :copy — targets a destination distinct from a consuming redirect
 }
-type rejectCmd struct{ reason string }
+type rejectCmd struct {
+	reason   string
+	extended bool
+}
 
 // flagCmd covers setflag / addflag / removeflag from the imap4flags extension.
 type flagCmd struct {
@@ -555,7 +558,10 @@ type parser struct {
 // package overview). Nesting of tests and control blocks is capped at
 // [DefaultMaxDepth] (override with [WithMaxDepth]); a script that exceeds the
 // cap is rejected rather than allowed to exhaust the stack at parse or
-// evaluation time.
+// evaluation time. Reject/ereject and vacation on the same control path are
+// incompatible (RFC 5429 §2.4); independent conditions are conservatively
+// assumed able to match together. Use alternatives of one if/elsif/else chain
+// when the actions are mutually exclusive.
 func Parse(src string, opts ...Option) (*Script, error) { return parseSieveScript(src, opts...) }
 
 func parseSieveScript(src string, opts ...Option) (*Script, error) {
@@ -575,7 +581,49 @@ func parseSieveScript(src string, opts ...Option) (*Script, error) {
 	if p.peek().kind != tEOF {
 		return nil, p.errf("unexpected %s", p.describe(p.peek()))
 	}
+	if _, err := checkActionCompatibility(cmds, actionUsage{}); err != nil {
+		return nil, err
+	}
 	return &Script{requires: p.requires, commands: cmds}, nil
+}
+
+// actionUsage records actions that can precede the next command. All action
+// names are static in this language, so incompatibilities can be refused before
+// Evaluate hands any action to the host. Independent conditions are treated
+// conservatively; alternatives within a single if/elsif/else are exclusive.
+// Even actions after stop/reject are checked, so reversing their source order
+// cannot hide an invalid combination behind a terminal command.
+type actionUsage struct {
+	reject   bool
+	vacation bool
+}
+
+func checkActionCompatibility(cmds []sieveCmd, seen actionUsage) (actionUsage, error) {
+	for _, c := range cmds {
+		switch cmd := c.(type) {
+		case *rejectCmd:
+			if seen.vacation {
+				return seen, fmt.Errorf("sieve: reject/ereject and vacation are incompatible")
+			}
+			seen.reject = true
+		case *vacationCmd:
+			if seen.reject {
+				return seen, fmt.Errorf("sieve: reject/ereject and vacation are incompatible")
+			}
+			seen.vacation = true
+		case *ifCmd:
+			before := seen
+			for _, branch := range cmd.branches {
+				usage, err := checkActionCompatibility(branch.block, before)
+				if err != nil {
+					return seen, err
+				}
+				seen.reject = seen.reject || usage.reject
+				seen.vacation = seen.vacation || usage.vacation
+			}
+		}
+	}
+	return seen, nil
 }
 
 func (p *parser) peek() token { return p.toks[p.pos] }
@@ -707,12 +755,12 @@ func (p *parser) parseCommand() (sieveCmd, error) {
 		if err := p.requireCapability("reject", "the reject action"); err != nil {
 			return nil, err
 		}
-		return p.parseReject()
+		return p.parseReject(false)
 	case "ereject":
 		if err := p.requireCapability("ereject", "the ereject action"); err != nil {
 			return nil, err
 		}
-		return p.parseReject()
+		return p.parseReject(true)
 	case "setflag", "addflag", "removeflag":
 		if err := p.requireCapability("imap4flags", "the "+name+" action"); err != nil {
 			return nil, err
@@ -930,12 +978,12 @@ func firstControlChar(s string) rune {
 // parseReject parses reject and ereject. RFC 5429 §2.1 and §2.2 give both a
 // single required argument, reject <reason: string>, so a bare reject; is
 // refused.
-func (p *parser) parseReject() (sieveCmd, error) {
+func (p *parser) parseReject(extended bool) (sieveCmd, error) {
 	reason, err := p.expect(tString, "a reason string")
 	if err != nil {
 		return nil, err
 	}
-	return &rejectCmd{reason: reason.str}, p.finishStatement()
+	return &rejectCmd{reason: reason.str, extended: extended}, p.finishStatement()
 }
 
 func (p *parser) parseFlag(op string) (sieveCmd, error) {
