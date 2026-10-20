@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - An RFC 5232 section in `CHECKLIST.md` checks the `imap4flags` extension
   clause by clause (FLAGS-01 to FLAGS-21). `hasflag` and delivering with the
   `:flags` list are recorded as not supported yet.
+- An RFC 5173 section in `CHECKLIST.md` checks the `body` extension clause by
+  clause (BODY-01 to BODY-18). `:raw` matching the undecoded body and telling a
+  missing body from an empty one are recorded as not supported yet.
 
 ### Changed
 
@@ -24,6 +27,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   system flags a client cannot set are dropped, the five settable system flags
   are written in their usual case, and a repeated flag is passed once. Hosts
   that did this themselves can stop.
+- **`body :content` matches the parts it names** (RFC 5173 §5.2). The list of
+  content types was parsed and ignored, so `:content "text/html"` matched the
+  plain-text part. Each part of a listed type (`""` for all, `"text"` for any
+  subtype, `"text/html"` for one) is now matched on its own, so a key never
+  spans two parts. `:content` also takes a string list, as the RFC says, rather
+  than one string. `Body.Content` is documented as decoded UTF-8 text.
 
 ### Breaking
 
