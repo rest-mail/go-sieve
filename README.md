@@ -43,10 +43,10 @@ takes effect. A runtime error during evaluation fails safe to the implicit keep
 - **Match types**: `:is`, `:contains`, `:matches` (glob with `*` and `?`), plus a
   non-standard `:regex`. **Comparators**: `i;ascii-casemap` (default),
   `i;octet`, `i;ascii-numeric`. **Address parts**: `:all`/`:localpart`/`:domain`.
-- **Strict where it counts, lenient elsewhere**: the parser is strict about the
-  constructs it understands (so `Validate` catches real mistakes) but skips
-  unknown commands, tests, and tagged arguments, so scripts using extensions this
-  package does not implement still load and run their recognised parts.
+- **Extension validation**: undeclared extensions and unknown commands, tests,
+  and tagged arguments are errors. The RFC 5490 `mailbox` capability currently
+  supports `fileinto :create` only; `mailboxexists` is not implemented.
+  `mboxmetadata` and `servermetadata` are not supported.
 - Zero external dependencies.
 
 ## Install
@@ -118,6 +118,14 @@ if header :contains "Subject" "invoice" {
 Check a script's syntax without evaluating it with `sieve.Validate(src)`.
 
 ## The Executor
+
+For `FileInto(folder, create)`, a true `create` asks the host to create the
+mailbox before delivery if it is missing, or use it unchanged if it exists
+(RFC 5490 §3.2). The library does not inspect the mailstore. A creation failure
+must be treated as a runtime error: the callback can panic with an error, which
+`Evaluate` returns as `Outcome.Error` with `Outcome.ImplicitKeep` set. The
+callback has no error return, so a failure recorded only in host state is not
+visible to the evaluator.
 
 `Executor` is the seam between the language and your mailbox. Its methods
 (`Keep`, `FileInto`, `Redirect`, `Flag`, `Vacation`, `Notify`) are invoked in

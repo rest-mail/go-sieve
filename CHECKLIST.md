@@ -14,10 +14,10 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 [README](README.md#the-rfc-checklist).
 
 RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`) and
-RFC 5232 (`imap4flags`) are checked clause by clause in their own sections. Not
-covered yet: RFC 5173 body and 5490 mailbox are each one row in the extensions
-section, mapping the existing tests, and have not been checked clause by clause. The `Received`
-and loop requirements of `redirect` belong to the host.
+RFC 5232 (`imap4flags`) and RFC 5490 (`mailbox`) are checked clause by clause in
+their own sections. Not covered yet: RFC 5173 body is one row in the extensions
+section, mapping the existing tests, and has not been checked clause by clause.
+The `Received` and loop requirements of `redirect` belong to the host.
 
 
 ## Lexical structure (§2.2–2.4)
@@ -255,3 +255,28 @@ rows about variable names cover only the error they must cause.
 | FLAGS-19 | 3; RFC 5228 §2.10.3 | MUST | When repeated `keep` or `fileinto` deliveries are merged, the last list of flags wins. | n/a: not supported yet, follows FLAGS-18. |
 | FLAGS-20 | 5 | MUST | Flags the mailbox cannot store are ignored, and failing to store one is not a runtime error. | n/a: host's job: the library stores nothing, and `Executor.Flag` returns no error. |
 | FLAGS-21 | 7 | Normative | The extension sets flags only on the message being processed, never on other messages in the store. | n/a: host's job: `Executor.Flag` is called for the current message only. |
+
+## RFC 5490 — mailbox status and creation (§3.1–3.2)
+
+[RFC 5490](https://www.rfc-editor.org/rfc/rfc5490) registers three independent
+capabilities: `mailbox`, `mboxmetadata` and `servermetadata`. The library accepts
+`require "mailbox"` for `fileinto :create`, but does not implement the other
+half of that capability, `mailboxexists`. This is partial support, not full RFC
+5490 conformance. Adding a mailstore query needs a host API decision; see
+rest-mail/rest-mail-server#374. The RFC's §3.1 example depends on that missing
+test and cannot yet be evaluated.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| MAILBOX-01 | 3.2 | Normative | `:create` requires `mailbox`; the `fileinto` action independently requires `fileinto`. | `TestMailbox_RequiresCapability` |
+| MAILBOX-02 | 3.2; RFC 5228 §2.4.2 | Normative | `:create` is an optional, argument-free tag before the single mailbox string, at most once, on `fileinto` only. | `TestMailbox_CreateSyntax` |
+| MAILBOX-03 | 3.2 | Normative | A tagged action requests creation of its named mailbox; an untagged action does not. | `TestMailbox_CreateCallback` |
+| MAILBOX-04 | 3.2; RFC 3894 §3 | Normative | `:create` controls creation, without changing the action's implicit-keep or `:copy` semantics. | `TestMailbox_CreateCallback` |
+| MAILBOX-05 | 3.2 | Normative | Create a missing mailbox before delivering into it. | n/a: host's job: `Executor.FileInto` receives the folder and creation request; the library has no storage access. |
+| MAILBOX-06 | 3.2 | Normative | If the mailbox already exists, ignore the creation request. | n/a: host's job: only the host can determine whether the mailbox exists. |
+| MAILBOX-07 | 3.2; RFC 5228 §2.10.6 | Normative | A creation failure is an execution error, with fail-safe keep rather than message loss. | `TestMailbox_CreationFailure` |
+| MAILBOX-08 | 3.1 | Normative | `mailboxexists` accepts a string list and is true only when every mailbox exists and permits delivery by the script user. | n/a: not supported yet, see rest-mail/rest-mail-server#374: the evaluator has no mailstore query API; this also prevents running the RFC's example. |
+| MAILBOX-09 | 3.1 | Normative | For IMAP storage, delivery eligibility means READ-WRITE without ACL, or the user's p or i ACL right. | n/a: follows MAILBOX-08; the host must check the evaluated user's rights, not just existence. |
+| MAILBOX-10 | 3.1 | Normative | An existence/permission check does not guarantee a subsequent delivery will succeed, such as when over quota. | n/a: follows MAILBOX-08; delivery and quota enforcement are the host's responsibility. |
+| MAILBOX-11 | 3.3–3.4 | Normative | `mboxmetadata` provides mailbox annotation matching and existence tests, using the script user's permissions and private annotations. | n/a: unsupported separate capability; the parser rejects `require "mboxmetadata"`. |
+| MAILBOX-12 | 4–5 | Normative | `servermetadata` provides server annotation matching and existence tests; annotation access uses the script user's context, handles temporary failures and preserves script-level confidentiality. | n/a: unsupported separate capability; no annotations are retrieved and the parser rejects `require "servermetadata"`. |

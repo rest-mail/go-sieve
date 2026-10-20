@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- An RFC 5490 section in `CHECKLIST.md` audits `mailbox` (MAILBOX-01 to
+  MAILBOX-12), with tests for `fileinto :create` syntax, capability enforcement,
+  callback arguments and fail-safe handling of a host creation error.
+  `mailboxexists` is recorded as not supported yet; mailbox creation and access
+  checks belong to the host. The README and `Executor.FileInto` document the
+  partial capability and the host's creation/error contract.
 - An RFC 3894 section in `CHECKLIST.md` checks the `copy` extension clause by
   clause (COPY-01 to COPY-06), with tests for its capability, syntax, the RFC's
   example and a copy taken alongside other actions.
