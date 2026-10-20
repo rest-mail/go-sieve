@@ -10,7 +10,7 @@ import "testing"
 // (last one wins, or the stray tag was consumed and ignored), masking script
 // mistakes; each must now be a parse error.
 //
-// checklist: SIEVE-LEX-04 SIEVE-MT-04
+// checklist: SIEVE-LEX-04 SIEVE-MT-04 COPY-02
 func TestValidateSieve_RejectsDuplicateOrInapplicableTags(t *testing.T) {
 	bad := []struct {
 		name   string
@@ -46,6 +46,15 @@ if body :domain "y" { keep; }`},
 		{"size over and under", `if size :over :under 5 { keep; }`},
 		{"size repeated over", `if size :over :over 5 { keep; }`},
 		{"size with match type", `if size :is 5 { keep; }`},
+
+		// fileinto and redirect: a repeated or undefined tag.
+		{"fileinto repeated :create", `require ["fileinto", "mailbox"]; fileinto :create :create "x";`},
+		{"fileinto repeated :flags", `require ["fileinto", "imap4flags"]; fileinto :flags "a" :flags "b" "x";`},
+		{"fileinto repeated :copy", `require ["fileinto", "copy"]; fileinto :copy :copy "x";`},
+		{"fileinto with bogus tag", `require "fileinto"; fileinto :bogus "x";`},
+		{"redirect repeated :copy", `require "copy"; redirect :copy :copy "a@b.com";`},
+		{"redirect with bogus tag", `redirect :bogus "a@b.com";`},
+		{"redirect with unsupported :list", `redirect :list "a@b.com";`},
 	}
 	for _, tc := range bad {
 		if err := Validate(tc.script); err == nil {

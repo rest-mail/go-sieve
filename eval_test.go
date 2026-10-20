@@ -1669,7 +1669,7 @@ func TestSieve_DuplicateKeepDeliversOnce(t *testing.T) {
 // A :copy fileinto targets a destination distinct from a consuming fileinto to
 // the same mailbox (RFC 3894), so the two are not collapsed.
 //
-// checklist: SIEVE-ACT-02 SIEVE-EXT-04
+// checklist: SIEVE-ACT-02 SIEVE-EXT-04 COPY-04
 func TestSieve_FileintoCopyDistinctFromConsuming(t *testing.T) {
 	applied := evalApplied(t, `require ["fileinto", "copy"];
 if true {

@@ -35,7 +35,7 @@ if true { fileinto "X"; }`,
 // extension command/test/comparator/tagged-argument that was not declared with
 // require MUST be treated as unavailable, i.e. rejected.
 //
-// checklist: SIEVE-ACT-09 SIEVE-CMD-01 SIEVE-CMD-03
+// checklist: SIEVE-ACT-09 SIEVE-CMD-01 SIEVE-CMD-03 COPY-01
 func TestRequire_RejectsUndeclaredExtensionUse(t *testing.T) {
 	bad := []struct {
 		name   string

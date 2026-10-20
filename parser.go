@@ -910,8 +910,14 @@ func (p *parser) parseKeep() (sieveCmd, error) {
 
 func (p *parser) parseFileinto() (sieveCmd, error) {
 	cmd := &fileintoCmd{}
+	seen := map[string]bool{}
 	for p.peek().kind == tTag {
-		switch p.next().str {
+		tag := p.next().str
+		if seen[tag] {
+			return nil, p.errf("duplicate fileinto argument %q", tag)
+		}
+		seen[tag] = true
+		switch tag {
 		case ":create":
 			// RFC 5490: fileinto :create requires the "mailbox" extension.
 			if err := p.requireCapability("mailbox", "fileinto :create"); err != nil {
@@ -932,6 +938,8 @@ func (p *parser) parseFileinto() (sieveCmd, error) {
 				return nil, err
 			}
 			cmd.copy = true
+		default:
+			return nil, p.errf("unknown fileinto argument %q", tag)
 		}
 	}
 	folder, err := p.expect(tString, "a folder name")
@@ -944,16 +952,23 @@ func (p *parser) parseFileinto() (sieveCmd, error) {
 
 func (p *parser) parseRedirect() (sieveCmd, error) {
 	cmd := &redirectCmd{}
+	seen := map[string]bool{}
 	for p.peek().kind == tTag {
-		switch p.next().str {
+		tag := p.next().str
+		if seen[tag] {
+			return nil, p.errf("duplicate redirect argument %q", tag)
+		}
+		seen[tag] = true
+		switch tag {
 		case ":copy":
 			// RFC 3894: the :copy tagged argument requires the "copy" extension.
 			if err := p.requireCapability("copy", "redirect :copy"); err != nil {
 				return nil, err
 			}
 			cmd.copy = true
+		default:
+			return nil, p.errf("unknown redirect argument %q", tag)
 		}
-		// Other tags (:list, :notify, …) carry no argument we act on.
 	}
 	addr, err := p.expect(tString, "a redirect address")
 	if err != nil {

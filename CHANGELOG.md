@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- An RFC 3894 section in `CHECKLIST.md` checks the `copy` extension clause by
+  clause (COPY-01 to COPY-06), with tests for its capability, syntax, the RFC's
+  example and a copy taken alongside other actions.
+
+### Breaking
+
+- **`fileinto` and `redirect` reject a repeated or unknown tagged argument**
+  (RFC 5228 §2.4.2, RFC 3894 §3). `fileinto :copy :copy "x"`,
+  `fileinto :bogus "x"` and `redirect :list "a@b"` were accepted and the tag
+  ignored; each is now a parse error.
+
 ## [0.4.0] - 2026-10-19
 
 ### Added
