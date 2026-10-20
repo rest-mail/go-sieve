@@ -761,7 +761,7 @@ if header :contains "Subject" "test" { fileinto :create "Archive/2026"; }`
 
 // ── imap4flags ───────────────────────────────────────────────────────
 
-// checklist: SIEVE-EXT-02
+// checklist: SIEVE-EXT-02 FLAGS-02
 func TestSieve_SetAndAddFlag(t *testing.T) {
 	script := `require "imap4flags";
 if true {
@@ -775,7 +775,7 @@ if true {
 	}
 }
 
-// checklist: SIEVE-EXT-02
+// checklist: SIEVE-EXT-02 FLAGS-02 FLAGS-13
 func TestSieve_RemoveFlag(t *testing.T) {
 	script := `require "imap4flags";
 if true {
@@ -788,7 +788,7 @@ if true {
 	}
 }
 
-// checklist: SIEVE-EXT-02
+// checklist: SIEVE-EXT-02 FLAGS-10
 func TestSieve_SetFlagEscaped(t *testing.T) {
 	// "\\Seen" in source is the IMAP system flag \Seen.
 	script := `require "imap4flags";

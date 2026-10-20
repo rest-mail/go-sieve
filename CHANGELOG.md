@@ -11,6 +11,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - An RFC 3894 section in `CHECKLIST.md` checks the `copy` extension clause by
   clause (COPY-01 to COPY-06), with tests for its capability, syntax, the RFC's
   example and a copy taken alongside other actions.
+- An RFC 5232 section in `CHECKLIST.md` checks the `imap4flags` extension
+  clause by clause (FLAGS-01 to FLAGS-21). `hasflag` and delivering with the
+  `:flags` list are recorded as not supported yet.
+
+### Changed
+
+- **`Executor.Flag` receives a cleaned-up list of flags** (RFC 5232 §2). A
+  string holding several space-separated flags is split into them, empty names
+  are dropped, a name that is not a valid IMAP flag (non-ASCII, or holding
+  `( ) { % * " \ ]` or a control character) is dropped, `\Recent` and other
+  system flags a client cannot set are dropped, the five settable system flags
+  are written in their usual case, and a repeated flag is passed once. Hosts
+  that did this themselves can stop.
 
 ### Breaking
 
