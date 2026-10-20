@@ -996,7 +996,7 @@ if body :contains "nonexistent phrase" {
 	}
 }
 
-// checklist: SIEVE-EXT-03
+// checklist: SIEVE-EXT-03 BODY-16
 func TestSieve_BodyContains_HTMLStripped(t *testing.T) {
 	script := `require ["body", "fileinto"];
 if body :contains "important" {

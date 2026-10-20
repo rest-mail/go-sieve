@@ -83,6 +83,21 @@ if body :contains "` + marker + `" { fileinto "TooDeep"; }`
 	}
 }
 
+// TestEvaluate_BodyTest_ContentDepthBounded checks that the :content walk
+// stops at the same depth cap as the default transform.
+//
+// checklist: SIEVE-EXT-03
+func TestEvaluate_BodyTest_ContentDepthBounded(t *testing.T) {
+	const marker = "deeplyburiedneedle"
+	email := sieveEmail()
+	email.Body = deepBodyChain(maxBodyDepth+50, marker)
+	script := `require ["body", "fileinto"];
+if body :content "" :contains "` + marker + `" { fileinto "TooDeep"; }`
+	if folderOf(runSieve(t, script, email)) == "TooDeep" {
+		t.Fatalf(":content reached content past the %d-level cap", maxBodyDepth)
+	}
+}
+
 // TestEvaluate_BodyTest_DepthWithinCapStillMatches guards against the cap being
 // so tight that ordinary, modestly nested messages stop matching.
 //

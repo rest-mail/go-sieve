@@ -150,7 +150,11 @@ type envelopeTest struct {
 type bodyTest struct {
 	comparator string
 	matchType  string
-	keys       []string
+	// transform is the body transform (RFC 5173 §5): ":text" (the default),
+	// ":raw" or ":content". contentTypes holds the :content list.
+	transform    string
+	contentTypes []string
+	keys         []string
 }
 
 func (*allofTest) isTest()    {}
@@ -164,11 +168,12 @@ func (*addressTest) isTest()  {}
 func (*envelopeTest) isTest() {}
 func (*bodyTest) isTest()     {}
 
-// Defaults per RFC 5228.
+// Defaults per RFC 5228, and RFC 5173 §5 for the body transform.
 const (
-	defaultMatchType   = ":is"
-	defaultComparator  = "i;ascii-casemap"
-	defaultAddressPart = ":all"
+	defaultMatchType     = ":is"
+	defaultComparator    = "i;ascii-casemap"
+	defaultAddressPart   = ":all"
+	defaultBodyTransform = ":text"
 )
 
 // supportedCapabilities is the set of extension capability strings this package
@@ -1295,9 +1300,11 @@ func (p *parser) parseSizeTest() (sieveTest, error) {
 
 // matchOptions collects the tagged arguments shared by string-matching tests.
 type matchOptions struct {
-	comparator  string
-	matchType   string
-	addressPart string
+	comparator    string
+	matchType     string
+	addressPart   string
+	bodyTransform string
+	contentTypes  []string
 }
 
 // parseMatchOptions consumes comparator, match-type and (for address/envelope)
@@ -1315,9 +1322,10 @@ type matchOptions struct {
 // part, body transform — may therefore appear at most once.
 func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptions, error) {
 	opts := matchOptions{
-		comparator:  defaultComparator,
-		matchType:   defaultMatchType,
-		addressPart: defaultAddressPart,
+		comparator:    defaultComparator,
+		matchType:     defaultMatchType,
+		addressPart:   defaultAddressPart,
+		bodyTransform: defaultBodyTransform,
 	}
 	var matchTypeSet, comparatorSet, addressPartSet, bodyTransformSet bool
 	for p.peek().kind == tTag {
@@ -1374,12 +1382,14 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 				return opts, p.errf("duplicate or conflicting body transform %q: a test takes at most one body transform", tag)
 			}
 			bodyTransformSet = true
-			// :content carries a content-type string; :raw and :text carry no
-			// argument and are treated uniformly as extracted text.
+			opts.bodyTransform = tag
+			// :content carries a string list of content types (RFC 5173 §5).
 			if tag == ":content" {
-				if _, err := p.expect(tString, "a content type"); err != nil {
+				types, err := p.parseStringList()
+				if err != nil {
 					return opts, err
 				}
+				opts.contentTypes = types
 			}
 		default:
 			return opts, p.errf("unexpected tagged argument %q on this test", tag)
@@ -1491,9 +1501,11 @@ func (p *parser) parseBodyTest() (sieveTest, error) {
 		return nil, err
 	}
 	return &bodyTest{
-		comparator: opts.comparator,
-		matchType:  opts.matchType,
-		keys:       keys,
+		comparator:   opts.comparator,
+		matchType:    opts.matchType,
+		transform:    opts.bodyTransform,
+		contentTypes: opts.contentTypes,
+		keys:         keys,
 	}, nil
 }
 
