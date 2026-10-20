@@ -138,8 +138,12 @@ type Envelope struct {
 // Body is a (possibly multipart) message body used by the body test and size.
 type Body struct {
 	ContentType string
-	Content     string
-	Parts       []Body
+	// Content is the part's text, decoded and in UTF-8: the host removes the
+	// content transfer encoding and converts the charset (RFC 5173 §5.2). For
+	// a multipart or message/rfc822 part, :content matches whatever the host
+	// puts here, such as the prologue or the nested header.
+	Content string
+	Parts   []Body
 }
 
 // Attachment contributes its octet Size to the size test.
@@ -565,7 +569,7 @@ func evalTest(t sieveTest, msg *Message) bool {
 		values := gatherEnvelopeValues(msg, tt.parts, tt.addressPart)
 		return matchAny(values, tt.matchType, tt.comparator, tt.keys)
 	case *bodyTest:
-		return matchAny([]string{extractBodyText(msg)}, tt.matchType, tt.comparator, tt.keys)
+		return matchAny(bodyValues(msg, tt), tt.matchType, tt.comparator, tt.keys)
 	}
 	return false
 }
@@ -1056,6 +1060,63 @@ func wildcardMatch(value, pattern string) bool {
 }
 
 // ── Body text extraction ─────────────────────────────────────────────
+
+// bodyValues returns the strings a body test matches against. With :content
+// (RFC 5173 §5.2) each MIME part whose type matches the list is a separate
+// string, so a key never matches across part boundaries. :text and :raw both
+// match the extracted text: the library has no undecoded body to offer :raw.
+func bodyValues(msg *Message, tt *bodyTest) []string {
+	if tt.transform == ":content" {
+		budget := maxBodyParts
+		return contentPartsBounded(nil, msg.Body, tt.contentTypes, maxBodyDepth, &budget)
+	}
+	return []string{extractBodyText(msg)}
+}
+
+// contentPartsBounded appends the content of b and of every part nested in it
+// whose type matches one of specs. The walk descends into every part, matching
+// or not, and stops at the same depth and part bounds as the other body walks.
+func contentPartsBounded(out []string, b Body, specs []string, depthLeft int, budget *int) []string {
+	if depthLeft <= 0 || *budget <= 0 {
+		return out
+	}
+	*budget--
+	for _, spec := range specs {
+		if contentTypeMatches(spec, b.ContentType) {
+			out = append(out, b.Content)
+			break
+		}
+	}
+	for _, p := range b.Parts {
+		out = contentPartsBounded(out, p, specs, depthLeft-1, budget)
+	}
+	return out
+}
+
+// contentTypeMatches reports whether a :content type matches a part's
+// Content-Type (RFC 5173 §5.2). The empty string matches every type; a bare
+// type matches each of its subtypes; "type/subtype" matches only itself; a
+// spec that begins or ends with a slash, or has more than one, matches none.
+// A part without a Content-Type is text/plain (RFC 2045 §5.2).
+func contentTypeMatches(spec, contentType string) bool {
+	if spec == "" {
+		return true
+	}
+	if strings.HasPrefix(spec, "/") || strings.HasSuffix(spec, "/") || strings.Count(spec, "/") > 1 {
+		return false
+	}
+	mediaType, _, _ := strings.Cut(contentType, ";")
+	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	if mediaType == "" {
+		mediaType = "text/plain"
+	}
+	spec = strings.ToLower(spec)
+	if strings.Contains(spec, "/") {
+		return mediaType == spec
+	}
+	typ, _, _ := strings.Cut(mediaType, "/")
+	return typ == spec
+}
 
 // extractBodyText returns the plain text content of the email body.
 // It prefers text/plain parts; falls back to stripping HTML tags from text/html.

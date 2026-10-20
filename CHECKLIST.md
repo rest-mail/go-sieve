@@ -13,11 +13,10 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 `go run ./internal/checklist`; the format is described in the
 [README](README.md#the-rfc-checklist).
 
-RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`) and
-RFC 5232 (`imap4flags`) and RFC 5490 (`mailbox`) are checked clause by clause in
-their own sections. Not covered yet: RFC 5173 body is one row in the extensions
-section, mapping the existing tests, and has not been checked clause by clause.
-The `Received` and loop requirements of `redirect` belong to the host.
+RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`),
+RFC 5232 (`imap4flags`), RFC 5173 (`body`) and RFC 5490 (`mailbox`) are checked
+clause by clause in their own sections. The `Received` and loop requirements of
+`redirect` belong to the host.
 
 
 ## Lexical structure (§2.2–2.4)
@@ -92,13 +91,13 @@ The `Received` and loop requirements of `redirect` belong to the host.
 
 ## Beyond RFC 5228: the extensions the package implements
 
-The package also implements extensions that RFC 5228 only allows. Each has a row below mapping its existing tests; checking each extension's own RFC requirement by requirement (RFC 5173, 5490) is not done yet. RFC 5429, RFC 5230, RFC 3894 and RFC 5232 have their own sections after this one.
+The package also implements extensions that RFC 5228 only allows. Each has a row below mapping its existing tests; checking RFC 5490 requirement by requirement is not done yet. RFC 5429, RFC 5230, RFC 3894, RFC 5232 and RFC 5173 have their own sections after this one.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
 | SIEVE-EXT-01 | RFC 5230 | Normative | `vacation` (with `:days`, `:seconds`, `:subject`, a reason) asks the host to send an auto-reply to the envelope sender; it is suppressed for the null reverse-path. | `TestSieve_Vacation_Basic`, `TestSieve_Vacation_DefaultDays`, `TestSieve_Vacation_Conditional`, `TestSieve_Vacation_UsesEnvelopeSender`, `TestSieve_Vacation_MultiLine`, `TestSieve_Vacation_SecondsGranularity`, `TestSieve_Vacation_NullReversePathSuppressed`, `TestVacation_ReplyTo`, `TestExtensionArguments_Parse` |
 | SIEVE-EXT-02 | RFC 5232 | Normative | `setflag`, `addflag` and `removeflag` change the flag set that later `keep` and `fileinto` use. | `TestSieve_SetAndAddFlag`, `TestSieve_RemoveFlag`, `TestSieve_SetFlagEscaped`, `TestExtensionArguments_Parse` |
-| SIEVE-EXT-03 | RFC 5173 | Normative | `body` tests the text of the message body (HTML tags stripped, the plain part of a multipart preferred) with a match type and comparator. | `TestSieve_BodyContains`, `TestSieve_BodyContains_NoMatch`, `TestSieve_BodyContains_HTMLStripped`, `TestSieve_BodyContains_MultipartPlainPreferred`, `TestSieve_BodyIs`, `TestExtractBodyText_PlainText`, `TestExtractBodyText_HTML`, `TestExtractBodyText_Multipart`, `TestExtractBodyText_MultipartHTMLOnly`, `TestStripHTMLTags`, `TestEvaluate_BodyTest_DepthBounded`, `TestEvaluate_BodyTest_DepthWithinCapStillMatches`, `TestEvaluate_BodyTest_PartCountBounded` |
+| SIEVE-EXT-03 | RFC 5173 | Normative | `body` tests the text of the message body (HTML tags stripped, the plain part of a multipart preferred) with a match type and comparator. | `TestSieve_BodyContains`, `TestSieve_BodyContains_NoMatch`, `TestSieve_BodyContains_HTMLStripped`, `TestSieve_BodyContains_MultipartPlainPreferred`, `TestSieve_BodyIs`, `TestExtractBodyText_PlainText`, `TestExtractBodyText_HTML`, `TestExtractBodyText_Multipart`, `TestExtractBodyText_MultipartHTMLOnly`, `TestStripHTMLTags`, `TestEvaluate_BodyTest_DepthBounded`, `TestEvaluate_BodyTest_ContentDepthBounded`, `TestEvaluate_BodyTest_DepthWithinCapStillMatches`, `TestEvaluate_BodyTest_PartCountBounded` |
 | SIEVE-EXT-04 | RFC 3894 | Normative | `:copy` on `fileinto` and `redirect` leaves the implicit keep in effect. | `TestSieve_RedirectCopyTag`, `TestSieve_CopyImplicitKeep`, `TestSieve_FileintoCopyDistinctFromConsuming`, `TestExtensionArguments_Parse` |
 | SIEVE-EXT-05 | RFC 5429, 5490 | Normative | `reject` refuses the message with a reason (each clause of RFC 5429 is in the next section); `fileinto :create` asks the host to create the mailbox. | `TestSieve_Reject`, `TestSieve_FileintoCreate`, `TestExtensionArguments_Parse` |
 | SIEVE-EXT-06 | non-standard | Normative | `:regex` is a match type of the package, not of any RFC; an invalid expression never matches. | `TestSieve_HeaderRegex`, `TestSieve_HeaderRegex_NoMatch`, `TestSieve_HeaderRegex_CaseInsensitive`, `TestSieve_BodyRegex`, `TestSieve_AddressRegex`, `TestSieve_EnvelopeRegex`, `TestMatchOne_ComparatorsAndRegex` |
@@ -255,6 +254,39 @@ rows about variable names cover only the error they must cause.
 | FLAGS-19 | 3; RFC 5228 §2.10.3 | MUST | When repeated `keep` or `fileinto` deliveries are merged, the last list of flags wins. | n/a: not supported yet, follows FLAGS-18. |
 | FLAGS-20 | 5 | MUST | Flags the mailbox cannot store are ignored, and failing to store one is not a runtime error. | n/a: host's job: the library stores nothing, and `Executor.Flag` returns no error. |
 | FLAGS-21 | 7 | Normative | The extension sets flags only on the message being processed, never on other messages in the store. | n/a: host's job: `Executor.Flag` is called for the current message only. |
+
+
+## RFC 5173 body extension
+
+[RFC 5173](https://www.rfc-editor.org/rfc/rfc5173) requirements, clause by
+clause. Section numbers in this table refer to RFC 5173. The SIEVE-EXT-03 row
+above remains the overview. The host supplies the body as a tree of `Body`
+parts, each decoded to UTF-8 text; the library picks the parts a body transform
+names and matches them. `:text` (the default) matches one string: the first
+`text/plain` part, or else the first `text/html` part with its tags stripped.
+`:content` matches each part of a listed type as its own string.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| BODY-01 | 3; RFC 5228 §3.2 | Normative | The capability string is `body`; the test is an error unless the script declares it. | `TestBody_RequiresCapability` |
+| BODY-02 | 4; RFC 5228 §2.6.2, §2.6.3 | Normative | The comparator, match type and body transform come in any order; the defaults are `:is` and `i;ascii-casemap`. | `TestBody_ArgumentsAnyOrderAndDefaults` |
+| BODY-03 | 5 | Normative | A body test takes at most one of `:raw`, `:text` and `:content <string-list>`, and no other test takes them. | `TestBody_TransformSyntax` |
+| BODY-04 | 5 | Normative | The default body transform is `:text`. | `TestBody_DefaultTransformIsText` |
+| BODY-05 | 4 | Normative | A message that is a header with no empty line after it has no body: every body test is false, even one for the empty string. | n/a: not supported yet, see rest-mail/rest-mail-server#374: `Message` cannot tell an absent body from an empty one. |
+| BODY-06 | 4 | Normative | The body is matched as a whole, not line by line, so the strings matched hold CRLFs. | `TestBody_NotLineByLine` |
+| BODY-07 | 5.1 | MUST | `:raw` matches the whole undecoded body as one string: transfer encodings stay, and boundaries and the MIME headers of nested parts are part of the content. | n/a: not supported yet, see rest-mail/rest-mail-server#374: `Message` holds no undecoded body, so `:raw` matches the same text as `:text`. |
+| BODY-08 | 5.1 | MUST NOT | A message with syntax errors is still filtered with `:raw`. | n/a: host's job: the host parses the message into `Message`; evaluation never refuses one. |
+| BODY-09 | 5.2 | Normative | A `:content` type of `""` matches every type, a bare type each of its subtypes, and `type/subtype` only itself; one that begins or ends with a slash or has two slashes matches none. | `TestBody_ContentTypeRules` |
+| BODY-10 | 5.2 | Normative | The search for `:content` parts descends into multipart and `message/rfc822` parts; every part of a matching type is searched, and the test is true if any part matches any key. | `TestBody_ContentRecursive`, `TestBody_RFCExample` |
+| BODY-11 | 5.2 | Normative | A matching multipart part is searched in its prologue and its epilogue, as two strings; a matching `message/rfc822` part in its header only. | n/a: host's job: `Body.Content` of a container is matched as one string, so the host puts the prologue and epilogue, or the nested header, there. |
+| BODY-12 | 5.2 | MUST NOT | A key does not match across part boundaries, and the MIME headers of the containing part are not in the data. | `TestBody_NoMatchAcrossParts`, `TestBody_RFCExample` |
+| BODY-13 | 5.2 | MUST | The quoted-printable, base64, 7bit, 8bit and binary transfer encodings are decoded, and US-ASCII, ISO-8859-1 and the US-ASCII subset of ISO-8859-* are converted to UTF-8. | n/a: host's job: `Body.Content` is decoded UTF-8 text, as its doc comment says. |
+| BODY-14 | 5.2 | SHOULD NOT | A NUL octet does not end the content being compared. | `TestBody_NULDoesNotTerminate` |
+| BODY-15 | 5.3 | MUST | All the text taken from one non-container part is in the same string. | `TestBody_TextKeepsPartTogether` |
+| BODY-16 | 5.3 | MAY | `:text` may strip mark-up; the library strips HTML tags. | `TestBody_DefaultTransformIsText`, `TestSieve_BodyContains_HTMLStripped` |
+| BODY-17 | 6 | MUST NOT | With the `variables` extension, wildcards in a body test do not set match variables. | n/a: the `variables` extension is not supported. |
+| BODY-18 | 5.1–5.3 | Normative | The example message and scripts of §5 give the results the RFC describes. | `TestBody_RFCExample` |
+
 
 ## RFC 5490 — mailbox status and creation (§3.1–3.2)
 
