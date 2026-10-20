@@ -6,7 +6,7 @@ import "testing"
 // 5228 §4.3, §8.2): only the :flags tagged argument of RFC 5232 §5 is accepted,
 // and only once "imap4flags" is declared.
 //
-// checklist: SIEVE-ACT-10
+// checklist: SIEVE-ACT-10 COPY-02
 func TestKeep_RefusesArguments(t *testing.T) {
 	good := []string{
 		`keep;`,
