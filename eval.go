@@ -230,7 +230,12 @@ type Executor interface {
 	// §2.10.2 implicit keep does not call this method; it is reported through
 	// Outcome.ImplicitKeep so the host can distinguish it from an explicit keep.
 	Keep()
-	// FileInto delivers into the named folder, creating it when create is set.
+	// FileInto delivers into the named folder. When create is true, the host
+	// must create a missing folder before delivery and leave an existing one
+	// alone (RFC 5490 §3.2). Creation failure is a runtime error: this callback
+	// can panic with an error, which Evaluate reports through Outcome.Error
+	// with the fail-safe implicit keep. Merely recording a failure in the host
+	// does not notify the evaluator; the callback has no error return.
 	FileInto(folder string, create bool)
 	// Redirect forwards the message to addr. copy reports that the action was
 	// tagged :copy (RFC 3894): it forwards a copy without cancelling the implicit
