@@ -234,6 +234,8 @@ type Executor interface {
 	// and any explicit Keep, never by copy alone.
 	Redirect(addr string, copy bool)
 	// Flag applies an imap4flags operation ("setflag", "addflag", "removeflag").
+	// flags is already cleaned up as RFC 5232 §2 requires: one valid, settable
+	// IMAP flag per element, each given once. It may be empty.
 	Flag(op string, flags []string)
 	// Vacation records a vacation auto-reply request.
 	Vacation(v Vacation)

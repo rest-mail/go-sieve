@@ -1016,7 +1016,61 @@ func (p *parser) parseFlag(op string) (sieveCmd, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &flagCmd{op: op, flags: flags}, p.finishStatement()
+	return &flagCmd{op: op, flags: normalizeFlags(flags)}, p.finishStatement()
+}
+
+// settableSystemFlags are the IMAP system flags a client may set (RFC 3501
+// §2.3.2); \Recent and any other system flag are not.
+var settableSystemFlags = map[string]string{
+	`\answered`: `\Answered`,
+	`\flagged`:  `\Flagged`,
+	`\deleted`:  `\Deleted`,
+	`\seen`:     `\Seen`,
+	`\draft`:    `\Draft`,
+}
+
+// normalizeFlags applies RFC 5232 §2 to a list-of-flags: each string is a
+// space-separated list of flag names, empty names are ignored, and a name that
+// is not a valid, settable IMAP flag is dropped. Flags are compared
+// case-insensitively, so a repeated flag is kept once (§3 allows it).
+func normalizeFlags(list []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, s := range list {
+		for _, f := range strings.Split(s, " ") {
+			if strings.HasPrefix(f, `\`) {
+				var ok bool
+				if f, ok = settableSystemFlags[strings.ToLower(f)]; !ok {
+					continue
+				}
+			} else if !isIMAPAtom(f) {
+				continue
+			}
+			key := strings.ToLower(f)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// isIMAPAtom reports whether s is an IMAP atom (RFC 3501 §9): one or more
+// ASCII characters, none of them a control character, a space or one of
+// ( ) { % * " \ ].
+func isIMAPAtom(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c <= 0x20 || c >= 0x7f || strings.IndexByte(`(){%*"\]`, c) >= 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // Vacation uses a site minimum of one day and maximum of 365 days (RFC 5230

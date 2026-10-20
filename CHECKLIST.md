@@ -13,9 +13,9 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 `go run ./internal/checklist`; the format is described in the
 [README](README.md#the-rfc-checklist).
 
-RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`) and RFC 3894 (`copy`)
-are checked clause by clause in their own sections. Not covered yet: RFC 5232
-imap4flags, 5173 body and 5490 mailbox are each one row in the extensions
+RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`) and
+RFC 5232 (`imap4flags`) are checked clause by clause in their own sections. Not
+covered yet: RFC 5173 body and 5490 mailbox are each one row in the extensions
 section, mapping the existing tests, and have not been checked clause by clause. The `Received`
 and loop requirements of `redirect` belong to the host.
 
@@ -92,7 +92,7 @@ and loop requirements of `redirect` belong to the host.
 
 ## Beyond RFC 5228: the extensions the package implements
 
-The package also implements extensions that RFC 5228 only allows. Each has a row below mapping its existing tests; checking each extension's own RFC requirement by requirement (RFC 5232, 5173, 5490) is not done yet. RFC 5429, RFC 5230 and RFC 3894 have their own sections after this one.
+The package also implements extensions that RFC 5228 only allows. Each has a row below mapping its existing tests; checking each extension's own RFC requirement by requirement (RFC 5173, 5490) is not done yet. RFC 5429, RFC 5230, RFC 3894 and RFC 5232 have their own sections after this one.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
@@ -220,3 +220,38 @@ side of RFC 5228.
 | COPY-04 | 3 | Normative | The tagged command files or redirects a copy in addition to whatever else happens to the message. | `TestCopy_InAdditionToOtherActions`, `TestSieve_CopyImplicitKeep`, `TestSieve_FileintoCopyDistinctFromConsuming` |
 | COPY-05 | 3 | Normative | The example script of §3 is accepted and files a copy while keeping the implicit keep. | `TestCopy_RFCExample` |
 | COPY-06 | 4 | MUST | Write access to Sieve scripts is protected as strongly as read/write access to mail. | n/a: host's job: the library parses a script it is given and stores none. |
+
+
+## RFC 5232 imap4flags extension
+
+[RFC 5232](https://www.rfc-editor.org/rfc/rfc5232) requirements, clause by
+clause. Section numbers in this table refer to RFC 5232. The SIEVE-EXT-02 row
+above remains the overview. The library passes each `setflag`, `addflag` and
+`removeflag` to `Executor.Flag` with its list of flags cleaned up as §2
+requires; the host holds the flag set (the "internal variable") and applies it
+to the message it stores. The `variables` extension is not supported, so the
+rows about variable names cover only the error they must cause.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| FLAGS-01 | 1; RFC 5228 §3.2 | Normative | The capability string is `imap4flags`; its actions and the `:flags` tagged argument are errors unless the script declares it. | `TestFlags_RequiresCapability` |
+| FLAGS-02 | 1, 3.1–3.3 | MUST | `setflag`, `addflag` and `removeflag` are implemented: each reaches the host as its own operation, in script order. | `TestFlags_ActionsReachHost`, `TestSieve_SetAndAddFlag`, `TestSieve_RemoveFlag` |
+| FLAGS-03 | 1, 3 | MUST NOT | Without the `variables` extension, a variable name before the list of flags is an error. | `TestFlags_VariableNameRefused` |
+| FLAGS-04 | 5 | Normative | `:flags` takes one list of flags and is a tag of `keep` and `fileinto` only. | `TestFlags_FlagsTagSyntax` |
+| FLAGS-05 | 2, 3.3 | MUST | Empty strings in a list of flags are ignored. | `TestFlags_ListNormalised` |
+| FLAGS-06 | 2 | Normative | A string holding a space-separated list of flag names is the same as a string list of those flags. | `TestFlags_ListNormalised` |
+| FLAGS-07 | 2 | MUST | Spaces are always delimiters; a run of spaces counts as one, and leading and trailing spaces are ignored. | `TestFlags_ListNormalised` |
+| FLAGS-08 | 2 | SHOULD | Each flag is checked against the IMAP grammar (RFC 3501 §9 `flag`), so a non-ASCII flag name is invalid. | `TestFlags_InvalidIgnored` |
+| FLAGS-09 | 2 | MUST | A flag that fails the check is ignored. | `TestFlags_InvalidIgnored` |
+| FLAGS-10 | 2 | MUST | `\Recent` and any other system flag a client cannot set in IMAP are ignored. | `TestFlags_SystemFlags`, `TestSieve_SetFlagEscaped` |
+| FLAGS-11 | 3 | MAY | An action may reorder flags, change their case or drop duplicates without changing the set; the library drops a repeated flag (compared case-insensitively) and writes system flags in their usual case. | `TestFlags_DuplicatesRemoved`, `TestFlags_SystemFlags` |
+| FLAGS-12 | 3.1, 3.2 | Normative | The examples of §3.1 and §3.2 that need no variables give the results the RFC describes. | `TestFlags_RFCExamples` |
+| FLAGS-13 | 3.3 | MUST | Without automatic duplicate removal, `removeflag` removes every occurrence of a flag; removing a flag that is not set is not an error. | `TestFlags_DuplicatesRemoved`, `TestSieve_RemoveFlag` |
+| FLAGS-14 | 6 | Normative | The extension does not change the implicit keep. | `TestFlags_ImplicitKeepUnchanged` |
+| FLAGS-15 | 3 | MUST NOT | Scripts do not assume the order or the case of flags in a list. | n/a: a requirement on scripts, not on the implementation. |
+| FLAGS-16 | 3 | Normative | Without a variable name the actions work on the internal variable, empty when the script starts; `addflag` adds, `removeflag` removes and `setflag` replaces. | n/a: host's job: the host holds the set and applies each operation `Executor.Flag` reports. |
+| FLAGS-17 | 1, 4 | MUST | The `hasflag` test (match type defaulting to `:is`, comparator defaulting to `i;ascii-casemap`, `:count` counting distinct flags). | n/a: not supported yet, see rest-mail/rest-mail-server#374: the library does not hold the flag set, so it cannot test it. |
+| FLAGS-18 | 3, 5 | MUST | `keep` and `fileinto` (and the implicit keep) deliver with the internal variable's flags, or with only the `:flags` list when it is given. | n/a: not supported yet, see rest-mail/rest-mail-server#374: `:flags` is parsed and then dropped, as `Executor.Keep` and `Executor.FileInto` carry no flags. |
+| FLAGS-19 | 3; RFC 5228 §2.10.3 | MUST | When repeated `keep` or `fileinto` deliveries are merged, the last list of flags wins. | n/a: not supported yet, follows FLAGS-18. |
+| FLAGS-20 | 5 | MUST | Flags the mailbox cannot store are ignored, and failing to store one is not a runtime error. | n/a: host's job: the library stores nothing, and `Executor.Flag` returns no error. |
+| FLAGS-21 | 7 | Normative | The extension sets flags only on the message being processed, never on other messages in the store. | n/a: host's job: `Executor.Flag` is called for the current message only. |
