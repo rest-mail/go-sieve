@@ -12,8 +12,9 @@ Add an entry here whenever you leave a statement uncovered.
 
 ## Not covered yet
 
-These are known gaps, not exclusions: a few defensive branches of the lexer and
-of `decodeEncodedCharacters`. `asciiNumeric` no longer has one: it keeps the
+These are known gaps, not exclusions: a few defensive branches of the lexer.
+`TestEncodedCharacter_SequenceErrors` covers every statement of
+`decodeEncodedCharacters`. `asciiNumeric` no longer has a gap: it keeps the
 digit run as a string, so a number too long for a uint64 cannot fail to parse.
 `TestParse_NestedErrorsPropagate` covers the error returns that hand on a
 failure of a nested test, block, string list or expected token in `parseIf`,

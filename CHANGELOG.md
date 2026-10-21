@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The unreachable "require inside a block" check in the parser. A block always
   belongs to an `if`, so the "require must appear before any other command"
   error already refuses it (RFC 5228 §3.2); the message is the only change.
+- The unreachable parse-error branch in `${hex:...}` decoding. A hex-pair is one
+  or two hex digits, so it always fits an octet; the digits are now converted
+  directly. Tests cover leading, trailing and mixed blanks in `${hex:...}` and
+  `${unicode:...}`, and mixed-case hex digits (RFC 5228 §2.4.2.4, SIEVE-LEX-06).
 
 ### Added
 
