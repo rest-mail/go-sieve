@@ -140,6 +140,37 @@ func TestBody_NotLineByLine(t *testing.T) {
 	}
 }
 
+// TestBody_NoBodyIsFalse checks that a message which is only a header, with
+// no empty line after it, has no body: every body test is false, even one for
+// the empty string, while a message with an empty body still matches it (RFC
+// 5173 §4). Such a message also has no blank line to count in its size.
+//
+// checklist: BODY-05
+func TestBody_NoBodyIsFalse(t *testing.T) {
+	scripts := []string{
+		`require "body"; if body :is "" { discard; }`,
+		`require "body"; if body :matches "*" { discard; }`,
+		`require "body"; if body :contains "" { discard; }`,
+		`require "body"; if body :raw :is "" { discard; }`,
+		`require "body"; if body :content "" :contains "" { discard; }`,
+		`require "body"; if not body :contains "x" { discard; }`,
+	}
+	headerOnly := &Message{Headers: Headers{Subject: "hi"}, NoBody: true}
+	emptyBody := &Message{Headers: Headers{Subject: "hi"}}
+	for i, s := range scripts {
+		last := i == len(scripts)-1
+		if got := bodyMatches(t, s, headerOnly); got != last {
+			t.Errorf("%q on a message without a body: matched %v, want %v", s, got, last)
+		}
+		if !bodyMatches(t, s, emptyBody) {
+			t.Errorf("%q on a message with an empty body: did not match", s)
+		}
+	}
+	if got, want := messageSize(headerOnly), messageSize(emptyBody)-2; got != want {
+		t.Errorf("size of a message without a body = %d, want %d (no blank line)", got, want)
+	}
+}
+
 // TestBody_ContentTypeRules checks how a :content type selects parts: the
 // empty string matches all, a bare type matches its subtypes, type/subtype
 // matches itself, and a type with a leading, trailing or second slash matches

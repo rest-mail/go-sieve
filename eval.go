@@ -92,6 +92,12 @@ type Message struct {
 	// Body, and Attachments fields, which is only an approximation because the
 	// reconstructed headers need not be byte-identical to the original.
 	RawSize int64
+	// NoBody marks a message that is a header block with no empty line after
+	// it, so it has no body at all. An empty Body cannot say this: a message
+	// whose body is the empty string still has one. Every body test of a
+	// message without a body is false, even one for the empty string (RFC 5173
+	// §4).
+	NoBody bool
 }
 
 // Headers holds the structured and raw headers used by header/address/exists
@@ -569,6 +575,9 @@ func evalTest(t sieveTest, msg *Message) bool {
 		values := gatherEnvelopeValues(msg, tt.parts, tt.addressPart)
 		return matchAny(values, tt.matchType, tt.comparator, tt.keys)
 	case *bodyTest:
+		if msg.NoBody {
+			return false
+		}
 		return matchAny(bodyValues(msg, tt), tt.matchType, tt.comparator, tt.keys)
 	}
 	return false
@@ -586,7 +595,9 @@ func messageSize(msg *Message) int64 {
 		return msg.RawSize
 	}
 	size := headerSize(msg.Headers)
-	size += 2 // CRLF blank line separating the header block from the body
+	if !msg.NoBody {
+		size += 2 // CRLF blank line separating the header block from the body
+	}
 	size += bodySize(msg.Body)
 	for _, a := range msg.Attachments {
 		size += a.Size
