@@ -272,7 +272,7 @@ names and matches them. `:text` (the default) matches one string: the first
 | BODY-02 | 4; RFC 5228 §2.6.2, §2.6.3 | Normative | The comparator, match type and body transform come in any order; the defaults are `:is` and `i;ascii-casemap`. | `TestBody_ArgumentsAnyOrderAndDefaults` |
 | BODY-03 | 5 | Normative | A body test takes at most one of `:raw`, `:text` and `:content <string-list>`, and no other test takes them. | `TestBody_TransformSyntax` |
 | BODY-04 | 5 | Normative | The default body transform is `:text`. | `TestBody_DefaultTransformIsText` |
-| BODY-05 | 4 | Normative | A message that is a header with no empty line after it has no body: every body test is false, even one for the empty string. | tested |
+| BODY-05 | 4 | Normative | A message that is a header with no empty line after it has no body: every body test is false, even one for the empty string. | `TestBody_NoBodyIsFalse` |
 | BODY-06 | 4 | Normative | The body is matched as a whole, not line by line, so the strings matched hold CRLFs. | `TestBody_NotLineByLine` |
 | BODY-07 | 5.1 | MUST | `:raw` matches the whole undecoded body as one string: transfer encodings stay, and boundaries and the MIME headers of nested parts are part of the content. | n/a: not supported yet, see rest-mail/rest-mail-server#374: `Message` holds no undecoded body, so `:raw` matches the same text as `:text`. |
 | BODY-08 | 5.1 | MUST NOT | A message with syntax errors is still filtered with `:raw`. | n/a: host's job: the host parses the message into `Message`; evaluation never refuses one. |
