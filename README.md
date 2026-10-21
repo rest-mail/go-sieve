@@ -1,6 +1,8 @@
 # go-sieve
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
+[![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
+[![Checklist: 124/178 mapped](https://img.shields.io/badge/checklist-124%2F178%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -219,6 +221,12 @@ func TestSieve_Stop(t *testing.T) {
 CI also fails below 95% statement coverage (the statements left uncovered are
 listed in [COVERAGE.md](COVERAGE.md)) and fuzzes each fuzz target (`FuzzParse`,
 `FuzzDecodeEncodedCharacters`) for 30 seconds.
+
+The coverage badge shows the enforced minimum; measured statement coverage is
+printed in each CI run's **Verify RFC** log. The checklist badge counts
+requirements mapped to tests over all checklist rows, including the 54 `n/a`
+rows with documented reasons. CI checks the badge against the actual checklist
+and its test mappings. The CI badge reports whether verification passed.
 
 ## Documentation
 
