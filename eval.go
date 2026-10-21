@@ -907,8 +907,6 @@ func matchAny(values []string, matchType, comparator string, keys []string) bool
 
 func matchOne(value, key, matchType, comparator string) bool {
 	switch matchType {
-	case ":is":
-		return compareIs(value, key, comparator)
 	case ":contains":
 		if comparator == "i;octet" {
 			return strings.Contains(value, key)
@@ -927,7 +925,9 @@ func matchOne(value, key, matchType, comparator string) bool {
 		}
 		return re.MatchString(value)
 	default:
-		return strings.Contains(asciiCasemapFold(value), asciiCasemapFold(key))
+		// ":is", the default match type (RFC 5228 §2.7.1). The parser accepts
+		// no other tag, so nothing else reaches here.
+		return compareIs(value, key, comparator)
 	}
 }
 

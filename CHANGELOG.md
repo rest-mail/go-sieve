@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Removed
 
+- The unreachable fallback in `matchOne`, which matched an unknown match type as
+  `:contains`. `:is`, the default match type (RFC 5228 §2.7.1), is now its
+  default case; the parser accepts no other tag, so behaviour is unchanged.
 - The unreachable "require inside a block" check in the parser. A block always
   belongs to an `if`, so the "require must appear before any other command"
   error already refuses it (RFC 5228 §3.2); the message is the only change.
