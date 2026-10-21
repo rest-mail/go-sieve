@@ -21,6 +21,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Differential tests (`diff_test.go`) against
+  [foxcpp/go-sieve](https://github.com/foxcpp/go-sieve), a test-only
+  dependency: 37 scripts covering RFC 5228's tests, match types, comparators,
+  address parts, control flow and RFC 3894's `:copy` must deliver the message
+  to the same places in both, and 11 malformed scripts must be refused by both.
+  Where the reference departs from RFC 5228 the expected result is written in
+  the test: it drops the implicit keep after `stop` (§3.3), and it accepts a
+  stray `}`, an `else` with no `if`, two address parts and an unparenthesised
+  test list.
 - `Message.NoBody` marks a message that is a header with no empty line after
   it. Every `body` test of such a message is false, even one for the empty
   string, and its reconstructed size has no blank line (RFC 5173 §4,
