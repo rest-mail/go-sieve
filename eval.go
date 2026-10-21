@@ -71,7 +71,6 @@ import (
 	"fmt"
 	"net/mail"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -949,23 +948,26 @@ func compareIs(value, key, comparator string) bool {
 	}
 }
 
-// asciiNumeric parses a leading run of digits per the i;ascii-numeric
-// comparator (RFC 4790 §9.1). Returns false when the value does not begin with
-// a digit.
-func asciiNumeric(s string) (uint64, bool) {
+// asciiNumeric returns the value of the leading run of digits per the
+// i;ascii-numeric comparator (RFC 4790 §9.1.1), as that run with its leading
+// zeros removed ("0" for a run of zeros). The comparator's integers have no
+// upper bound, so the value is kept as a digit string rather than parsed into a
+// fixed-width integer: two runs are equal exactly when the strings are. Returns
+// false when the value does not begin with a digit (positive infinity).
+func asciiNumeric(s string) (string, bool) {
 	s = strings.TrimSpace(s)
 	end := 0
 	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
 		end++
 	}
 	if end == 0 {
-		return 0, false
+		return "", false
 	}
-	n, err := strconv.ParseUint(s[:end], 10, 64)
-	if err != nil {
-		return 0, false
+	digits := strings.TrimLeft(s[:end], "0")
+	if digits == "" {
+		return "0", true
 	}
-	return n, true
+	return digits, true
 }
 
 func foldForComparator(s, comparator string) string {
