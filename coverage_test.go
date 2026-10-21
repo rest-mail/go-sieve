@@ -2,6 +2,7 @@ package sieve
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -219,5 +220,92 @@ func TestLexer_Errors(t *testing.T) {
 		if err := Validate(s); err == nil {
 			t.Errorf("%q was accepted", s)
 		}
+	}
+}
+
+// TestSize_ReconstructionCountsRawHeaders checks that, without RawSize, the
+// reconstructed size counts the headers held only in Headers.Raw: the size is
+// that of the whole message, header block included.
+//
+// checklist: SIEVE-TST-10
+func TestSize_ReconstructionCountsRawHeaders(t *testing.T) {
+	script := `require "fileinto"; if size :over 1500 { fileinto "Big"; }`
+	small := sieveEmail()
+	if got := folderOf(runSieve(t, script, small)); got == "Big" {
+		t.Fatalf("message without the raw header: size :over 1500 fired")
+	}
+	big := sieveEmail()
+	big.Headers.Raw = map[string][]string{"X-Padding": {strings.Repeat("a", 2000)}}
+	if got := folderOf(runSieve(t, script, big)); got != "Big" {
+		t.Errorf("a 2000-octet raw header is not counted in the reconstructed size, folder = %q", got)
+	}
+}
+
+// TestSize_ReconstructionPartBudget checks that the size reconstruction stops
+// once maxBodyParts parts have been visited: a large part past the budget is not
+// counted, while the same part first in line is.
+//
+// checklist: SIEVE-TST-10
+func TestSize_ReconstructionPartBudget(t *testing.T) {
+	script := `require "fileinto"; if size :over 1000 { fileinto "Big"; }`
+	large := Body{ContentType: "text/plain", Content: strings.Repeat("a", 4000)}
+	filler := make([]Body, maxBodyParts)
+	for i := range filler {
+		filler[i] = Body{ContentType: "text/plain"}
+	}
+
+	past := sieveEmail()
+	past.Body = Body{ContentType: "multipart/mixed", Parts: append(filler, large)}
+	if got := folderOf(runSieve(t, script, past)); got == "Big" {
+		t.Fatalf("size counted a part past the %d-part budget; the walk is unbounded", maxBodyParts)
+	}
+
+	first := sieveEmail()
+	first.Body = Body{ContentType: "multipart/mixed", Parts: append([]Body{large}, filler...)}
+	if got := folderOf(runSieve(t, script, first)); got != "Big" {
+		t.Errorf("size did not count a large part inside the budget, folder = %q", got)
+	}
+}
+
+// TestAddress_RawHeaderOnlyNamed checks that the address test of a header held
+// in Headers.Raw reads that header alone, under any case of its name, and not
+// the other raw headers.
+//
+// checklist: SIEVE-TST-01
+func TestAddress_RawHeaderOnlyNamed(t *testing.T) {
+	msg := sieveEmail()
+	msg.Headers.Raw = map[string][]string{
+		"X-Other": {"other@example.org"},
+		"SENDER":  {"Sam <sam@example.net>"},
+		"X-Last":  {"last@example.org"},
+	}
+	for test, want := range map[string]bool{
+		`address :is :domain "Sender" "example.net"`:  true,
+		`address :is :domain "sender" "example.org"`:  false,
+		`address :is :all "Sender" "sam@example.net"`: true,
+	} {
+		if got := matchedFolder(t, test, msg); got != want {
+			t.Errorf("%s: matched = %v, want %v", test, got, want)
+		}
+	}
+}
+
+// unknownTest is a sieveTest that evalTest does not know.
+type unknownTest struct{}
+
+func (unknownTest) isTest() {}
+
+// TestEvalTest_UnknownIsFalse checks that a test of a kind evalTest does not
+// know is false, so a test added to the parser but not to the evaluator fails
+// closed: no action guarded by it runs. The parser already refuses an
+// undefined test; this is the evaluator's half of that rule.
+//
+// checklist: SIEVE-CMD-01
+func TestEvalTest_UnknownIsFalse(t *testing.T) {
+	if evalTest(unknownTest{}, sieveEmail()) {
+		t.Error("evalTest(unknown) = true, want false")
+	}
+	if !evalTest(&notTest{inner: unknownTest{}}, sieveEmail()) {
+		t.Error("not over an unknown test = false, want true")
 	}
 }
