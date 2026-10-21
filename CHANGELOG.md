@@ -50,6 +50,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   spans two parts. `:content` also takes a string list, as the RFC says, rather
   than one string. `Body.Content` is documented as decoded UTF-8 text.
 
+### Fixed
+
+- **`i;ascii-numeric` compares numbers of any length** (RFC 4790 §9.1.1). A
+  run of digits past 18446744073709551615 did not fit in a uint64 and was
+  treated as a non-number. So `18446744073709551616` equalled
+  `18446744073709551617`, and any such number equalled `"cat"`. Digit runs are
+  now compared exactly, with leading zeros ignored.
+
 ### Breaking
 
 - **`fileinto` and `redirect` reject a repeated or unknown tagged argument**
