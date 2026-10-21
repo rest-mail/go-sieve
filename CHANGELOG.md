@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `Message.NoBody` marks a message that is a header with no empty line after
+  it. Every `body` test of such a message is false, even one for the empty
+  string, and its reconstructed size has no blank line (RFC 5173 §4,
+  BODY-05).
 - An RFC 5490 section in `CHECKLIST.md` audits `mailbox` (MAILBOX-01 to
   MAILBOX-12), with tests for `fileinto :create` syntax, capability enforcement,
   callback arguments and fail-safe handling of a host creation error.

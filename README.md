@@ -166,7 +166,9 @@ Adapt your own email representation into the neutral `Message` before evaluating
 `Headers` carries the common structured fields plus a `Raw` map consulted
 (case-insensitively) for any other header, so custom headers such as `X-Priority`
 are testable; `Envelope` supplies the SMTP identities the `envelope` test reads;
-`Body` and `Attachments` feed the `body` and `size` tests.
+`Body` and `Attachments` feed the `body` and `size` tests. Set `NoBody` for a
+message that is only a header, with no empty line after it: every `body` test of
+it is false, even one for the empty string (RFC 5173 §4).
 
 ## The RFC checklist
 
