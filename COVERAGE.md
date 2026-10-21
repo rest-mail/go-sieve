@@ -13,11 +13,13 @@ Add an entry here whenever you leave a statement uncovered.
 ## Not covered yet
 
 These are known gaps, not exclusions: a few defensive branches of the lexer and
-of `decodeEncodedCharacters` and `asciiNumeric`. `TestParse_NestedErrorsPropagate`
-covers the error returns that hand on a failure of a nested test, block, string
-list or expected token in `parseIf`, `parseBlock`, `parseTestList`,
-`parseSizeTest`, `parseFileinto`, `parseNotify`, `parseBodyTest` and
-`parseRequire`, and a second match type after `:regex` in `parseMatchOptions`.
+of `decodeEncodedCharacters`. `asciiNumeric` no longer has one: it keeps the
+digit run as a string, so a number too long for a uint64 cannot fail to parse.
+`TestParse_NestedErrorsPropagate` covers the error returns that hand on a
+failure of a nested test, block, string list or expected token in `parseIf`,
+`parseBlock`, `parseTestList`, `parseSizeTest`, `parseFileinto`, `parseNotify`,
+`parseBodyTest` and `parseRequire`, and a second match type after `:regex` in
+`parseMatchOptions`.
 
 The RFC 5230 audit covers all statements in `parseVacation`, `vacationReplyTo`
 and `vacationAllowed`. The local Pi cannot start the race detector

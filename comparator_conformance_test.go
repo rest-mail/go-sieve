@@ -121,6 +121,16 @@ if header :is :comparator "i;ascii-numeric" "X-Test" "` + key + `" { fileinto "M
 		{"cat", "dog", true}, // both non-numeric -> both +infinity -> equal
 		{"5", "cat", false},  // numeric vs infinity -> unequal
 		{"cat", "5", false},  // infinity vs numeric -> unequal
+		// RFC 4790 §9.1.1 integers are unbounded: a run of digits past the
+		// uint64 range is still a number, compared digit for digit.
+		{"18446744073709551616", "18446744073709551616", true},
+		{"18446744073709551616", "18446744073709551617", false},
+		{"18446744073709551615", "18446744073709551616", false},
+		{"000099999999999999999999999999", "99999999999999999999999999x", true},
+		{"99999999999999999999999999", "cat", false},
+		{"cat", "99999999999999999999999999", false},
+		{"0", "000", true},
+		{"0", "cat", false},
 	}
 	for _, tc := range cases {
 		if got := numericEq(tc.headerVal, tc.key); got != tc.want {
