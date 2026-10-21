@@ -33,7 +33,7 @@ clause by clause in their own sections. The `Received` and loop requirements of
 | SIEVE-LEX-08 | 2.4.2.2 | Normative | A number is digits with an optional quantifier K, M or G (powers of 1024, in either case); a number the implementation cannot represent is an error. | `TestSieve_Size_Quantifier`, `TestValidateSieve_RejectsSizeOverflow`, `TestValidateSieve_AcceptsRepresentableSizes`, `TestRFC5228_SizeTest`, `FuzzParse`, `TestLexer_Errors` |
 | SIEVE-LEX-09 | 2.5 | Normative | A block is commands inside `{` and `}`, and may be empty or nested. | `TestSieve_IfElsifElse`, `TestRFC5228_SyntaxErrors` |
 | SIEVE-LEX-10 | 2.5 | Normative | A command ends with `;` or, for a control command, with a block; a missing `;`, a missing block and an unbalanced brace are errors. | `TestRFC5228_SyntaxErrors`, `TestValidateSieve_Valid`, `TestValidateSieve_AcceptsNewConstructs`, `FuzzParse` |
-| SIEVE-LEX-11 | 2.1, 8.2 | Normative | A command takes exactly the arguments its grammar gives it: `stop`, `discard` and the tests take no extra arguments, and a test list is not empty. | `TestRFC5228_SyntaxErrors` |
+| SIEVE-LEX-11 | 2.1, 8.2 | Normative | A command takes exactly the arguments its grammar gives it: `stop`, `discard` and the tests take no extra arguments, and a test list is not empty. | `TestRFC5228_SyntaxErrors`, `TestParse_NestedErrorsPropagate` |
 
 ## Control commands (§3)
 

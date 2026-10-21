@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Removed
+
+- The unreachable "require inside a block" check in the parser. A block always
+  belongs to an `if`, so the "require must appear before any other command"
+  error already refuses it (RFC 5228 §3.2); the message is the only change.
+
 ### Added
 
 - `Message.NoBody` marks a message that is a header with no empty line after

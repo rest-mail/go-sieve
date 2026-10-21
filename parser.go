@@ -809,12 +809,10 @@ func (p *parser) requireCapability(capability, feature string) error {
 
 func (p *parser) parseRequire() error {
 	// RFC 5228 §3.2: require may appear only at the start of the script, before
-	// any other command and never inside a control block.
+	// any other command. This also refuses a require inside a control block:
+	// every block belongs to an if, which has already been seen.
 	if p.seenNonRequire {
 		return p.errf("require must appear before any other command")
-	}
-	if p.blockDepth > 0 {
-		return p.errf("require is only allowed at the top level, not inside a block")
 	}
 	names, err := p.parseStringList()
 	if err != nil {
