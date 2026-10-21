@@ -12,15 +12,12 @@ Add an entry here whenever you leave a statement uncovered.
 
 ## Not covered yet
 
-These are known gaps, not exclusions: error returns that propagate a failure of
-a helper (`return nil, err` after `expect` or `parseStringList` in
-`parseIf`, `parseBlock`, `parseTestList`, `parseSizeTest`, `parseFileinto`,
-`parseNotify`, `parseBodyTest`), the helper itself being
-covered through other callers; `require` inside a block (`parseRequire`), a
-second match type after `:regex` (`parseMatchOptions`), and a few
-defensive branches of the lexer and of `decodeEncodedCharacters` and
-`asciiNumeric`. The same table will shrink as the extension requirements
-(RFC 5490 is the one left) are checked item by item.
+These are known gaps, not exclusions: a few defensive branches of the lexer and
+of `decodeEncodedCharacters` and `asciiNumeric`. `TestParse_NestedErrorsPropagate`
+covers the error returns that hand on a failure of a nested test, block, string
+list or expected token in `parseIf`, `parseBlock`, `parseTestList`,
+`parseSizeTest`, `parseFileinto`, `parseNotify`, `parseBodyTest` and
+`parseRequire`, and a second match type after `:regex` in `parseMatchOptions`.
 
 The RFC 5230 audit covers all statements in `parseVacation`, `vacationReplyTo`
 and `vacationAllowed`. The local Pi cannot start the race detector
