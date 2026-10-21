@@ -1646,16 +1646,13 @@ func decodeHexSeq(payload string) (string, bool) {
 		if i >= n || !isHexDigit(payload[i]) {
 			return "", false
 		}
-		p := i
+		v := hexVal(payload[i])
 		i++
 		if i < n && isHexDigit(payload[i]) { // optional second digit of the pair
+			v = v<<4 | hexVal(payload[i])
 			i++
 		}
-		v, perr := strconv.ParseUint(payload[p:i], 16, 8)
-		if perr != nil {
-			return "", false
-		}
-		b.WriteByte(byte(v))
+		b.WriteByte(v)
 		if i >= n {
 			return b.String(), true
 		}
@@ -1711,6 +1708,18 @@ func decodeUnicodeSeq(payload string) (string, bool, error) {
 
 func isHexDigit(c byte) bool {
 	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// hexVal returns the value of the hex digit c, which the caller has checked
+// with isHexDigit.
+func hexVal(c byte) byte {
+	switch {
+	case c >= 'a':
+		return c - 'a' + 10
+	case c >= 'A':
+		return c - 'A' + 10
+	}
+	return c - '0'
 }
 
 // isEncBlank reports whether c is a "blank" separator per RFC 5228 §2.4.2.4

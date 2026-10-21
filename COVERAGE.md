@@ -13,7 +13,8 @@ Add an entry here whenever you leave a statement uncovered.
 ## Not covered yet
 
 These are known gaps, not exclusions: a few defensive branches of the lexer and
-of `decodeEncodedCharacters` and `asciiNumeric`. `TestParse_NestedErrorsPropagate`
+of `asciiNumeric`. `TestEncodedCharacter_SequenceErrors` covers every statement of
+`decodeEncodedCharacters`. `TestParse_NestedErrorsPropagate`
 covers the error returns that hand on a failure of a nested test, block, string
 list or expected token in `parseIf`, `parseBlock`, `parseTestList`,
 `parseSizeTest`, `parseFileinto`, `parseNotify`, `parseBodyTest` and
