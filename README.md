@@ -5,8 +5,8 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
 A parser and interpreter for the Sieve mail-filtering language
-([RFC 5228](https://www.rfc-editor.org/rfc/rfc5228)) in Go — standard library
-only, no external dependencies.
+([RFC 5228](https://www.rfc-editor.org/rfc/rfc5228)) in Go. The library imports
+only the standard library.
 
 ## About
 
@@ -47,7 +47,10 @@ takes effect. A runtime error during evaluation fails safe to the implicit keep
   and tagged arguments are errors. The RFC 5490 `mailbox` capability currently
   supports `fileinto :create` only; `mailboxexists` is not implemented.
   `mboxmetadata` and `servermetadata` are not supported.
-- Zero external dependencies.
+- No external dependencies in the library. The tests alone use
+  [foxcpp/go-sieve](https://github.com/foxcpp/go-sieve) (MIT) as an
+  independent reference: `diff_test.go` runs the same scripts on the same
+  message through both and compares where the message is delivered.
 
 ## Install
 
