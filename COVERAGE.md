@@ -12,13 +12,15 @@ Add an entry here whenever you leave a statement uncovered.
 
 ## Not covered yet
 
-These are known gaps, not exclusions: a few defensive branches of the lexer and
-of `decodeEncodedCharacters`. Every statement of `eval.go` is covered:
+These are known gaps, not exclusions: a few defensive branches of the lexer.
+Every statement of `eval.go` is covered:
 `TestSize_ReconstructionCountsRawHeaders` and `TestSize_ReconstructionPartBudget`
 cover raw headers and the part budget in the reconstructed size,
 `TestAddress_RawHeaderOnlyNamed` the raw-header name filter of `addressList`, and
 `TestEvalTest_UnknownIsFalse` the fail-closed end of `evalTest`. `matchOne` has
-no unreachable fallback any more: `:is` is its default case. `asciiNumeric` no longer has one: it keeps the
+no unreachable fallback any more: `:is` is its default case.
+`TestEncodedCharacter_SequenceErrors` covers every statement of
+`decodeEncodedCharacters`. `asciiNumeric` no longer has a gap: it keeps the
 digit run as a string, so a number too long for a uint64 cannot fail to parse.
 `TestParse_NestedErrorsPropagate` covers the error returns that hand on a
 failure of a nested test, block, string list or expected token in `parseIf`,
