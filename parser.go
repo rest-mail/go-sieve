@@ -590,12 +590,11 @@ func parseSieveScript(src string, opts ...Option) (*Script, error) {
 		return nil, err
 	}
 	p := &parser{toks: toks, maxDepth: cfg.maxDepth, required: map[string]bool{}}
+	// At top level parseCommands returns without an error only at tEOF; a
+	// stray "}" or any other leftover token is already an error there.
 	cmds, err := p.parseCommands(false)
 	if err != nil {
 		return nil, err
-	}
-	if p.peek().kind != tEOF {
-		return nil, p.errf("unexpected %s", p.describe(p.peek()))
 	}
 	if _, err := checkActionCompatibility(cmds, actionUsage{}); err != nil {
 		return nil, err

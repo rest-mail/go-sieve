@@ -1,8 +1,9 @@
 # Coverage exceptions
 
-CI fails when statement coverage of `./...` falls below 95%. Coverage is 98.2%
-(the package alone 98.0%); the statements below are the ones left uncovered.
-Add an entry here whenever you leave a statement uncovered.
+CI fails when statement coverage of `./...` falls below 95%. CI measured 99.5%
+(the package alone 99.6%) on main before the lexer gaps below were closed; the
+statements below are the ones left uncovered. Add an entry here whenever you
+leave a statement uncovered.
 
 ## Left uncovered on purpose
 
@@ -12,7 +13,17 @@ Add an entry here whenever you leave a statement uncovered.
 
 ## Not covered yet
 
-These are known gaps, not exclusions: a few defensive branches of the lexer.
+No known gaps remain in the lexer (`tokenize` through `readMultiLineString`).
+`TestMultiLineString_HashCommentAfterMarker` covers the hash comment that may
+end the `text:` line of a multi-line string (RFC 5228 §8.1), including malformed
+scripts where the comment ends the source, the closing `.` is missing, a word
+stands before the comment or a bracket comment stands in for it.
+`TestLexer_Errors` and `TestRFC5228_SyntaxErrors` cover unexpected characters,
+unterminated strings and bracket comments, and numbers that overflow.
+`parseSieveScript` no longer checks for a token left after the top-level
+commands: `parseCommands(false)` returns without an error only at the end of
+the script, so the check could not fire. `TestParse_TopLevelLeftoverTokens`
+shows every kind of leftover token is still refused.
 `TestQuotedString_EscapedOctets` covers the escaped-octet rejection in
 `readQuotedString` against all 256 octets, and
 `TestQuotedString_EscapedLineBreakAndTruncation` covers incomplete escapes.

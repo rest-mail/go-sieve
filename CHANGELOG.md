@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Removed
 
+- The unreachable "unexpected token" check after the top-level commands in
+  `Parse`. At top level `parseCommands` returns without an error only at the
+  end of the script; a stray `}` or other leftover token is already refused
+  there with "unexpected }" or "expected a command" (RFC 5228 §8.2).
 - The unreachable fallback in `matchOne`, which matched an unknown match type as
   `:contains`. `:is`, the default match type (RFC 5228 §2.7.1), is now its
   default case; the parser accepts no other tag, so behaviour is unchanged.
@@ -21,6 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Tests for the hash comment allowed after `text:` in a multi-line string
+  (RFC 5228 §8.1, SIEVE-LEX-05): the comment is not part of the string, and a
+  comment that ends the script, a missing closing `.`, a word before the
+  comment and a bracket comment in its place are refused. This closes the last
+  known coverage gap in the lexer.
 - README coverage-gate and RFC checklist badges, checked in CI against the
   enforced coverage minimum and the checklist's actual test mappings.
 - Differential tests (`diff_test.go`) against
