@@ -15,6 +15,10 @@ func FuzzParse(f *testing.F) {
 	for _, seed := range []string{
 		"",
 		"keep;",
+		"require \"fileinto\"; fileinto \"before\\\x00after\";",
+		"require \"fileinto\"; fileinto \"before\\\rafter\";",
+		"require \"fileinto\"; fileinto \"before\\\nafter\";",
+		"require \"fileinto\"; fileinto \"before\\\r\nafter\";",
 		"# comment\n/* bracket */ keep;",
 		`require ["fileinto", "envelope"]; if envelope :is "from" "a@b" { fileinto "X"; stop; } else { keep; }`,
 		`if allof(header :contains ["Subject", "X"] "a", not size :over 100K, anyof(true, false)) { discard; }`,
