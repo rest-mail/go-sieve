@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- README coverage-gate and RFC checklist badges, checked in CI against the
+  enforced coverage minimum and the checklist's actual test mappings.
 - Differential tests (`diff_test.go`) against
   [foxcpp/go-sieve](https://github.com/foxcpp/go-sieve), a test-only
   dependency: 37 scripts covering RFC 5228's tests, match types, comparators,
