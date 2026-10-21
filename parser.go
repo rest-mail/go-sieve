@@ -394,9 +394,13 @@ func (l *lexer) readQuotedString() (string, error) {
 			l.pos++
 			return b.String(), nil
 		case '\\':
-			// A backslash escapes the following character (RFC 5228 §2.4.2);
-			// an escaped char is that char verbatim.
+			// RFC 5228 §8.1: quoted-special and quoted-other remove the
+			// backslash, but neither permits NUL, CR or LF after it.
 			if l.pos+1 < len(l.src) {
+				switch l.src[l.pos+1] {
+				case 0, '\r', '\n':
+					return "", l.errf("invalid escaped octet in quoted string")
+				}
 				l.pos++
 				b.WriteByte(l.src[l.pos])
 				l.pos++

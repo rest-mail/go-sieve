@@ -13,6 +13,9 @@ Add an entry here whenever you leave a statement uncovered.
 ## Not covered yet
 
 These are known gaps, not exclusions: a few defensive branches of the lexer.
+`TestQuotedString_EscapedOctets` covers the escaped-octet rejection in
+`readQuotedString` against all 256 octets, and
+`TestQuotedString_EscapedLineBreakAndTruncation` covers incomplete escapes.
 Every statement of `eval.go` is covered:
 `TestSize_ReconstructionCountsRawHeaders` and `TestSize_ReconstructionPartBudget`
 cover raw headers and the part budget in the reconstructed size,

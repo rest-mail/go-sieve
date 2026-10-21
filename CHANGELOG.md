@@ -59,6 +59,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Quoted strings reject backslash-escaped NUL, CR and LF (RFC 5228 §8.1).
+  These octets previously bypassed string validation and could reach the host
+  as action arguments. Tests check all 256 escaped octets, preserving valid
+  quoted-special and quoted-other values byte-for-byte.
+
 - **`i;ascii-numeric` compares numbers of any length** (RFC 4790 §9.1.1). A
   run of digits past 18446744073709551615 did not fit in a uint64 and was
   treated as a non-number. So `18446744073709551616` equalled
