@@ -52,3 +52,30 @@ func TestParse_NestedErrorsPropagate(t *testing.T) {
 		})
 	}
 }
+
+// TestParse_TopLevelLeftoverTokens checks that a token left over after the
+// top-level commands is refused (RFC 5228 §8.2: start = commands). The error
+// comes from parseCommands, which at top level returns without an error only
+// at the end of the script, so the parser needs no check of its own after it.
+//
+// checklist: SIEVE-LEX-10
+func TestParse_TopLevelLeftoverTokens(t *testing.T) {
+	for _, src := range []string{
+		"keep; }",
+		"if true { keep; } }",
+		"keep; )",
+		"keep; ]",
+		"keep; ,",
+		"keep; ;",
+		"keep; \"x\"",
+		"keep; 1",
+		"keep; :copy",
+		"keep; (",
+		"keep; [",
+		"keep; {",
+	} {
+		if err := Validate(src); err == nil {
+			t.Errorf("%q was accepted", src)
+		}
+	}
+}
