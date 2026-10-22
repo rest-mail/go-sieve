@@ -88,7 +88,8 @@ func FuzzParse(f *testing.F) {
 func FuzzDecodeEncodedCharacters(f *testing.F) {
 	for _, seed := range []string{
 		"", "plain", "${hex:41 42 43}", "${HEX: 4 1}", "${unicode:48 20AC 1F600}", "${unicode:D800}",
-		"${unicode:110000}", "${hex:}", "${hex:zz}", "$${hex:24}{hex:41}", "${hex:24}{hex:41}", "${",
+		"${unicode:110000}", "${unicode:D800z}", "${unicode:110000 41z}",
+		"${unicode:D800 ${hex:41}}", "${unicode:D800\r}", "${hex:41\n42}", "${unicode:D800z}${unicode:DFFF}", "${hex:}", "${hex:zz}", "$${hex:24}{hex:41}", "${hex:24}{hex:41}", "${",
 	} {
 		f.Add(seed)
 	}
