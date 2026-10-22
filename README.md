@@ -183,7 +183,13 @@ it is false, even one for the empty string (RFC 5173 §4).
 
 The RFC 5228 core audit also records host duties and known gaps: MIME header
 charset preparation, redirect policy/trace/loop controls, strict whole-script
-line endings and octets, and full outbound/structured-address validation.
+line endings and octets, and full structured-address validation. Redirect
+targets are checked after encoded-character decoding as a single mailbox using
+Go `net/mail`, with groups and source routes refused. The original valid value
+is passed unchanged to `Executor.Redirect`. This accepts named and quoted
+mailboxes and any non-empty dtext domain literal (IPv4, `IPv6:` or other),
+checked the same way on every Go version; obsolete address forms and folding
+whitespace inside literals remain a known grammar gap (SIEVE-CORE-45).
 See the dated audit in [CHECKLIST.md](CHECKLIST.md). Address tests recognize
 From, To, Cc, Bcc, Sender, Reply-To and their Resent variants; unstructured and
 unregistered custom fields are available through `header`, not `address`.
