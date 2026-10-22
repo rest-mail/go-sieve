@@ -25,6 +25,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Breaking:** `Parse` and `Validate` reject malformed redirect mailboxes,
+  address lists, groups (even with just one member), and source routes
+  (RFC 5228 §2.4.2.3). Validation runs after encoded-character decoding and
+  also checks unexecuted branches. Valid named/quoted mailboxes, comments
+  and IPv4/IPv6 literals retain their exact callback value and `:copy` flag.
+  The validator uses Go `net/mail`; its obsolete-address and non-IP literal
+  limitations remain explicit in SIEVE-CORE-45.
+
 - **Breaking:** `Parse` and `Validate` reject unknown envelope parts, including
   empty or padded names and unknown entries mixed with `from` or `to` in a list
   (RFC 5228 §5.4). Names are checked after encoded-character decoding and remain

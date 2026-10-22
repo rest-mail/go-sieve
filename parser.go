@@ -992,7 +992,7 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 	if err != nil {
 		return nil, err
 	}
-	// RFC 5228 §2.10.6: it is an error to execute redirect with an argument that
+	// RFC 5228 §2.4.2.3: it is an error to execute redirect with an argument that
 	// is not a valid sieve-address. In particular a target carrying CR, LF, NUL
 	// or any other control character (readily smuggled in via a "text:" literal)
 	// would let a host that builds SMTP commands or message headers from the
@@ -1000,8 +1000,64 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 	if r := firstControlChar(addr.str); r >= 0 {
 		return nil, fmt.Errorf("sieve: line %d: redirect address contains a forbidden control character (%#U)", addr.line, r)
 	}
+	// RFC 5228 §2.4.2.3 permits one mailbox, not a group or source route.
+	// ParseAddress alone accepts a group containing one mailbox, so check the
+	// delimiters too. Validate the decoded value, but preserve it for the host.
+	if _, err := mail.ParseAddress(addr.str); err != nil {
+		return nil, fmt.Errorf("sieve: line %d: invalid redirect address: %w", addr.line, err)
+	}
+	if hasAddressGroupOrRoute(addr.str) {
+		return nil, fmt.Errorf("sieve: line %d: redirect address must not contain a group or source route", addr.line)
+	}
 	cmd.addr = addr.str
 	return cmd, p.finishStatement()
+}
+
+// hasAddressGroupOrRoute finds group/route delimiters outside quoted strings,
+// nested comments and domain literals in an already parsed mailbox. Delimiters
+// in a display name, quoted localpart or IPv6 literal are ordinary data.
+func hasAddressGroupOrRoute(s string) bool {
+	quoted, literal := false, false
+	comments := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\\' && (quoted || comments > 0) {
+			i++ // quoted-pair; syntax was checked by mail.ParseAddress.
+			continue
+		}
+		if comments > 0 {
+			switch c {
+			case '(':
+				comments++
+			case ')':
+				comments--
+			}
+			continue
+		}
+		if quoted {
+			if c == '"' {
+				quoted = false
+			}
+			continue
+		}
+		if literal {
+			if c == ']' {
+				literal = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			quoted = true
+		case '(':
+			comments++
+		case '[':
+			literal = true
+		case ':', ';':
+			return true
+		}
+	}
+	return false
 }
 
 // firstControlChar returns the first control character (C0/C1, including CR, LF,
