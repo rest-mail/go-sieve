@@ -15,6 +15,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   against raw or host-decoded structured headers. Adds checked CORE-48 tests
   for all non-linebreak boundary octets and Unicode whitespace on both paths.
 
+- Malformed `${unicode:...}` encodings remain literal even when an early
+  digit run names a surrogate or an out-of-range scalar (RFC 5228 §2.4.2.4).
+  Range errors are reported only after the entire sequence fits the grammar;
+  well-formed invalid scalars still fail. Checked SIEVE-LEX-12 covers this
+  through decoding, Parse/Validate and exact action values, with exhaustive
+  invalid payload octets and fuzz seeds. Encoded-character blank separators
+  accept SP, HTAB and complete CRLF only; bare CR/LF stay literal for both
+  hex and Unicode sequences.
+
 - Body `:content` selection uses ASCII case folding for MIME types (RFC 5173
   §5.2; RFC 2045 §5.1). Unicode look-alikes such as `text/plaİn` no longer
   select `text/plain`, either as script selectors or host-supplied part types.
@@ -41,6 +50,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Breaking:** `i;ascii-numeric` no longer strips leading whitespace before
+  comparing (RFC 4790 §9.1.1). Any non-digit first octet denotes positive
+  infinity, including ASCII and Unicode whitespace. Header values still have
+  their field whitespace removed as RFC 5228 §5.7 requires; literal keys and
+  body values keep their original octets. Four tests check every first octet,
+  both operand orders, RFC examples, header normalization and agreement with
+  the independent reference. New checked row SIEVE-MT-09; badge 158/243 mapped.
+
 - Header field names from `Headers.Raw` now use ASCII case folding. Unicode
   look-alikes such as `ſubject`, `ſender` and `X-Key` no longer alias ASCII
   fields in `header`, `exists` or `address` tests (RFC 5228 §§2.4.2.2, 5.1,
@@ -56,6 +73,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   every Go version) retain their exact callback value and `:copy` flag.
   The validator uses Go `net/mail`; its obsolete-address and literal-FWS
   limitations remain explicit in SIEVE-CORE-45.
+
+- Comparator identifiers now use ASCII case folding (RFC 4790 §3.1).
+  Unicode look-alikes such as `İ;octet` are rejected by Parse and Validate,
+  including after encoded-character decoding and in unexecuted branches.
+  ASCII mixed-case names remain accepted. Checked row SIEVE-MT-10 has
+  all-octet tests and a dedicated fuzz target run in CI.
 
 - **Breaking:** Parse and Validate reject raw NUL anywhere in script source,
   including ignored comments and multiline strings (RFC 5228 §2.1). Encoded

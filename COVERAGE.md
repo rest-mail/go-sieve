@@ -39,8 +39,18 @@ cover raw headers and the part budget in the reconstructed size,
 `TestEvalTest_UnknownIsFalse` the fail-closed end of `evalTest`. `matchOne` has
 no unreachable fallback any more: `:is` is its default case.
 `TestEncodedCharacter_SequenceErrors` covers every statement of
-`decodeEncodedCharacters`. `asciiNumeric` no longer has a gap: it keeps the
-digit run as a string, so a number too long for a uint64 cannot fail to parse.
+`decodeEncodedCharacters`.
+`TestEncodedCharacterUnicodeMalformedRangeLiteral` and
+`TestEncodedCharacterUnicodeMalformedRangeOctets` cover deferred Unicode range
+errors: malformed payloads stay literal, a well-formed payload reports its first
+invalid scalar, and independently valid neighboring encodings still decode.
+`TestEncodedCharacterBlankGrammar` covers SP/HTAB/CRLF separators and malformed
+line endings in both hex and Unicode payloads.
+`asciiNumeric` no longer has a gap: it keeps the digit run as a string, so a
+number too long for a uint64 cannot fail to parse.
+`TestASCIINumericFirstOctet` checks every possible initial octet through public
+body evaluation, and `TestASCIINumericRFCExamplesAndPrefixes` checks numeric
+termination, non-digit prefixes and long values without whitespace trimming.
 `TestParse_NestedErrorsPropagate` covers the error returns that hand on a
 failure of a nested test, block, string list or expected token in `parseIf`,
 `parseBlock`, `parseTestList`, `parseSizeTest`, `parseFileinto`, `parseNotify`,
