@@ -10,7 +10,7 @@ import (
 // allows: its requires are capabilities the package supports, and evaluating it
 // against a message neither panics nor loses the message.
 //
-// checklist: SIEVE-CMD-02 SIEVE-CMD-03 SIEVE-LEX-01 SIEVE-LEX-02 SIEVE-LEX-03 SIEVE-LEX-05 SIEVE-LEX-07 SIEVE-LEX-08 SIEVE-LEX-10
+// checklist: SIEVE-CMD-02 SIEVE-CMD-03 SIEVE-LEX-01 SIEVE-LEX-02 SIEVE-LEX-03 SIEVE-LEX-05 SIEVE-LEX-07 SIEVE-LEX-08 SIEVE-LEX-10 SIEVE-CORE-37
 func FuzzParse(f *testing.F) {
 	for _, seed := range []string{
 		"",
@@ -22,6 +22,10 @@ func FuzzParse(f *testing.F) {
 		`redirect "\"Ops: team; friends\" <ops@example.org>";`,
 		`redirect "user@[IPv6:2001:db8::1]";`,
 		`require "encoded-character"; redirect "Friends${hex:3a} user@example.org${hex:3b}";`,
+		"# before\x00after\r\nkeep;",
+		"/* before\x00after */ keep;",
+		"require \"reject\"; reject text: # before\x00after\r\nbody\r\n.\r\n;",
+		"require \"reject\"; reject text:\r\nbefore\x00after\r\n.\r\n;",
 		"require \"fileinto\"; fileinto \"before\\\x00after\";",
 		"require \"fileinto\"; fileinto \"before\\\rafter\";",
 		"require \"fileinto\"; fileinto \"before\\\nafter\";",
@@ -50,6 +54,9 @@ func FuzzParse(f *testing.F) {
 		}
 		if err != nil {
 			return
+		}
+		if strings.IndexByte(src, 0) >= 0 {
+			t.Fatal("accepted a raw NUL in script source")
 		}
 		for _, name := range script.Requires() {
 			if !supportedCapabilities[name] && !strings.HasPrefix(name, "comparator-") {

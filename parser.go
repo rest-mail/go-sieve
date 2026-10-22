@@ -278,6 +278,12 @@ func (l *lexer) errf(format string, args ...interface{}) error {
 
 // tokenize scans the whole source into a token slice terminated by tEOF.
 func (l *lexer) tokenize() ([]token, error) {
+	// RFC 5228 §2.1 forbids raw NUL everywhere, including comments and
+	// multiline strings. Check source before skipping or decoding any of it;
+	// encoded-character may still produce NUL in a string value (§2.4.2.4).
+	if i := strings.IndexByte(l.src, 0); i >= 0 {
+		return nil, fmt.Errorf("sieve: line %d: NUL byte in script", 1+strings.Count(l.src[:i], "\n"))
+	}
 	var toks []token
 	for {
 		if err := l.skipTrivia(); err != nil {
@@ -399,7 +405,7 @@ func (l *lexer) readQuotedString() (string, error) {
 			// backslash, but neither permits NUL, CR or LF after it.
 			if l.pos+1 < len(l.src) {
 				switch l.src[l.pos+1] {
-				case 0, '\r', '\n':
+				case '\r', '\n':
 					return "", l.errf("invalid escaped octet in quoted string")
 				}
 				l.pos++
@@ -422,9 +428,6 @@ func (l *lexer) readQuotedString() (string, error) {
 		case '\n':
 			// A lone LF (not part of a CRLF) is not a valid quoted-char.
 			return "", l.errf("bare LF in quoted string")
-		case 0:
-			// RFC 5228 §2.4.2 forbids the NUL octet in strings.
-			return "", l.errf("NUL byte in quoted string")
 		default:
 			b.WriteByte(c)
 			l.pos++
@@ -579,7 +582,9 @@ type parser struct {
 
 // Parse parses a Sieve script into an evaluable [Script]. It is strict about
 // the constructs it understands and lenient about unknown extensions (see the
-// package overview). Nesting of tests and control blocks is capped at
+// package overview). Raw NUL is forbidden throughout the source, including
+// comments; encoded-character may produce NUL in string values.
+// Nesting of tests and control blocks is capped at
 // [DefaultMaxDepth] (override with [WithMaxDepth]); a script that exceeds the
 // cap is rejected rather than allowed to exhaust the stack at parse or
 // evaluation time. Reject/ereject and vacation on the same control path are
@@ -1003,7 +1008,7 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 	// RFC 5228 §2.4.2.3 permits one mailbox, not a group or source route.
 	// ParseAddress alone accepts a group containing one mailbox, so check the
 	// delimiters too. Validate the decoded value, but preserve it for the host.
-	if _, err := mail.ParseAddress(addr.str); err != nil {
+	if _, err := mail.ParseAddress(placeholderDomainLiterals(addr.str)); err != nil {
 		return nil, fmt.Errorf("sieve: line %d: invalid redirect address: %w", addr.line, err)
 	}
 	if hasAddressGroupOrRoute(addr.str) {
@@ -1058,6 +1063,59 @@ func hasAddressGroupOrRoute(s string) bool {
 		}
 	}
 	return false
+}
+
+// placeholderDomainLiterals replaces each well-formed domain literal outside
+// quoted strings and comments with [127.0.0.1] before net/mail sees it. RFC 5322
+// §3.4.1 allows any dtext in a domain literal, but net/mail accepts only IP
+// literals and which IPv6 form it takes ([::1] or [IPv6:::1]) depends on the Go
+// version. Checking dtext here keeps redirect validation identical everywhere.
+func placeholderDomainLiterals(s string) string {
+	var b strings.Builder
+	quoted := false
+	comments := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\\' && (quoted || comments > 0) && i+1 < len(s) {
+			b.WriteString(s[i : i+2])
+			i++
+			continue
+		}
+		switch {
+		case comments > 0:
+			switch c {
+			case '(':
+				comments++
+			case ')':
+				comments--
+			}
+		case quoted:
+			quoted = c != '"'
+		case c == '"':
+			quoted = true
+		case c == '(':
+			comments++
+		case c == '[':
+			if end := strings.IndexByte(s[i+1:], ']'); end > 0 && isDtext(s[i+1:i+1+end]) {
+				b.WriteString("[127.0.0.1]")
+				i += end + 1
+				continue
+			}
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// isDtext reports whether s is non-empty RFC 5322 dtext: printable US-ASCII
+// other than "[", "]" and "\".
+func isDtext(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 33 || c > 126 || c == '[' || c == ']' || c == '\\' {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // firstControlChar returns the first control character (C0/C1, including CR, LF,

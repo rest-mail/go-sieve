@@ -29,16 +29,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   address lists, groups (even with just one member), and source routes
   (RFC 5228 §2.4.2.3). Validation runs after encoded-character decoding and
   also checks unexecuted branches. Valid named/quoted mailboxes, comments
-  and IPv4/IPv6 literals retain their exact callback value and `:copy` flag.
-  The validator uses Go `net/mail`; its obsolete-address and non-IP literal
+  and domain literals (IPv4, `IPv6:` or other dtext, checked identically on
+  every Go version) retain their exact callback value and `:copy` flag.
+  The validator uses Go `net/mail`; its obsolete-address and literal-FWS
   limitations remain explicit in SIEVE-CORE-45.
+
+- **Breaking:** Parse and Validate reject raw NUL anywhere in script source,
+  including ignored comments and multiline strings (RFC 5228 §2.1). Encoded
+  NUL string values remain valid. SIEVE-CORE-37 now has exhaustive insertion
+  and legal-octet tests; the remaining bare-line-ending gap is CORE-44.
 
 - **Breaking:** `Parse` and `Validate` reject unknown envelope parts, including
   empty or padded names and unknown entries mixed with `from` or `to` in a list
   (RFC 5228 §5.4). Names are checked after encoded-character decoding and remain
   ASCII case-insensitive, independently of the value comparator. Invalid tests
   are rejected even in branches that would not execute. SIEVE-CORE-24 is now
-  mapped to a regression test; the checklist badge is 153/238 mapped (85 n/a).
+  mapped to a regression test; the checklist badge is 154/239 mapped (85 n/a).
 
 - **Breaking:** invalid header-name operands no longer match fields, and
   `address` only tests standard address-bearing headers. Required address

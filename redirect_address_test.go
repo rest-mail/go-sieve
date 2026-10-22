@@ -21,6 +21,7 @@ func TestRFC5228RedirectAddressSyntax(t *testing.T) {
 		"<@old.example,@relay.example:user@example.org>",
 		"Name <@relay.example:user@example.org>",
 		`"unclosed@example.org`, "user@[127.0.0.1", "user@example.org;",
+		"user@[]", "user@[a[b]", `user@[a\]b]`, "user@[a]b",
 		".user@example.org", "user..name@example.org", "user.@example.org",
 	}
 	for _, address := range invalid {
@@ -56,6 +57,8 @@ func TestRFC5228RedirectAddressPreserved(t *testing.T) {
 		"Ops Team <ops@example.org>", `"Ops: team; friends" <ops@example.org>`,
 		`"quoted: local; part"@example.org`, `"a\"b"@example.org`,
 		`"a\\b"@example.org`, "user@[127.0.0.1]", "user@[IPv6:2001:db8::1]",
+		"user@[::1]", "Ops <ops@[IPv6:::1]>", "user@[mail.example]",
+		`"[not a literal]"@example.org`,
 		"user@example.org (a: nested (comment; here))",
 		`user@example.org (escaped \) comment: still here)`,
 		`"Ops \"team: one\"" <ops@example.org>`,

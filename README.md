@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Checklist: 154/239 mapped](https://img.shields.io/badge/checklist-154%2F239%20mapped-blue)](CHECKLIST.md)
+[![Checklist: 155/240 mapped](https://img.shields.io/badge/checklist-155%2F240%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -187,8 +187,9 @@ line endings and octets, and full structured-address validation. Redirect
 targets are checked after encoded-character decoding as a single mailbox using
 Go `net/mail`, with groups and source routes refused. The original valid value
 is passed unchanged to `Executor.Redirect`. This accepts named and quoted
-mailboxes and IPv4/IPv6 domain literals; obsolete address forms and non-IP
-domain literals remain a known grammar gap (SIEVE-CORE-45).
+mailboxes and any non-empty dtext domain literal (IPv4, `IPv6:` or other),
+checked the same way on every Go version; obsolete address forms and folding
+whitespace inside literals remain a known grammar gap (SIEVE-CORE-45).
 See the dated audit in [CHECKLIST.md](CHECKLIST.md). Address tests recognize
 From, To, Cc, Bcc, Sender, Reply-To and their Resent variants; unstructured and
 unregistered custom fields are available through `header`, not `address`.
