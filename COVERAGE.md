@@ -41,6 +41,9 @@ no unreachable fallback any more: `:is` is its default case.
 `TestEncodedCharacter_SequenceErrors` covers every statement of
 `decodeEncodedCharacters`. `asciiNumeric` no longer has a gap: it keeps the
 digit run as a string, so a number too long for a uint64 cannot fail to parse.
+`TestASCIINumericFirstOctet` checks every possible initial octet through public
+body evaluation, and `TestASCIINumericRFCExamplesAndPrefixes` checks numeric
+termination, non-digit prefixes and long values without whitespace trimming.
 `TestParse_NestedErrorsPropagate` covers the error returns that hand on a
 failure of a nested test, block, string list or expected token in `parseIf`,
 `parseBlock`, `parseTestList`, `parseSizeTest`, `parseFileinto`, `parseNotify`,
