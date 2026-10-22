@@ -52,3 +52,9 @@ and `vacationAllowed`. The local Pi cannot start the race detector
 (`ThreadSanitizer: unsupported VMA range`, found 47, supported 48), so the figures
 above were measured with atomic coverage without `-race`; CI retains the pinned
 race-coverage workflow on its supported runner.
+
+`TestRFC5228HeaderTrimPreservesNonWSP` and
+`TestRFC5228HeaderTrimBoundaryOctets` cover the mail-whitespace trimming in both
+paths of `unfoldAndTrim`, including raw and structured headers, non-ASCII spaces,
+opaque octets, and controls that are not mail whitespace. No coverage exception
+is added; the shared CI coverage floor remains 95%.

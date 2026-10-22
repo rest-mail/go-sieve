@@ -752,11 +752,13 @@ func headerValues(msg *Message, name string) []string {
 // unfoldAndTrim applies RFC 5322 §2.2.3 unfolding to a header value — each line
 // break (CRLF, or a bare CR/LF) that introduces folding whitespace is removed
 // along with that whitespace and replaced by a single space — and then strips
-// leading and trailing whitespace, as RFC 5228 §5.7 requires the header test to
-// ignore. Values without a line break take a fast path that only trims.
+// leading and trailing mail whitespace (SP, HTAB and line breaks), as RFC 5228
+// §5.7 requires the header test to ignore. Other controls and Unicode spaces
+// are header content, not RFC 5322 folding whitespace. Values without a line
+// break take a fast path that only trims.
 func unfoldAndTrim(v string) string {
 	if !strings.ContainsAny(v, "\r\n") {
-		return strings.TrimSpace(v)
+		return strings.Trim(v, " \t\r\n")
 	}
 	var b strings.Builder
 	b.Grow(len(v))
@@ -776,7 +778,7 @@ func unfoldAndTrim(v string) string {
 		}
 		b.WriteByte(v[i])
 	}
-	return strings.TrimSpace(b.String())
+	return strings.Trim(b.String(), " \t\r\n")
 }
 
 // formatAddresses renders structured addresses as header-style values.

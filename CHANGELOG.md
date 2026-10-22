@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Header tests trim mail whitespace rather than Unicode whitespace at value
+  boundaries (RFC 5228 §5.7; RFC 5322 §3.2.2). Non-breaking spaces, other
+  Unicode spaces, vertical tabs and form feeds remain significant content,
+  so they no longer cause false exact matches or disappear from keys matched
+  against raw or host-decoded structured headers. Adds checked CORE-48 tests
+  for all non-linebreak boundary octets and Unicode whitespace on both paths.
+
 - Body `:content` selection uses ASCII case folding for MIME types (RFC 5173
   §5.2; RFC 2045 §5.1). Unicode look-alikes such as `text/plaİn` no longer
   select `text/plain`, either as script selectors or host-supplied part types.
