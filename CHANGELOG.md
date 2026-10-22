@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Header matching unfolds values by removing only CRLF followed by SP or HTAB
+  (RFC 5322 §2.2.3; RFC 5228 §5.7). Tabs and repeated spaces survive unchanged,
+  so folded values no longer falsely match a key with collapsed whitespace.
+  Non-folding line breaks are preserved. Adds checked SIEVE-CORE-47 tests for
+  raw and structured headers and all short SP/HTAB folding sequences.
+
 - Body `:content` selection uses ASCII case folding for MIME types (RFC 5173
   §5.2; RFC 2045 §5.1). Unicode look-alikes such as `text/plaİn` no longer
   select `text/plain`, either as script selectors or host-supplied part types.
