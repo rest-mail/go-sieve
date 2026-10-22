@@ -25,6 +25,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Breaking:** invalid header-name operands no longer match fields, and
+  `address` only tests standard address-bearing headers. Required address
+  headers now work when supplied only in `Headers.Raw`. Incoming envelope
+  source routes are removed before comparisons. Multiline strings preserve
+  CRLF and a singly prefixed dot; only doubled leading dots are unstuffed.
+
 - **Breaking:** `vacation :seconds` now requires `vacation-seconds`, which
   implies `vacation` (RFC 6131). Scripts declaring only `vacation` must add or
   substitute `vacation-seconds`. Using both `:days` and `:seconds` is now an
@@ -32,6 +38,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Sieve numbers cannot overflow into a negative reply interval.
 
 ### Added
+
+- RFC 5228 sections 1–14 audited against the core checklist; 43 new rows
+  distinguish executable requirements, host/specification duties and known
+  gaps. Fourteen focused conformance tests cover numeric and byte boundaries,
+  nesting minimums, header/address handling, source routes and multiline text.
+  README badge updated to 152/238 mapped (86 n/a).
 
 - Seventeen extension requirement rows, twelve mapped to new tests: the
   capability inventory, local regex behavior, and RFC 6131 seconds grammar,

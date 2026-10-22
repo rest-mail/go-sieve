@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Checklist: 136/195 mapped](https://img.shields.io/badge/checklist-136%2F195%20mapped-blue)](CHECKLIST.md)
+[![Checklist: 152/238 mapped](https://img.shields.io/badge/checklist-152%2F238%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -181,6 +181,13 @@ are testable; `Envelope` supplies the SMTP identities the `envelope` test reads;
 message that is only a header, with no empty line after it: every `body` test of
 it is false, even one for the empty string (RFC 5173 §4).
 
+The RFC 5228 core audit also records host duties and known gaps: MIME header
+charset preparation, redirect policy/trace/loop controls, strict whole-script
+line endings and octets, and full outbound/structured-address validation.
+See the dated audit in [CHECKLIST.md](CHECKLIST.md). Address tests recognize
+From, To, Cc, Bcc, Sender, Reply-To and their Resent variants; unstructured and
+unregistered custom fields are available through `header`, not `address`.
+
 ## The RFC checklist
 
 [CHECKLIST.md](CHECKLIST.md) lists the requirements of RFC 5228 item by item,
@@ -197,7 +204,7 @@ exactly:
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
 | SIEVE-CMD-04 | 3.3 | Normative | `stop` ends the script, from any depth of nesting. | `TestSieve_Stop` |
-| SIEVE-ACT-04 | 4.3 | SHOULD | An implementation keeps a redirect from looping. | n/a: the host's job. |
+| SIEVE-ACT-04 | 4.2, 10 | MUST | An implementation keeps a redirect from looping. | n/a: the host's job. |
 ```
 
 - **ID** is unique, upper case, and ends in a number.

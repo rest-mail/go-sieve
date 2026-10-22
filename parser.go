@@ -533,7 +533,12 @@ func (l *lexer) readMultiLineString() (string, error) {
 		for l.pos < len(l.src) && l.src[l.pos] != '\n' {
 			l.pos++
 		}
-		line := strings.TrimSuffix(l.src[lineStart:l.pos], "\r")
+		line := l.src[lineStart:l.pos]
+		ending := "\n"
+		if strings.HasSuffix(line, "\r") {
+			line = strings.TrimSuffix(line, "\r")
+			ending = "\r\n"
+		}
 		if l.pos < len(l.src) {
 			l.pos++ // newline
 			l.line++
@@ -541,9 +546,11 @@ func (l *lexer) readMultiLineString() (string, error) {
 		if line == "." {
 			return b.String(), nil
 		}
-		line = strings.TrimPrefix(line, ".") // dot-unstuffing
+		if strings.HasPrefix(line, "..") {
+			line = line[1:] // Only doubled leading dots are unstuffed (§2.4.2).
+		}
 		b.WriteString(line)
-		b.WriteByte('\n')
+		b.WriteString(ending)
 	}
 }
 
