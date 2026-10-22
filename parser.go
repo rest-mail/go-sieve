@@ -1384,7 +1384,9 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 				return opts, err
 			}
 			comparatorSet = true
-			opts.comparator = strings.ToLower(s.str)
+			// RFC 4790 §3.1 restricts collation identifiers to US-ASCII.
+			// Unicode lowercasing would accept dotted I as an ASCII i.
+			opts.comparator = asciiCasemapFold(s.str)
 			// RFC 4790/5228: only i;ascii-casemap and i;octet are built in; any
 			// other comparator (e.g. i;ascii-numeric) needs a matching require.
 			if opts.comparator != defaultComparator && opts.comparator != "i;octet" {

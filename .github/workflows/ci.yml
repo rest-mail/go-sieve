@@ -22,7 +22,8 @@ jobs:
       checklist-dirs: '["."]'
       fuzz-targets: >-
         [{"package":".","target":"FuzzParse"},
-         {"package":".","target":"FuzzDecodeEncodedCharacters"}]
+         {"package":".","target":"FuzzDecodeEncodedCharacters"},
+         {"package":".","target":"FuzzComparatorIdentifier"}]
 
   fixtures:
     name: Workflow fixtures

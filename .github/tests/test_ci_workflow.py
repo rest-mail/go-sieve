@@ -96,7 +96,7 @@ class CallerFixtures(unittest.TestCase):
     def test_fuzz_targets_are_exactly_the_repository_targets(self):
         targets = folded_input('fuzz-targets')
         self.assertEqual(targets, [{'package': '.', 'target': name} for name in
-                                   ['FuzzParse', 'FuzzDecodeEncodedCharacters']])
+                                   ['FuzzParse', 'FuzzDecodeEncodedCharacters', 'FuzzComparatorIdentifier']])
         key = lambda item: (item['package'], item['target'])
         self.assertEqual(sorted(targets, key=key), sorted(repository_fuzz_targets(), key=key))
 
@@ -160,9 +160,9 @@ class ProducerContractFixtures(unittest.TestCase):
 
         with patch.dict(self.proof, go=go), contextlib.redirect_stdout(io.StringIO()):
             self.proof['verify'](inputs())
-        names = ['FuzzParse', 'FuzzDecodeEncodedCharacters']
+        names = ['FuzzParse', 'FuzzDecodeEncodedCharacters', 'FuzzComparatorIdentifier']
         self.assertEqual(calls, [
-            *[('test', '-list=^Fuzz', '.')] * 2,
+            *[('test', '-list=^Fuzz', '.')] * len(names),
             ('test', '-race', '-count=1', '-covermode=atomic', '-coverprofile=coverage.out', './...'),
             ('tool', 'cover', '-func=coverage.out'),
             ('run', './internal/checklist', '-file', 'CHECKLIST.md', '.'),
