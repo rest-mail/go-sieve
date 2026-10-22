@@ -284,6 +284,14 @@ func (l *lexer) tokenize() ([]token, error) {
 	if i := strings.IndexByte(l.src, 0); i >= 0 {
 		return nil, fmt.Errorf("sieve: line %d: NUL byte in script", 1+strings.Count(l.src[:i], "\n"))
 	}
+	// RFC 5228 §8.1 permits CR only in a CRLF pair, in every lexical
+	// context. Validate before comments or multiline strings can hide it.
+	// Encoded-character expansion happens later and may produce a bare CR.
+	for i := 0; i < len(l.src); i++ {
+		if l.src[i] == '\r' && (i+1 == len(l.src) || l.src[i+1] != '\n') {
+			return nil, fmt.Errorf("sieve: line %d: bare CR in script", 1+strings.Count(l.src[:i], "\n"))
+		}
+	}
 	var toks []token
 	for {
 		if err := l.skipTrivia(); err != nil {
@@ -415,16 +423,11 @@ func (l *lexer) readQuotedString() (string, error) {
 			}
 			l.pos++
 		case '\r':
-			// RFC 5228 §8.1: quoted-safe permits CRLF as a line break inside a
-			// quoted string, but a bare CR (not followed by LF) is not a valid
-			// quoted-char (octet-not-qspecial excludes CR).
-			if l.pos+1 < len(l.src) && l.src[l.pos+1] == '\n' {
-				b.WriteString("\r\n")
-				l.pos += 2
-				l.line++
-				continue
-			}
-			return "", l.errf("bare CR in quoted string")
+			// tokenize has already checked that every CR belongs to CRLF.
+			// Preserve the pair in the value (RFC 5228 §8.1 quoted-safe).
+			b.WriteString("\r\n")
+			l.pos += 2
+			l.line++
 		case '\n':
 			// A lone LF (not part of a CRLF) is not a valid quoted-char.
 			return "", l.errf("bare LF in quoted string")
@@ -583,7 +586,8 @@ type parser struct {
 // Parse parses a Sieve script into an evaluable [Script]. It is strict about
 // the constructs it understands and lenient about unknown extensions (see the
 // package overview). Raw NUL is forbidden throughout the source, including
-// comments; encoded-character may produce NUL in string values.
+// comments. Bare CR is forbidden throughout the source; encoded-character
+// may produce NUL and bare CR in string values.
 // Nesting of tests and control blocks is capped at
 // [DefaultMaxDepth] (override with [WithMaxDepth]); a script that exceeds the
 // cap is rejected rather than allowed to exhaust the stack at parse or

@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Breaking:** `Parse` and `Validate` reject bare CR throughout script source,
+  including whitespace, comments and multiline strings (RFC 5228 §8.1).
+  CRLF pairs and encoded CR values are preserved. Checked SIEVE-CORE-49 tests
+  cover lexical contexts, all following octets and line diagnostics; FuzzParse
+  checks the invariant. Bare LF outside quoted strings remains a known gap.
+
 - Body `:content` selection uses ASCII case folding for MIME types (RFC 5173
   §5.2; RFC 2045 §5.1). Unicode look-alikes such as `text/plaİn` no longer
   select `text/plain`, either as script selectors or host-supplied part types.
