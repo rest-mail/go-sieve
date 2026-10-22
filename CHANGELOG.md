@@ -58,6 +58,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   The validator uses Go `net/mail`; its obsolete-address and literal-FWS
   limitations remain explicit in SIEVE-CORE-45.
 
+- Comparator identifiers now use ASCII case folding (RFC 4790 §3.1).
+  Unicode look-alikes such as `İ;octet` are rejected by Parse and Validate,
+  including after encoded-character decoding and in unexecuted branches.
+  ASCII mixed-case names remain accepted. Checked row SIEVE-MT-10 has
+  all-octet tests and a dedicated fuzz target run in CI.
+
 - **Breaking:** Parse and Validate reject raw NUL anywhere in script source,
   including ignored comments and multiline strings (RFC 5228 §2.1). Encoded
   NUL string values remain valid. SIEVE-CORE-37 now has exhaustive insertion
