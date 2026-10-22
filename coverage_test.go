@@ -120,7 +120,7 @@ func TestVacation_ReplyTo(t *testing.T) {
 func TestExtensionArguments_Parse(t *testing.T) {
 	good := []string{
 		`require "vacation"; vacation :days 2 :subject "s" :from "a@b" :handle "h" :addresses ["a@b", "c@d"] :mime "body";`,
-		`require "vacation"; vacation :seconds 30 "body";`,
+		`require "vacation-seconds"; vacation :seconds 30 "body";`,
 		`require "notify"; notify :method "mailto:a@b" :message "m" :options ["x"] :from "a@b" :importance "1" :id "i";`,
 		`require "notify"; notify "mailto:a@b";`,
 		`require ["fileinto", "imap4flags", "copy", "mailbox"]; fileinto :create :copy :flags ["\\Seen"] "x";`,
@@ -137,7 +137,7 @@ func TestExtensionArguments_Parse(t *testing.T) {
 	}
 	bad := []string{
 		`require "vacation"; vacation :days;`,
-		`require "vacation"; vacation :seconds;`,
+		`require "vacation-seconds"; vacation :seconds;`,
 		`require "vacation"; vacation :subject;`,
 		`require "vacation"; vacation :from;`,
 		`require "vacation"; vacation :addresses;`,

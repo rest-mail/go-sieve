@@ -23,7 +23,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   directly. Tests cover leading, trailing and mixed blanks in `${hex:...}` and
   `${unicode:...}`, and mixed-case hex digits (RFC 5228 §2.4.2.4, SIEVE-LEX-06).
 
+### Fixed
+
+- **Breaking:** `vacation :seconds` now requires `vacation-seconds`, which
+  implies `vacation` (RFC 6131). Scripts declaring only `vacation` must add or
+  substitute `vacation-seconds`. Using both `:days` and `:seconds` is now an
+  error. Seconds are capped at 2147483647 before duration conversion, so large
+  Sieve numbers cannot overflow into a negative reply interval.
+
 ### Added
+
+- Seventeen extension requirement rows, twelve mapped to new tests: the
+  capability inventory, local regex behavior, and RFC 6131 seconds grammar,
+  interval boundaries and meeting example. Unsupported relational, subaddress,
+  variables and standardized notification capabilities are explicitly recorded,
+  with host reply-rate policy separate from library behavior. README checklist
+  badge updated to 136/195 mapped (59 n/a).
 
 - Tests for the hash comment allowed after `text:` in a multi-line string
   (RFC 5228 §8.1, SIEVE-LEX-05): the comment is not part of the string, and a

@@ -1365,7 +1365,7 @@ vacation :days 14
 //
 // checklist: SIEVE-EXT-01
 func TestSieve_Vacation_SecondsGranularity(t *testing.T) {
-	script := `require "vacation";
+	script := `require "vacation-seconds";
 vacation :seconds 3600 "I am away.";`
 	r := runSieve(t, script, sieveEmail())
 	if r.meta["vacation_reply_body"] != "I am away." {

@@ -193,6 +193,7 @@ var supportedCapabilities = map[string]bool{
 	"body":                       true, // RFC 5173 body test
 	"imap4flags":                 true, // RFC 5232 setflag/addflag/removeflag and :flags
 	"vacation":                   true, // RFC 5230 vacation action
+	"vacation-seconds":           true, // RFC 6131 :seconds, implies vacation
 	"notify":                     true, // notification action
 	"mailbox":                    true, // RFC 5490 fileinto :create
 	"copy":                       true, // RFC 3894 :copy tagged argument
@@ -828,6 +829,10 @@ func (p *parser) parseRequire() error {
 			return p.errf("require of unsupported extension %q", name)
 		}
 		p.required[name] = true
+		if name == "vacation-seconds" {
+			// RFC 6131 §2: this declaration also enables base vacation.
+			p.required["vacation"] = true
+		}
 	}
 	p.requires = append(p.requires, names...)
 	return p.finishStatement()
@@ -1079,8 +1084,9 @@ func isIMAPAtom(s string) bool {
 	return true
 }
 
-// Vacation uses a site minimum of one day and maximum of 365 days (RFC 5230
-// §4.1). Clamp the number before converting to Duration to avoid overflow.
+// Vacation days use a site minimum of one day and maximum of 365 days
+// (RFC 5230 §4.1); seconds use 0..2147483647 (RFC 6131 §2). Clamp before
+// converting to Duration to avoid overflow.
 func (p *parser) parseVacation() (sieveCmd, error) {
 	cmd := &vacationCmd{interval: 7 * 24 * time.Hour}
 	seen := map[string]bool{}
@@ -1090,6 +1096,9 @@ func (p *parser) parseVacation() (sieveCmd, error) {
 			return nil, p.errf("duplicate vacation argument %q", tag)
 		}
 		seen[tag] = true
+		if seen[":days"] && seen[":seconds"] {
+			return nil, p.errf("vacation :days and :seconds are mutually exclusive")
+		}
 		switch tag {
 		case ":days":
 			n, err := p.expect(tNumber, "a day count")
@@ -1099,12 +1108,17 @@ func (p *parser) parseVacation() (sieveCmd, error) {
 			days := min(max(n.num, 1), 365)
 			cmd.interval = time.Duration(days) * 24 * time.Hour
 		case ":seconds":
-			// RFC 6131: retain second granularity.
+			if err := p.requireCapability("vacation-seconds", "vacation :seconds"); err != nil {
+				return nil, err
+			}
 			n, err := p.expect(tNumber, "a seconds count")
 			if err != nil {
 				return nil, err
 			}
-			cmd.interval = time.Duration(n.num) * time.Second
+			// RFC 6131 §2 permits a site maximum of at least one day.
+			// Accept all representable Sieve numbers, capping before duration
+			// conversion so a huge count cannot wrap to zero or negative.
+			cmd.interval = time.Duration(min(n.num, 1<<31-1)) * time.Second
 		case ":subject", ":from", ":handle":
 			s, err := p.expect(tString, "a string")
 			if err != nil {
