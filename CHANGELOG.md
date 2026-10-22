@@ -43,6 +43,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Breaking:** `i;ascii-numeric` no longer strips leading whitespace before
+  comparing (RFC 4790 §9.1.1). Any non-digit first octet denotes positive
+  infinity, including ASCII and Unicode whitespace. Header values still have
+  their field whitespace removed as RFC 5228 §5.7 requires; literal keys and
+  body values keep their original octets. Four tests check every first octet,
+  both operand orders, RFC examples, header normalization and agreement with
+  the independent reference. New checked row SIEVE-MT-09; badge 158/243 mapped.
+
+- Header field names from `Headers.Raw` now use ASCII case folding. Unicode
+  look-alikes such as `ſubject`, `ſender` and `X-Key` no longer alias ASCII
+  fields in `header`, `exists` or `address` tests (RFC 5228 §§2.4.2.2, 5.1,
+  5.5, 5.7; RFC 5322 §3.6.8). The value comparator does not change field-name
+  identity. Regression tests cover mixed-case names, all 256 initial octets,
+  every address part and coexisting real/look-alike fields (SIEVE-CORE-46).
+
 - **Breaking:** `Parse` and `Validate` reject malformed redirect mailboxes,
   address lists, groups (even with just one member), and source routes
   (RFC 5228 §2.4.2.3). Validation runs after encoded-character decoding and
