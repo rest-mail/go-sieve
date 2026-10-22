@@ -929,14 +929,24 @@ func dropSourceRoute(addr string) string {
 // address. For an address without an "@", the whole string is the local part
 // and the domain is empty.
 func addressPartOf(addr, part string) string {
+	// The last @ may be dtext inside a bracketed domain literal (RFC
+	// 2822 §3.4.1). Locate the separator before that literal, while still
+	// allowing @ inside a quoted local-part. Structured addresses and
+	// envelope values are already validated by the host.
+	i := strings.LastIndexByte(addr, '@')
+	if strings.HasSuffix(addr, "]") {
+		if literal := strings.LastIndex(addr, "@["); literal >= 0 {
+			i = literal
+		}
+	}
 	switch part {
 	case ":localpart":
-		if i := strings.LastIndex(addr, "@"); i >= 0 {
+		if i >= 0 {
 			return addr[:i]
 		}
 		return addr
 	case ":domain":
-		if i := strings.LastIndex(addr, "@"); i >= 0 {
+		if i >= 0 {
 			return addr[i+1:]
 		}
 		return ""

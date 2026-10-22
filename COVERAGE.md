@@ -32,6 +32,9 @@ comments and multiline strings, and encoded NUL values.
 `TestQuotedString_EscapedOctets` covers the remaining escaped-octet rejection
 in `readQuotedString` against all 256 octets, and
 `TestQuotedString_EscapedLineBreakAndTruncation` covers incomplete escapes.
+`TestRFC5228AddressLiteralParts` covers separator selection before bracketed
+domain literals, including literals containing `@`, ordinary domains and
+quoted local-parts through address/envelope evaluation and source routes.
 Every statement of `eval.go` is covered:
 `TestSize_ReconstructionCountsRawHeaders` and `TestSize_ReconstructionPartBudget`
 cover raw headers and the part budget in the reconstructed size,

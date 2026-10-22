@@ -91,6 +91,7 @@ The extension audits and the owner decisions on hasflag, delivered flags,
 | SIEVE-CORE-44 | 2.1–2.3, 8.1 | Normative | CR and LF occur only as the CRLF line ending in script source. | n/a: known lexer gap outside quoted strings: bare line endings are accepted in whitespace, comments and multiline strings. SIEVE-LEX-03 proves quoted-string validation only. |
 | SIEVE-CORE-45 | 2.4.2.3 | Normative | Accept the complete sieve-address grammar, including obsolete addr-spec forms and folding whitespace in domain literals inherited from RFC 2822. | n/a: redirect uses Go net/mail mailbox syntax, which rejects some obsolete forms. Domain literals are checked as non-empty dtext independently of the Go version (IPv4, IPv6: and general literals are tested by CORE-39), but FWS inside a literal is rejected; this is not complete grammar conformance. |
 | SIEVE-CORE-46 | 2.4.2.2, 5.1, 5.5, 5.7; RFC 5322 §3.6.8 | Normative | Header field names use ASCII case-insensitive matching, independently of the value comparator; non-ASCII names in raw message headers cannot alias valid names. | `TestRFC5228RawHeaderNameASCIICase`, `TestRFC5228RawHeaderNameOctets` |
+| SIEVE-CORE-50 | 2.7.4, 5.1, 5.4; RFC 2822 §3.4.1 | Normative | For host-validated structured addresses and envelopes, localpart/domain extraction splits before a bracketed domain literal, preserving any @ within its dtext. | `TestRFC5228AddressLiteralParts` |
 
 ## Lexical structure (§2.2–2.4)
 
