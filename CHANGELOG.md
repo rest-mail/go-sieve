@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Body `:content` selection uses ASCII case folding for MIME types (RFC 5173
+  §5.2; RFC 2045 §5.1). Unicode look-alikes such as `text/plaİn` no longer
+  select `text/plain`, either as script selectors or host-supplied part types.
+  ASCII mixed-case types and MIME parameters keep their existing behavior.
+  Adds checked BODY-19 conformance tests and a differential fuzz target run
+  for 30 seconds in CI.
+
 ### Removed
 
 - The unreachable "unexpected token" check after the top-level commands in
@@ -31,7 +40,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   their field whitespace removed as RFC 5228 §5.7 requires; literal keys and
   body values keep their original octets. Four tests check every first octet,
   both operand orders, RFC examples, header normalization and agreement with
-  the independent reference. New checked row SIEVE-MT-09; badge 153/239 mapped.
+  the independent reference. New checked row SIEVE-MT-09; badge 158/243 mapped.
+
+- Header field names from `Headers.Raw` now use ASCII case folding. Unicode
+  look-alikes such as `ſubject`, `ſender` and `X-Key` no longer alias ASCII
+  fields in `header`, `exists` or `address` tests (RFC 5228 §§2.4.2.2, 5.1,
+  5.5, 5.7; RFC 5322 §3.6.8). The value comparator does not change field-name
+  identity. Regression tests cover mixed-case names, all 256 initial octets,
+  every address part and coexisting real/look-alike fields (SIEVE-CORE-46).
+
+- **Breaking:** `Parse` and `Validate` reject malformed redirect mailboxes,
+  address lists, groups (even with just one member), and source routes
+  (RFC 5228 §2.4.2.3). Validation runs after encoded-character decoding and
+  also checks unexecuted branches. Valid named/quoted mailboxes, comments
+  and domain literals (IPv4, `IPv6:` or other dtext, checked identically on
+  every Go version) retain their exact callback value and `:copy` flag.
+  The validator uses Go `net/mail`; its obsolete-address and literal-FWS
+  limitations remain explicit in SIEVE-CORE-45.
+
+- **Breaking:** Parse and Validate reject raw NUL anywhere in script source,
+  including ignored comments and multiline strings (RFC 5228 §2.1). Encoded
+  NUL string values remain valid. SIEVE-CORE-37 now has exhaustive insertion
+  and legal-octet tests; the remaining bare-line-ending gap is CORE-44.
+
+- **Breaking:** `Parse` and `Validate` reject unknown envelope parts, including
+  empty or padded names and unknown entries mixed with `from` or `to` in a list
+  (RFC 5228 §5.4). Names are checked after encoded-character decoding and remain
+  ASCII case-insensitive, independently of the value comparator. Invalid tests
+  are rejected even in branches that would not execute. SIEVE-CORE-24 is now
+  mapped to a regression test; the checklist badge is 154/239 mapped (85 n/a).
 
 - **Breaking:** invalid header-name operands no longer match fields, and
   `address` only tests standard address-bearing headers. Required address

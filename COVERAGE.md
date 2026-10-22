@@ -24,8 +24,13 @@ unterminated strings and bracket comments, and numbers that overflow.
 commands: `parseCommands(false)` returns without an error only at the end of
 the script, so the check could not fire. `TestParse_TopLevelLeftoverTokens`
 shows every kind of leftover token is still refused.
-`TestQuotedString_EscapedOctets` covers the escaped-octet rejection in
-`readQuotedString` against all 256 octets, and
+`TestRFC5228SourceNULRejected` and `TestRFC5228SourceNULDiagnostic` cover
+whole-source NUL rejection and its line diagnostic in `tokenize`; the now
+redundant quoted-string NUL branches were removed.
+`TestRFC5228SourceNonNULOctets` preserves every legal non-linebreak octet in
+comments and multiline strings, and encoded NUL values.
+`TestQuotedString_EscapedOctets` covers the remaining escaped-octet rejection
+in `readQuotedString` against all 256 octets, and
 `TestQuotedString_EscapedLineBreakAndTruncation` covers incomplete escapes.
 Every statement of `eval.go` is covered:
 `TestSize_ReconstructionCountsRawHeaders` and `TestSize_ReconstructionPartBudget`

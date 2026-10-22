@@ -698,7 +698,8 @@ func validHeaderName(name string) bool {
 }
 
 // headerValues returns every value of the named header, drawing from both the
-// structured Headers fields and the raw header map (matched case-insensitively).
+// structured Headers fields and the raw header map (matched with ASCII case
+// folding: field names are RFC 5322 ftext, not Unicode identifiers).
 func headerValues(msg *Message, name string) []string {
 	if !validHeaderName(name) {
 		return nil
@@ -734,7 +735,7 @@ func headerValues(msg *Message, name string) []string {
 		out = append(out, msg.Headers.References...)
 	}
 	for k, vals := range msg.Headers.Raw {
-		if strings.EqualFold(k, lower) {
+		if asciiCasemapFold(k) == lower {
 			out = append(out, vals...)
 		}
 	}
@@ -834,7 +835,7 @@ func addressList(msg *Message, name string) []string {
 		out = append(out, addressSpecs(msg.Headers.Bcc)...)
 	}
 	for k, vals := range msg.Headers.Raw {
-		if !strings.EqualFold(k, lower) {
+		if asciiCasemapFold(k) != lower {
 			continue
 		}
 		for _, v := range vals {
@@ -1175,11 +1176,13 @@ func contentTypeMatches(spec, contentType string) bool {
 		return false
 	}
 	mediaType, _, _ := strings.Cut(contentType, ";")
-	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	// MIME type tokens are US-ASCII (RFC 2045 §5.1). Unicode case folding
+	// would equate, for example, text/plaİn with text/plain.
+	mediaType = asciiCasemapFold(strings.TrimSpace(mediaType))
 	if mediaType == "" {
 		mediaType = "text/plain"
 	}
-	spec = strings.ToLower(spec)
+	spec = asciiCasemapFold(spec)
 	if strings.Contains(spec, "/") {
 		return mediaType == spec
 	}
