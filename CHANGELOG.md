@@ -106,6 +106,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Checked numeric-comparator differential proof against an independent
+  arbitrary-precision oracle (RFC 4790 §9.1.1), covering every boundary octet,
+  machine-integer overflow, long decimal runs and public script evaluation.
+  `FuzzASCIINumericReference` runs for 30 seconds in the shared CI workflow.
+
 - RFC 5228 sections 1–14 audited against the core checklist; 43 new rows
   distinguish executable requirements, host/specification duties and known
   gaps. Fourteen focused conformance tests cover numeric and byte boundaries,
