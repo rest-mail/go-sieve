@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Checklist: 155/240 mapped](https://img.shields.io/badge/checklist-155%2F240%20mapped-blue)](CHECKLIST.md)
+[![Checklist: 159/244 mapped](https://img.shields.io/badge/checklist-159%2F244%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -45,7 +45,9 @@ takes effect. A runtime error during evaluation fails safe to the implicit keep
   RFC 6131 `vacation-seconds`), and the local `notify` action.
 - **Match types**: `:is`, `:contains`, `:matches` (glob with `*` and `?`), plus a
   non-standard `:regex`. **Comparators**: `i;ascii-casemap` (default),
-  `i;octet`, `i;ascii-numeric`. **Address parts**: `:all`/`:localpart`/`:domain`.
+  `i;octet`, `i;ascii-numeric` (a numeric value must begin with an ASCII digit;
+  leading whitespace makes it positive infinity). **Address parts**:
+  `:all`/`:localpart`/`:domain`.
 - **Extension validation**: undeclared extensions and unknown commands, tests,
   and tagged arguments are errors. The RFC 5490 `mailbox` capability currently
   supports `fileinto :create` only; `mailboxexists` is not implemented.
@@ -175,7 +177,7 @@ for the complete library/host contract.
 
 Adapt your own email representation into the neutral `Message` before evaluating:
 `Headers` carries the common structured fields plus a `Raw` map consulted
-(case-insensitively) for any other header, so custom headers such as `X-Priority`
+(using ASCII case folding) for any other header, so custom headers such as `X-Priority`
 are testable; `Envelope` supplies the SMTP identities the `envelope` test reads;
 `Body` and `Attachments` feed the `body` and `size` tests. Set `NoBody` for a
 message that is only a header, with no empty line after it: every `body` test of
@@ -183,7 +185,13 @@ it is false, even one for the empty string (RFC 5173 §4).
 
 The RFC 5228 core audit also records host duties and known gaps: MIME header
 charset preparation, redirect policy/trace/loop controls, strict whole-script
-line endings and octets, and full outbound/structured-address validation.
+line endings and octets, and full structured-address validation. Redirect
+targets are checked after encoded-character decoding as a single mailbox using
+Go `net/mail`, with groups and source routes refused. The original valid value
+is passed unchanged to `Executor.Redirect`. This accepts named and quoted
+mailboxes and any non-empty dtext domain literal (IPv4, `IPv6:` or other),
+checked the same way on every Go version; obsolete address forms and folding
+whitespace inside literals remain a known grammar gap (SIEVE-CORE-45).
 See the dated audit in [CHECKLIST.md](CHECKLIST.md). Address tests recognize
 From, To, Cc, Bcc, Sender, Reply-To and their Resent variants; unstructured and
 unregistered custom fields are available through `header`, not `address`.
@@ -233,7 +241,8 @@ func TestSieve_Stop(t *testing.T) {
 
 CI also fails below 95% statement coverage (the statements left uncovered are
 listed in [COVERAGE.md](COVERAGE.md)) and fuzzes each fuzz target (`FuzzParse`,
-`FuzzDecodeEncodedCharacters`) for 30 seconds.
+`FuzzDecodeEncodedCharacters`, `FuzzBodyContentTypeSelection`,
+`FuzzComparatorIdentifier`) for 30 seconds.
 
 The coverage badge shows the enforced minimum; measured statement coverage is
 printed in each CI run's **Verify RFC** log. The checklist badge counts

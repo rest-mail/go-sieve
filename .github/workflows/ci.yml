@@ -23,6 +23,7 @@ jobs:
       fuzz-targets: >-
         [{"package":".","target":"FuzzParse"},
          {"package":".","target":"FuzzDecodeEncodedCharacters"},
+         {"package":".","target":"FuzzBodyContentTypeSelection"},
          {"package":".","target":"FuzzComparatorIdentifier"}]
 
   fixtures:

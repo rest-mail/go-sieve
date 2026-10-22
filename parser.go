@@ -997,7 +997,7 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 	if err != nil {
 		return nil, err
 	}
-	// RFC 5228 §2.10.6: it is an error to execute redirect with an argument that
+	// RFC 5228 §2.4.2.3: it is an error to execute redirect with an argument that
 	// is not a valid sieve-address. In particular a target carrying CR, LF, NUL
 	// or any other control character (readily smuggled in via a "text:" literal)
 	// would let a host that builds SMTP commands or message headers from the
@@ -1005,8 +1005,117 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 	if r := firstControlChar(addr.str); r >= 0 {
 		return nil, fmt.Errorf("sieve: line %d: redirect address contains a forbidden control character (%#U)", addr.line, r)
 	}
+	// RFC 5228 §2.4.2.3 permits one mailbox, not a group or source route.
+	// ParseAddress alone accepts a group containing one mailbox, so check the
+	// delimiters too. Validate the decoded value, but preserve it for the host.
+	if _, err := mail.ParseAddress(placeholderDomainLiterals(addr.str)); err != nil {
+		return nil, fmt.Errorf("sieve: line %d: invalid redirect address: %w", addr.line, err)
+	}
+	if hasAddressGroupOrRoute(addr.str) {
+		return nil, fmt.Errorf("sieve: line %d: redirect address must not contain a group or source route", addr.line)
+	}
 	cmd.addr = addr.str
 	return cmd, p.finishStatement()
+}
+
+// hasAddressGroupOrRoute finds group/route delimiters outside quoted strings,
+// nested comments and domain literals in an already parsed mailbox. Delimiters
+// in a display name, quoted localpart or IPv6 literal are ordinary data.
+func hasAddressGroupOrRoute(s string) bool {
+	quoted, literal := false, false
+	comments := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\\' && (quoted || comments > 0) {
+			i++ // quoted-pair; syntax was checked by mail.ParseAddress.
+			continue
+		}
+		if comments > 0 {
+			switch c {
+			case '(':
+				comments++
+			case ')':
+				comments--
+			}
+			continue
+		}
+		if quoted {
+			if c == '"' {
+				quoted = false
+			}
+			continue
+		}
+		if literal {
+			if c == ']' {
+				literal = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			quoted = true
+		case '(':
+			comments++
+		case '[':
+			literal = true
+		case ':', ';':
+			return true
+		}
+	}
+	return false
+}
+
+// placeholderDomainLiterals replaces each well-formed domain literal outside
+// quoted strings and comments with [127.0.0.1] before net/mail sees it. RFC 5322
+// §3.4.1 allows any dtext in a domain literal, but net/mail accepts only IP
+// literals and which IPv6 form it takes ([::1] or [IPv6:::1]) depends on the Go
+// version. Checking dtext here keeps redirect validation identical everywhere.
+func placeholderDomainLiterals(s string) string {
+	var b strings.Builder
+	quoted := false
+	comments := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\\' && (quoted || comments > 0) && i+1 < len(s) {
+			b.WriteString(s[i : i+2])
+			i++
+			continue
+		}
+		switch {
+		case comments > 0:
+			switch c {
+			case '(':
+				comments++
+			case ')':
+				comments--
+			}
+		case quoted:
+			quoted = c != '"'
+		case c == '"':
+			quoted = true
+		case c == '(':
+			comments++
+		case c == '[':
+			if end := strings.IndexByte(s[i+1:], ']'); end > 0 && isDtext(s[i+1:i+1+end]) {
+				b.WriteString("[127.0.0.1]")
+				i += end + 1
+				continue
+			}
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+// isDtext reports whether s is non-empty RFC 5322 dtext: printable US-ASCII
+// other than "[", "]" and "\".
+func isDtext(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c < 33 || c > 126 || c == '[' || c == ']' || c == '\\' {
+			return false
+		}
+	}
+	return s != ""
 }
 
 // firstControlChar returns the first control character (C0/C1, including CR, LF,

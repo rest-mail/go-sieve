@@ -15,6 +15,13 @@ func FuzzParse(f *testing.F) {
 	for _, seed := range []string{
 		"",
 		"keep;",
+		`redirect "Friends: user@example.org;";`,
+		`redirect "<@relay.example:user@example.org>";`,
+		`redirect "first@example.org, second@example.org";`,
+		`redirect "user@@example.org";`,
+		`redirect "\"Ops: team; friends\" <ops@example.org>";`,
+		`redirect "user@[IPv6:2001:db8::1]";`,
+		`require "encoded-character"; redirect "Friends${hex:3a} user@example.org${hex:3b}";`,
 		"# before\x00after\r\nkeep;",
 		"/* before\x00after */ keep;",
 		"require \"reject\"; reject text: # before\x00after\r\nbody\r\n.\r\n;",
