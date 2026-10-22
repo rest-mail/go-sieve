@@ -25,6 +25,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Breaking:** `i;ascii-numeric` no longer strips leading whitespace before
+  comparing (RFC 4790 §9.1.1). Any non-digit first octet denotes positive
+  infinity, including ASCII and Unicode whitespace. Header values still have
+  their field whitespace removed as RFC 5228 §5.7 requires; literal keys and
+  body values keep their original octets. Four tests check every first octet,
+  both operand orders, RFC examples, header normalization and agreement with
+  the independent reference. New checked row SIEVE-MT-09; badge 153/239 mapped.
+
 - **Breaking:** invalid header-name operands no longer match fields, and
   `address` only tests standard address-bearing headers. Required address
   headers now work when supplied only in `Headers.Raw`. Incoming envelope

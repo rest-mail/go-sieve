@@ -1009,7 +1009,9 @@ func compareIs(value, key, comparator string) bool {
 // fixed-width integer: two runs are equal exactly when the strings are. Returns
 // false when the value does not begin with a digit (positive infinity).
 func asciiNumeric(s string) (string, bool) {
-	s = strings.TrimSpace(s)
+	// The first octet must be a digit (RFC 4790 §9.1.1). Whitespace,
+	// including Unicode whitespace, denotes infinity just like any other
+	// non-digit prefix. Header-specific trimming happens in headerValues.
 	end := 0
 	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
 		end++
