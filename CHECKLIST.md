@@ -359,7 +359,7 @@ names and matches them. `:text` (the default) matches one string: the first
 | BODY-06 | 4 | Normative | The body is matched as a whole, not line by line, so the strings matched hold CRLFs. | `TestBody_NotLineByLine` |
 | BODY-07 | 5.1 | MUST | `:raw` matches the whole undecoded body as one string: transfer encodings stay, and boundaries and the MIME headers of nested parts are part of the content. | n/a: not supported yet, see rest-mail/rest-mail-server#374: `Message` holds no undecoded body, so `:raw` matches the same text as `:text`. |
 | BODY-08 | 5.1 | MUST NOT | A message with syntax errors is still filtered with `:raw`. | n/a: host's job: the host parses the message into `Message`; evaluation never refuses one. |
-| BODY-09 | 5.2 | Normative | A `:content` type of `""` matches every type, a bare type each of its subtypes, and `type/subtype` only itself; one that begins or ends with a slash or has two slashes matches none. | `TestBody_ContentTypeRules` |
+| BODY-09 | 5.2 | Normative | A `:content` type of `""` matches every type, a bare type each of its subtypes, and `type/subtype` only itself; one that begins or ends with a slash or has two slashes matches none. | `TestBody_ContentTypeRules`, `FuzzBodyContentTypeSelection` |
 | BODY-10 | 5.2 | Normative | The search for `:content` parts descends into multipart and `message/rfc822` parts; every part of a matching type is searched, and the test is true if any part matches any key. | `TestBody_ContentRecursive`, `TestBody_RFCExample` |
 | BODY-11 | 5.2 | Normative | A matching multipart part is searched in its prologue and its epilogue, as two strings; a matching `message/rfc822` part in its header only. | n/a: host's job: `Body.Content` of a container is matched as one string, so the host puts the prologue and epilogue, or the nested header, there. |
 | BODY-12 | 5.2 | MUST NOT | A key does not match across part boundaries, and the MIME headers of the containing part are not in the data. | `TestBody_NoMatchAcrossParts`, `TestBody_RFCExample` |
@@ -369,6 +369,7 @@ names and matches them. `:text` (the default) matches one string: the first
 | BODY-16 | 5.3 | MAY | `:text` may strip mark-up; the library strips HTML tags. | `TestBody_DefaultTransformIsText`, `TestSieve_BodyContains_HTMLStripped` |
 | BODY-17 | 6 | MUST NOT | With the `variables` extension, wildcards in a body test do not set match variables. | n/a: the `variables` extension is not supported. |
 | BODY-18 | 5.1–5.3 | Normative | The example message and scripts of §5 give the results the RFC describes. | `TestBody_RFCExample` |
+| BODY-19 | 5.2; RFC 2045 §§2, 5.1 | Normative | MIME type selection is ASCII case-insensitive; Unicode case look-alikes do not select an ASCII type, independently of the body comparator. | `TestBody_ContentTypeASCIICase`, `FuzzBodyContentTypeSelection` |
 
 
 ## RFC 5490 — mailbox status and creation (§3.1–3.2)

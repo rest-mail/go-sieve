@@ -1173,11 +1173,13 @@ func contentTypeMatches(spec, contentType string) bool {
 		return false
 	}
 	mediaType, _, _ := strings.Cut(contentType, ";")
-	mediaType = strings.ToLower(strings.TrimSpace(mediaType))
+	// MIME type tokens are US-ASCII (RFC 2045 §5.1). Unicode case folding
+	// would equate, for example, text/plaİn with text/plain.
+	mediaType = asciiCasemapFold(strings.TrimSpace(mediaType))
 	if mediaType == "" {
 		mediaType = "text/plain"
 	}
-	spec = strings.ToLower(spec)
+	spec = asciiCasemapFold(spec)
 	if strings.Contains(spec, "/") {
 		return mediaType == spec
 	}

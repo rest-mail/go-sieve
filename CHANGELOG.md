@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Body `:content` selection uses ASCII case folding for MIME types (RFC 5173
+  §5.2; RFC 2045 §5.1). Unicode look-alikes such as `text/plaİn` no longer
+  select `text/plain`, either as script selectors or host-supplied part types.
+  ASCII mixed-case types and MIME parameters keep their existing behavior.
+  Adds checked BODY-19 conformance tests and a differential fuzz target run
+  for 30 seconds in CI.
+
 ### Removed
 
 - The unreachable "unexpected token" check after the top-level commands in
