@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- An independent arbitrary-precision reference for RFC 5228 integer literals
+  and size comparisons. Checked tests cover binary quantifiers, leading zeros,
+  int64 overflow, all token octets and strict comparison boundaries through
+  the public API. `FuzzSieveNumberReference` runs for 30 seconds in CI.
+
 ### Fixed
 
 - Header tests trim mail whitespace rather than Unicode whitespace at value

@@ -68,3 +68,8 @@ race-coverage workflow on its supported runner.
 paths of `unfoldAndTrim`, including raw and structured headers, non-ASCII spaces,
 opaque octets, and controls that are not mail whitespace. No coverage exception
 is added; the shared CI coverage floor remains 95%.
+
+`number_reference_test.go` supplements number-parser statement coverage with an
+independent `math/big` oracle, quantifier overflow boundaries, all token octets
+and public size comparisons. It adds no runtime statements or coverage
+exceptions; the shared 95% CI floor remains unchanged.

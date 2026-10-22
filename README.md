@@ -242,7 +242,13 @@ func TestSieve_Stop(t *testing.T) {
 CI also fails below 95% statement coverage (the statements left uncovered are
 listed in [COVERAGE.md](COVERAGE.md)) and fuzzes each fuzz target (`FuzzParse`,
 `FuzzDecodeEncodedCharacters`, `FuzzBodyContentTypeSelection`,
-`FuzzComparatorIdentifier`) for 30 seconds.
+`FuzzComparatorIdentifier`, `FuzzSieveNumberReference`) for 30 seconds.
+
+`number_reference_test.go` checks RFC 5228 integer literals against a test-only
+`math/big` reference: grammar, binary quantifiers, int64 range boundaries and
+strict size comparisons through Parse/Validate/Evaluate. Fuzzing exercises raw
+token bytes and derived decimal literals with both cases of every quantifier.
+This verifies numeric parsing and comparison, not host wire-size accounting.
 
 The coverage badge shows the enforced minimum; measured statement coverage is
 printed in each CI run's **Verify RFC** log. The checklist badge counts
