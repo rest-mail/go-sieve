@@ -277,18 +277,46 @@ func TestRFC5228_SizeTest(t *testing.T) {
 	}
 }
 
-// TestRFC5228_EnvelopeUnknownPartMatchesNothing checks that an envelope part other
-// than "from" and "to" matches nothing, not an error at run time (§5.4:
-// implementations may support other parts).
+// TestRFC5228_EnvelopePartsCaseInsensitive checks the two supported envelope
+// parts, including a list and a case-sensitive value comparator (§5.4).
 //
 // checklist: SIEVE-TST-05
-func TestRFC5228_EnvelopeUnknownPartMatchesNothing(t *testing.T) {
+func TestRFC5228_EnvelopePartsCaseInsensitive(t *testing.T) {
 	msg := sieveEmail()
-	if matchedFolder(t, `envelope :is "x-nonesuch" ""`, msg) || matchedFolder(t, `envelope :is "x-nonesuch" "x"`, msg) {
-		t.Error("an envelope part the implementation lacks must not match")
+	for _, expr := range []string{
+		`envelope :is "FROM" "sender@example.com"`,
+		`envelope :is "To" "recipient@example.com"`,
+		`envelope :comparator "i;octet" :is ["FrOm", "tO"] ["absent@example.com", "recipient@example.com"]`,
+	} {
+		if !matchedFolder(t, expr, msg) {
+			t.Errorf("envelope part names are case-insensitive: %s", expr)
+		}
 	}
-	if !matchedFolder(t, `envelope :is "FROM" "sender@example.com"`, msg) {
-		t.Error("envelope part names are case-insensitive")
+}
+
+// checklist: SIEVE-CORE-24
+func TestRFC5228_EnvelopeUnknownPartsRejected(t *testing.T) {
+	for _, parts := range []string{
+		`"x-nonesuch"`, `""`, `"sender"`, `" from"`, `"to "`,
+		`["from", "x-nonesuch"]`, `["x-nonesuch", "to"]`,
+		`"${hex:78}"`, `["from", "${unicode:78}"]`,
+	} {
+		for _, condition := range []string{
+			`envelope :is ` + parts + ` ""`,
+			`allof (false, envelope :is ` + parts + ` "")`,
+			`anyof (true, envelope :is ` + parts + ` "")`,
+		} {
+			script := `require ["envelope", "encoded-character"]; if ` + condition + ` { keep; }`
+			parsed, err := Parse(script)
+			if err == nil || parsed != nil {
+				t.Errorf("Parse accepted unknown envelope part: %s", script)
+			} else if !strings.Contains(err.Error(), "unknown envelope part") {
+				t.Errorf("unexpected error for %s: %v", parts, err)
+			}
+			if err := Validate(script); err == nil {
+				t.Errorf("Validate accepted unknown envelope part: %s", script)
+			}
+		}
 	}
 }
 
