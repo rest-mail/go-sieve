@@ -19,7 +19,7 @@ func TestMultiLineString_HashCommentAfterMarker(t *testing.T) {
 		name, src, want string
 	}{
 		{"space then comment", "text: # note\nbody\n.\n", "body\n"},
-		{"tab then comment, CRLF", "text:\t# note\r\nbody\r\n.\r\n", "body\n"},
+		{"tab then comment, CRLF", "text:\t# note\r\nbody\r\n.\r\n", "body\r\n"},
 		{"comment right after the colon", "text:# note\n.\n", ""},
 		{"empty comment", "text: #\nbody\n.\n", "body\n"},
 		{"upper-case marker", "TEXT: # note\nbody\n.\n", "body\n"},

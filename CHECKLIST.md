@@ -16,12 +16,78 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`),
 RFC 5232 (`imap4flags`), RFC 5173 (`body`), RFC 5490 (`mailbox`) and
 RFC 6131 (`vacation-seconds`) are checked clause by clause in their own sections. The `Received` and loop requirements of
-`redirect` belong to the host.
+`redirect` belong to the host, as recorded below.
 
 `TestDifferentialEvaluate` and `TestDifferentialParse` check the RFC 5228 items
 they name against an independent implementation,
 [foxcpp/go-sieve](https://github.com/foxcpp/go-sieve), used only by the tests.
 
+
+## RFC 5228 core audit (2026-10-22)
+
+Audited sections **1–14 and every subsection**, comparing explicit MUST,
+MUST NOT, SHOULD, SHOULD NOT and RECOMMENDED clauses and their surrounding
+text against the existing rows. Sections 1/1.1/1.2 provide context and examples;
+2.1–2.10 cover syntax, matching and execution; 3.1–3.3 controls;
+4.1–4.4 actions; 5.1–5.10 tests; 6/6.1–6.3 extension and registration duties;
+7 transport; 8.1–8.3 grammar; 9 the extended example; 10 security;
+11–13 acknowledgments/references; and 14 the change summary. Sections 11–14
+add no separate executable MUST/SHOULD obligation. Section 9 was reviewed as
+an example, not certified as an exhaustive interoperability vector.
+
+The new core rows below supplement, rather than replace, the earlier tables.
+This is a requirements inventory, not proof of complete RFC conformance.
+In particular, **n/a marked as a known gap is not an exemption from the RFC**.
+Host duties need integration tests in the consuming MTA; extension-author and
+registry duties are specification work. Imported RFCs were not freshly audited.
+The extension audits and the owner decisions on hasflag, delivered flags,
+`:raw` and mailboxexists remain unchanged.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| SIEVE-CORE-01 | 2.4.1 | MUST | Support every integer from zero through 2147483647 inclusive. | `TestRFC5228MinimumIntegerRange` |
+| SIEVE-CORE-02 | 2.4.2, 8.1 | MUST | Accept all grammar-valid string octets, including non-UTF-8 bytes, rather than requiring Unicode text. | `TestRFC5228OpaqueStringOctets` |
+| SIEVE-CORE-03 | 2.4.2.2 | MUST NOT | Invalid header-name operands cause no error and match no field, including with header, address and exists tests. | `TestRFC5228InvalidHeaderNamesNeverMatch` |
+| SIEVE-CORE-04 | 2.4.2.2, 2.7.2 | SHOULD | Interpret MIME encoded header text as Unicode encoded in UTF-8 before comparing. | n/a: host adaptation currently owns MIME header decoding; Headers.Raw is unfolded but not RFC 2047 decoded by this library. Passing undecoded words is a known integration gap. |
+| SIEVE-CORE-05 | 2.7.2 | MUST | Within the recommended conversion behavior, support US-ASCII, ISO-8859-1, the ASCII subset of ISO-8859-* and UTF-8. | n/a: the host must supply decoded UTF-8 header values. The library has no charset decoder; callers must verify these minimum conversions in their adapter. |
+| SIEVE-CORE-06 | 2.7.2 | MUST | If the recommended charset behavior is unsupported, never consider strings equal when either contains octets above 127. | n/a: known gap for hosts supplying undecoded values: the library neither enforces charset conversion nor this restrictive alternative; its comparators permit equal non-ASCII octets. A conforming integration must provide the conversion path in CORE-04/05. |
+| SIEVE-CORE-07 | 2.7.2 | SHOULD NOT | An encoded NUL must not terminate the header content being compared. | `TestRFC5228EncodedNULDoesNotTruncate` |
+| SIEVE-CORE-08 | 2.6.2 | SHOULD NOT | Tagged arguments should not themselves take tagged arguments as values. | n/a: extension syntax design duty; the implemented tags take literal values or no value, not nested tags. |
+| SIEVE-CORE-09 | 2.10.3 | MUST NOT | A script requesting delivery to a mailbox twice is not an error. | `TestRFC5228RepeatedDeliveryIsNotError` |
+| SIEVE-CORE-10 | 2.10.4 | MUST | Allow at least one keep or fileinto; implementations without fileinto must allow keep. | `TestRFC5228RepeatedDeliveryIsNotError` |
+| SIEVE-CORE-11 | 2.10.5, 2.10.6 | MUST | Check executed code syntactically, semantically and at runtime and do not execute code after an unavailable require. | `TestRFC5228ChecksExecutedCode`, `TestRFC5228RuntimeChecksStopProcessing` |
+| SIEVE-CORE-12 | 2.10.6 | MUST | Notify the user of errors and which actions, if any, were taken. | n/a: the host must notify the user using Parse errors or Outcome.Error and its own callback/action journal. Outcome alone does not enumerate already completed or partially failed host actions. |
+| SIEVE-CORE-13 | 2.10.7 | MUST | Support fifteen nested blocks with the default parser configuration. | `TestRFC5228FifteenNestingLevels` |
+| SIEVE-CORE-14 | 2.10.7 | MUST | Support fifteen nested test lists with the default parser configuration. | `TestRFC5228FifteenNestingLevels` |
+| SIEVE-CORE-15 | 4, 5 | MUST | Support keep, discard, redirect and address, allof, anyof, exists, false, header, not, size and true. | `TestRFC5228MandatoryCoreSupport` |
+| SIEVE-CORE-16 | 4.1 | SHOULD | Reencode UTF-8 mailbox names when the mailstore uses a different encoding. | n/a: Executor.FileInto receives the script string; the host owns mailstore encoding, including modified UTF-7 for stores that require it. |
+| SIEVE-CORE-17 | 4.2 | MUST | Preserve existing Received fields and increase their count before a redirected message leaves the implementation. | n/a: the host owns wire serialization and trace fields; a Received added before filtering can satisfy the increase. No message header is added by this evaluator. |
+| SIEVE-CORE-18 | 4.2 | MUST | A redirected message with a null incoming envelope sender must retain a null outgoing envelope sender. | n/a: Executor.Redirect receives the destination and copy flag; the host retains the original envelope and selects the outgoing reverse-path. This cannot be certified by a destination callback test. |
+| SIEVE-CORE-19 | 4.2, 10 | MUST | Provide administrator controls to limit redirect abuse, specifically the number of redirects per script. | n/a: host policy duty; there is no built-in redirect count option. A host Executor must enforce the limit and signal a runtime error when exceeded. |
+| SIEVE-CORE-20 | 4.2 | MUST NOT | A redirect silently ignored for policy reasons must not cancel the implicit keep. | n/a: known API gap: Redirect has no return value for a policy skip and the evaluator cancels keep before the callback. A host must not silently skip and rely on Outcome.ImplicitKeep; it must preserve delivery itself or signal an error for the fail-safe keep. |
+| SIEVE-CORE-21 | 4.4 | MUST | Discard is silent and does not generate a DSN, MDN or other non-delivery notification. | `TestRFC5228DiscardIsSilent` |
+| SIEVE-CORE-22 | 5.1 | MUST | Restrict address tests to address-bearing fields and include From, To, Cc, Bcc, Sender, Resent-From and Resent-To. | `TestRFC5228AddressHeaderRestriction` |
+| SIEVE-CORE-23 | 5.4 | MUST | Drop source routes before every envelope comparison, including all, localpart and domain. | `TestRFC5228EnvelopeDropsSourceRoutes` |
+| SIEVE-CORE-24 | 5.4 | SHOULD | Consider unknown envelope parts an error. | n/a: known recommendation not followed: unknown parts currently produce no values and no match (SIEVE-TST-05). No extension envelope parts are implemented. |
+| SIEVE-CORE-25 | 6 | Normative | Capability strings are case-sensitive even though command identifiers are case-insensitive. | `TestRFC5228CapabilityStringsCaseSensitive` |
+| SIEVE-CORE-26 | 6 | MUST | An extension defines a unique capability string and uses a different name when a new version changes functionality. | n/a: extension specification/registration duty; capability recognition is inventoried by EXT-CAP-01, not proof of registration or future version naming. |
+| SIEVE-CORE-27 | 2.10.1, 2.10.5, 6 | MUST | Extension specifications state action compatibility and implicit-keep interactions and must not change require or its argument interpretation. | n/a: extension-author duty. Implemented extension behavior has its own audited sections below; the parser keeps core require semantics. |
+| SIEVE-CORE-28 | 6 | MUST | A registered capability prefix ends with a hyphen and does not overlap an existing registration. | n/a: IANA/extension-registration duty; this package does not allocate capability prefixes. |
+| SIEVE-CORE-29 | 6 | MUST | Extensions generating mail or protocol requests consider loop suppression, at least in security documentation. | n/a: extension specification duty; host transport/suppression requirements are recorded in the vacation, reject and redirect rows. Local notify is not a claim of a standardized notification extension. |
+| SIEVE-CORE-30 | 6.1 | SHOULD | A vnd. extension name is followed by the vendor and product name. | n/a: naming guidance for vendor extension authors; no vnd. capability is implemented. |
+| SIEVE-CORE-31 | 6.2 | SHOULD | Extensions intended for interoperable use use IETF-controlled capability names. | n/a: extension specification/registration duty; local regex and notify are explicitly not claims of standards conformance. |
+| SIEVE-CORE-32 | 10 | SHOULD | Protect stored scripts against unauthorized retrieval. | n/a: the host owns storage, authentication and script retrieval; this library only parses supplied text. |
+| SIEVE-CORE-33 | 10 | SHOULD | Set the redirect count limit to one when there is no use case for multiple destinations. | n/a: administrator policy decision in the host; the library does not know deployment use cases or impose a destination count. |
+| SIEVE-CORE-34 | 10 | MUST | Provide facilities to log redirect use to investigate abuse. | n/a: Executor.Redirect is the host logging boundary; durable logs, identity and delivery outcome are host responsibilities, not provided by the evaluator. |
+| SIEVE-CORE-35 | 2.4.2, 8.1 | SHOULD NOT | Script authors should not backslash-escape characters other than quote and backslash without an extension defining them. | n/a: script-author/generator guidance; parser acceptance of undefined escapes is required and covered by SIEVE-LEX-03. |
+| SIEVE-CORE-36 | 2.4.2 | SHOULD | Script authors should properly dot-stuff multiline strings to avoid ambiguous single-dot-prefixed lines. | n/a: script-author/generator guidance. The parser must still preserve a singly prefixed dot as proved by CORE-38. |
+| SIEVE-CORE-37 | 2.1–2.3, 8.1 | Normative | NUL is forbidden anywhere in scripts and CR/LF occur only as CRLF. | n/a: known lexer gaps outside quoted strings: bare line endings are accepted, and comments/multiline strings do not uniformly reject NUL or bare CR. SIEVE-LEX-03 only proves quoted-string validation; this audit does not claim strict whole-script octet validation. |
+| SIEVE-CORE-38 | 2.4.2, 8.1 | Normative | Multiline string values preserve CRLF and remove a leading dot only when it is doubled; a single dot followed by other text remains literal. | `TestRFC5228MultilinePreservesSingleDotAndCRLF` |
+| SIEVE-CORE-39 | 2.4.2.3 | Normative | An executed outbound address must match sieve-address, excluding source routes and groups. | n/a: known validation gap: redirect rejects control characters but does not fully enforce sieve-address syntax; host delivery must reject invalid addresses. This is separate from incoming envelope route handling in CORE-23. |
+| SIEVE-CORE-40 | 2.7.4 | Normative | Invalid addresses must not match localpart or domain tests. | n/a: raw headers are parsed and covered by SIEVE-TST-02, but structured Address and Envelope values are trusted without complete address validation. The host must validate those inputs; arbitrary malformed structured values remain a known gap. |
+| SIEVE-CORE-41 | 5.1 | SHOULD | Include other fields using an address-list body in address tests. | `TestRFC5228AddressHeaderRestriction` |
+| SIEVE-CORE-42 | 5.4 | Normative | Only envelope recipient information for the evaluated user is available in the to part. | n/a: the host must populate Envelope.To with only the current delivery recipient identities; the library cannot infer user ownership from an arbitrary supplied list. |
+| SIEVE-CORE-43 | 7 | Normative | Use application/sieve when transmitting a Sieve script as a MIME entity. | n/a: this parser has no script transmission or MIME serialization facility. |
 
 ## Lexical structure (§2.2–2.4)
 
@@ -34,9 +100,9 @@ they name against an independent implementation,
 | SIEVE-LEX-05 | 2.4.2, 8.1 | Normative | A multi-line string is `text:`, optional spaces or tabs, and a hash comment or a line break, then lines up to a line holding only `.`; a leading `.` on a line is doubled (dot-stuffing) and the doubling is removed; an unterminated one is an error. | `TestSieve_MultiLineString`, `TestSieve_MultiLineDotStuffing`, `TestRFC5228_SyntaxErrors`, `FuzzParse`, `TestLexer_Errors`, `TestMultiLineString_HashCommentAfterMarker` |
 | SIEVE-LEX-06 | 2.4.2.4 | Normative | With `require "encoded-character"`, `${hex:…}` and `${unicode:…}` in a string stand for the octets or code points they name; text that does not fit the grammar stays as written, a surrogate or code point above U+10FFFF is an error, and the result is not scanned again. | `TestEncodedCharacter_HexDecodesInStringConstant`, `TestEncodedCharacter_HexKeyMatchesHeader`, `TestEncodedCharacter_UnicodeDecodesToUTF8`, `TestEncodedCharacter_MalformedLeftLiteral`, `TestEncodedCharacter_NotRequiredStaysLiteral`, `TestDecodeEncodedCharacters_RFCExamples`, `TestDecodeEncodedCharacters_OutOfRangeUnicode`, `TestEncodedCharacter_InvalidUnicodeIsError`, `FuzzDecodeEncodedCharacters`, `TestEncodedCharacter_SequenceErrors` |
 | SIEVE-LEX-07 | 2.4.2.1 | Normative | A string list is one string or `[` strings separated by commas `]`; it holds at least one string, and a comma is followed by a string. | `TestSieve_KeyList`, `TestSieve_HeaderList`, `TestValidateSieve_RejectsEmptyStringList`, `TestRFC5228_SyntaxErrors`, `FuzzParse`, `TestDifferentialParse` |
-| SIEVE-LEX-08 | 2.4.2.2 | Normative | A number is digits with an optional quantifier K, M or G (powers of 1024, in either case); a number the implementation cannot represent is an error. | `TestSieve_Size_Quantifier`, `TestValidateSieve_RejectsSizeOverflow`, `TestValidateSieve_AcceptsRepresentableSizes`, `TestRFC5228_SizeTest`, `FuzzParse`, `TestLexer_Errors` |
-| SIEVE-LEX-09 | 2.5 | Normative | A block is commands inside `{` and `}`, and may be empty or nested. | `TestSieve_IfElsifElse`, `TestRFC5228_SyntaxErrors`, `TestDifferentialParse` |
-| SIEVE-LEX-10 | 2.5 | Normative | A command ends with `;` or, for a control command, with a block; a missing `;`, a missing block and an unbalanced brace are errors. | `TestRFC5228_SyntaxErrors`, `TestValidateSieve_Valid`, `TestValidateSieve_AcceptsNewConstructs`, `FuzzParse`, `TestDifferentialParse`, `TestParse_TopLevelLeftoverTokens` |
+| SIEVE-LEX-08 | 2.4.1 | Normative | A number is digits with an optional quantifier K, M or G (powers of 1024, in either case); a number the implementation cannot represent is an error. | `TestSieve_Size_Quantifier`, `TestValidateSieve_RejectsSizeOverflow`, `TestValidateSieve_AcceptsRepresentableSizes`, `TestRFC5228_SizeTest`, `FuzzParse`, `TestLexer_Errors` |
+| SIEVE-LEX-09 | 2.8 | Normative | A block is commands inside `{` and `}`, and may be empty or nested. | `TestSieve_IfElsifElse`, `TestRFC5228_SyntaxErrors`, `TestDifferentialParse` |
+| SIEVE-LEX-10 | 2.9 | Normative | A command ends with `;` or, for a control command, with a block; a missing `;`, a missing block and an unbalanced brace are errors. | `TestRFC5228_SyntaxErrors`, `TestValidateSieve_Valid`, `TestValidateSieve_AcceptsNewConstructs`, `FuzzParse`, `TestDifferentialParse`, `TestParse_TopLevelLeftoverTokens` |
 | SIEVE-LEX-11 | 2.1, 8.2 | Normative | A command takes exactly the arguments its grammar gives it: `stop`, `discard` and the tests take no extra arguments, and a test list is not empty. | `TestRFC5228_SyntaxErrors`, `TestParse_NestedErrorsPropagate` |
 
 ## Control commands (§3)
@@ -82,10 +148,10 @@ they name against an independent implementation,
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
-| SIEVE-ACT-01 | 4.1 | Normative | `keep` files the message into the default mailbox and cancels the implicit keep. | `TestSieve_DuplicateKeepDeliversOnce`, `TestRFC5228_SyntaxErrors`, `TestDifferentialEvaluate` |
+| SIEVE-ACT-01 | 4.3 | Normative | `keep` files the message into the default mailbox and cancels the implicit keep. | `TestSieve_DuplicateKeepDeliversOnce`, `TestRFC5228_SyntaxErrors`, `TestDifferentialEvaluate` |
 | SIEVE-ACT-02 | 4.1 | Normative | With `require "fileinto"`, `fileinto` files the message into the named mailbox and cancels the implicit keep; filing into one mailbox twice delivers once. | `TestSieve_DuplicateFileintoDeliversOnce`, `TestSieve_DistinctFileintoDeliversEach`, `TestSieve_FileintoCopyDistinctFromConsuming`, `TestSieve_FileintoThenDiscardStillDelivers`, `TestSieve_DiscardThenFileintoStillDelivers`, `TestDifferentialEvaluate` |
 | SIEVE-ACT-03 | 4.2 | Normative | `redirect` sends the message to one address and cancels the implicit keep; an address with control characters is an error; redirecting to one address twice delivers once. | `TestSieve_Redirect`, `TestSieve_DuplicateRedirectDeliversOnce`, `TestSieve_DistinctRedirectDeliversEach`, `TestValidateSieve_RejectsRedirectControlChars`, `TestValidateSieve_AcceptsNormalRedirect`, `TestRFC5228_SyntaxErrors`, `TestDifferentialEvaluate` |
-| SIEVE-ACT-04 | 4.3 | SHOULD | An implementation keeps a redirect from looping and adds a `Received` or similar marker. | n/a: the library only reports the redirect to the host's Executor; loop prevention and the message's headers are the host's. |
+| SIEVE-ACT-04 | 4.2, 10 | MUST | Detect and break redirect loops; a detected loop is an error. | n/a: the host Executor owns outgoing delivery and loop detection; it must signal a detected loop as a runtime error, not silently send again. |
 | SIEVE-ACT-05 | 4.4 | Normative | `discard` cancels the implicit keep, drops the message if nothing else delivers it, and does not end the script or withdraw other actions. | `TestSieve_Discard`, `TestSieve_BareDiscardDropsMessage`, `TestSieve_DiscardDoesNotStopScript`, `TestSieve_DiscardThenFileintoStillDelivers`, `TestSieve_FileintoThenDiscardStillDelivers`, `TestSieve_DiscardThenStopDrops`, `TestDifferentialEvaluate` |
 | SIEVE-ACT-06 | 2.10.2 | MUST | Unless an action cancels it, the implicit keep delivers the message to the default mailbox, also for an empty script and a script that selects no action. | `TestSieve_NoActionImpliesImplicitKeep`, `TestSieve_EmptyScriptImpliesImplicitKeep`, `TestSieve_StopBeforeActionKeepsImplicitly`, `TestSieve_CopyImplicitKeep`, `TestSieve_RedirectCopyTag`, `TestDifferentialEvaluate`, `TestDifferentialStop` |
 | SIEVE-ACT-07 | 2.10.6 | MUST | When an error occurs while the script runs, the message is kept rather than lost. | `TestSieve_RuntimeErrorKeepsMessage`, `TestEvaluate_NilMessage_DoesNotPanic`, `TestEvaluate_NilMessage_NilScriptStillGuarded`, `TestEvaluate_PanicWithErrorValue` |

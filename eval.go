@@ -683,10 +683,27 @@ func gatherHeaderValues(msg *Message, names []string) []string {
 	return out
 }
 
+// validHeaderName accepts RFC 5322 ftext only. Invalid test operands never
+// match, even if the host supplied an invalid key in Headers.Raw (§2.4.2.2).
+func validHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		if name[i] < 33 || name[i] > 126 || name[i] == ':' {
+			return false
+		}
+	}
+	return true
+}
+
 // headerValues returns every value of the named header, drawing from both the
 // structured Headers fields and the raw header map (matched case-insensitively).
 func headerValues(msg *Message, name string) []string {
-	lower := strings.ToLower(strings.TrimSpace(name))
+	if !validHeaderName(name) {
+		return nil
+	}
+	lower := strings.ToLower(name)
 	var out []string
 	switch lower {
 	case "subject":
@@ -793,18 +810,29 @@ func gatherAddressValues(msg *Message, names []string, part string) []string {
 // comments, or group syntax — per RFC 5228 §5.1. Values that do not parse as an
 // address are dropped so they cannot match :localpart/:domain (§2.7.4).
 func addressList(msg *Message, name string) []string {
-	lower := strings.ToLower(strings.TrimSpace(name))
+	if !validHeaderName(name) {
+		return nil
+	}
+	lower := strings.ToLower(name)
+	// RFC 5228 §5.1 restricts this test to address-bearing fields. A Subject
+	// that happens to look like an addr-spec is still unstructured text.
 	switch lower {
-	case "from":
-		return addressSpecs(msg.Headers.From)
-	case "to":
-		return addressSpecs(msg.Headers.To)
-	case "cc":
-		return addressSpecs(msg.Headers.Cc)
-	case "bcc":
-		return addressSpecs(msg.Headers.Bcc)
+	case "from", "to", "cc", "bcc", "sender", "reply-to",
+		"resent-from", "resent-to", "resent-cc", "resent-bcc", "resent-sender":
+	default:
+		return nil
 	}
 	var out []string
+	switch lower {
+	case "from":
+		out = append(out, addressSpecs(msg.Headers.From)...)
+	case "to":
+		out = append(out, addressSpecs(msg.Headers.To)...)
+	case "cc":
+		out = append(out, addressSpecs(msg.Headers.Cc)...)
+	case "bcc":
+		out = append(out, addressSpecs(msg.Headers.Bcc)...)
+	}
 	for k, vals := range msg.Headers.Raw {
 		if !strings.EqualFold(k, lower) {
 			continue
@@ -847,7 +875,7 @@ func gatherEnvelopeValues(msg *Message, parts []string, part string) []string {
 	var out []string
 	for _, name := range parts {
 		for _, v := range envelopeValues(msg, name) {
-			out = append(out, addressPartOf(v, part))
+			out = append(out, addressPartOf(dropSourceRoute(v), part))
 		}
 	}
 	return out
@@ -869,6 +897,31 @@ func envelopeValues(msg *Message, name string) []string {
 		return msg.Envelope.To
 	}
 	return nil
+}
+
+// dropSourceRoute removes the obsolete SMTP route before comparing any
+// envelope part (RFC 5228 §5.4). A colon elsewhere in an addr-spec is data.
+func dropSourceRoute(addr string) string {
+	candidate := addr
+	if strings.HasPrefix(candidate, "<") && strings.HasSuffix(candidate, ">") {
+		candidate = candidate[1 : len(candidate)-1]
+	}
+	if strings.HasPrefix(candidate, "@") {
+		inLiteral := false
+		for i := 0; i < len(candidate); i++ {
+			switch candidate[i] {
+			case '[':
+				inLiteral = true
+			case ']':
+				inLiteral = false
+			case ':':
+				if !inLiteral {
+					return candidate[i+1:]
+				}
+			}
+		}
+	}
+	return addr
 }
 
 // addressPartOf extracts the requested part (:all/:localpart/:domain) from an
