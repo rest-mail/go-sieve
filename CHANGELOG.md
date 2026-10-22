@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- RFC 5228 `:matches` proof against an independent dynamic-programming oracle:
+  exhaustive short patterns, all 256 escaped octets, explicit expected results,
+  and a bounded differential fuzz target through Parse/Evaluate and both byte
+  comparators. CI runs the new target for 30 seconds. Runtime behavior is unchanged.
+
 ### Fixed
 
 - Malformed `${unicode:...}` encodings remain literal even when an early
