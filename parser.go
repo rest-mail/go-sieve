@@ -1500,6 +1500,15 @@ func (p *parser) parseEnvelopeTest() (sieveTest, error) {
 	if err != nil {
 		return nil, err
 	}
+	// RFC 5228 §5.4 recommends an error for unknown envelope parts. Check
+	// every decoded operand now, even in a branch that will not be evaluated.
+	for _, part := range parts {
+		switch asciiCasemapFold(part) {
+		case "from", "to":
+		default:
+			return nil, p.errf("unknown envelope part %q", part)
+		}
+	}
 	keys, err := p.parseStringList()
 	if err != nil {
 		return nil, err
