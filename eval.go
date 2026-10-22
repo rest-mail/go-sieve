@@ -698,7 +698,8 @@ func validHeaderName(name string) bool {
 }
 
 // headerValues returns every value of the named header, drawing from both the
-// structured Headers fields and the raw header map (matched case-insensitively).
+// structured Headers fields and the raw header map (matched with ASCII case
+// folding: field names are RFC 5322 ftext, not Unicode identifiers).
 func headerValues(msg *Message, name string) []string {
 	if !validHeaderName(name) {
 		return nil
@@ -734,7 +735,7 @@ func headerValues(msg *Message, name string) []string {
 		out = append(out, msg.Headers.References...)
 	}
 	for k, vals := range msg.Headers.Raw {
-		if strings.EqualFold(k, lower) {
+		if asciiCasemapFold(k) == lower {
 			out = append(out, vals...)
 		}
 	}
@@ -750,11 +751,13 @@ func headerValues(msg *Message, name string) []string {
 
 // unfoldAndTrim applies RFC 5322 §2.2.3 unfolding to a header value:
 // remove only CRLF immediately followed by SP or HTAB, preserving the folding
-// whitespace itself. Then ignore leading and trailing whitespace as required
-// by RFC 5228 §5.7. Non-folding line breaks remain part of the supplied value.
+// whitespace itself. Then strip leading and trailing mail whitespace (SP, HTAB
+// and line breaks), as RFC 5228 §5.7 requires the header test to ignore.
+// Non-folding line breaks, other controls and Unicode spaces remain header
+// content. Values without a CRLF take a fast path that only trims.
 func unfoldAndTrim(v string) string {
 	if !strings.Contains(v, "\r\n") {
-		return strings.TrimSpace(v)
+		return strings.Trim(v, " \t\r\n")
 	}
 	var b strings.Builder
 	b.Grow(len(v))
@@ -765,7 +768,7 @@ func unfoldAndTrim(v string) string {
 		}
 		b.WriteByte(v[i])
 	}
-	return strings.TrimSpace(b.String())
+	return strings.Trim(b.String(), " \t\r\n")
 }
 
 // formatAddresses renders structured addresses as header-style values.
@@ -824,7 +827,7 @@ func addressList(msg *Message, name string) []string {
 		out = append(out, addressSpecs(msg.Headers.Bcc)...)
 	}
 	for k, vals := range msg.Headers.Raw {
-		if !strings.EqualFold(k, lower) {
+		if asciiCasemapFold(k) != lower {
 			continue
 		}
 		for _, v := range vals {
@@ -999,7 +1002,9 @@ func compareIs(value, key, comparator string) bool {
 // fixed-width integer: two runs are equal exactly when the strings are. Returns
 // false when the value does not begin with a digit (positive infinity).
 func asciiNumeric(s string) (string, bool) {
-	s = strings.TrimSpace(s)
+	// The first octet must be a digit (RFC 4790 §9.1.1). Whitespace,
+	// including Unicode whitespace, denotes infinity just like any other
+	// non-digit prefix. Header-specific trimming happens in headerValues.
 	end := 0
 	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
 		end++
