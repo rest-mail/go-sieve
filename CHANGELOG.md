@@ -25,6 +25,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Breaking:** `Parse` and `Validate` reject malformed redirect mailboxes,
+  address lists, groups (even with just one member), and source routes
+  (RFC 5228 §2.4.2.3). Validation runs after encoded-character decoding and
+  also checks unexecuted branches. Valid named/quoted mailboxes, comments
+  and domain literals (IPv4, `IPv6:` or other dtext, checked identically on
+  every Go version) retain their exact callback value and `:copy` flag.
+  The validator uses Go `net/mail`; its obsolete-address and literal-FWS
+  limitations remain explicit in SIEVE-CORE-45.
+
 - **Breaking:** Parse and Validate reject raw NUL anywhere in script source,
   including ignored comments and multiline strings (RFC 5228 §2.1). Encoded
   NUL string values remain valid. SIEVE-CORE-37 now has exhaustive insertion
