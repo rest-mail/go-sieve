@@ -39,6 +39,21 @@ if header :is "Subject" "${hex:24 24}" { discard; }`
 	}
 }
 
+// checklist: SIEVE-LEX-06 SIEVE-TST-05
+func TestEncodedCharacter_EnvelopeStringLists(t *testing.T) {
+	for _, parts := range []string{
+		`"${hex:66 72 6f 6d}"`,
+		`["${hex:66 72 6f 6d}"]`,
+		`["${unicode:54 4f}", "${hex:66 72 6f 6d}"]`,
+	} {
+		script := `require ["envelope", "encoded-character"]; if envelope :is ` + parts +
+			` ["absent@example.com", "sender${hex:40}example.com"] { discard; }`
+		if got := runSieve(t, script, sieveEmail()); got.disposition != Discard {
+			t.Errorf("encoded envelope parts and keys did not match: %s", script)
+		}
+	}
+}
+
 // TestEncodedCharacter_UnicodeDecodesToUTF8 covers ${unicode:...}: a code point
 // is replaced by its UTF-8 encoding (U+1F4A9 is a 4-octet sequence).
 //

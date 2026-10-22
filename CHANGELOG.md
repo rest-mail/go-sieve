@@ -25,6 +25,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Breaking:** `Parse` and `Validate` reject unknown envelope parts, including
+  empty or padded names and unknown entries mixed with `from` or `to` in a list
+  (RFC 5228 §5.4). Names are checked after encoded-character decoding and remain
+  ASCII case-insensitive, independently of the value comparator. Invalid tests
+  are rejected even in branches that would not execute. SIEVE-CORE-24 is now
+  mapped to a regression test; the checklist badge is 153/238 mapped (85 n/a).
+
 - **Breaking:** invalid header-name operands no longer match fields, and
   `address` only tests standard address-bearing headers. Required address
   headers now work when supplied only in `Headers.Raw`. Incoming envelope
