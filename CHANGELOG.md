@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Malformed `${unicode:...}` encodings remain literal even when an early
+  digit run names a surrogate or an out-of-range scalar (RFC 5228 §2.4.2.4).
+  Range errors are reported only after the entire sequence fits the grammar;
+  well-formed invalid scalars still fail. Checked SIEVE-LEX-12 covers this
+  through decoding, Parse/Validate and exact action values, with exhaustive
+  invalid payload octets and fuzz seeds. Encoded-character blank separators
+  accept SP, HTAB and complete CRLF only; bare CR/LF stay literal for both
+  hex and Unicode sequences.
+
 - Body `:content` selection uses ASCII case folding for MIME types (RFC 5173
   §5.2; RFC 2045 §5.1). Unicode look-alikes such as `text/plaİn` no longer
   select `text/plain`, either as script selectors or host-supplied part types.

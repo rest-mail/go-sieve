@@ -1822,6 +1822,7 @@ func decodeHexSeq(payload string) (string, bool) {
 // a well-formed value is a surrogate (U+D800..U+DFFF) or exceeds U+10FFFF.
 func decodeUnicodeSeq(payload string) (string, bool, error) {
 	var b strings.Builder
+	var rangeErr error
 	i, n := skipEncBlanks(payload, 0), len(payload)
 	if i >= n {
 		return "", false, nil
@@ -1836,23 +1837,30 @@ func decodeUnicodeSeq(payload string) (string, bool, error) {
 		}
 		cp, perr := strconv.ParseUint(payload[p:i], 16, 32)
 		if perr != nil || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
-			// The digits are well-formed but the value is out of range: too large
-			// to hold, above U+10FFFF, or a UTF-16 surrogate. Per RFC 5228
-			// §2.4.2.4 this is an error rather than a literal sequence.
-			return "", true, fmt.Errorf("encoded-character: unicode value %q is outside the valid range (0..D7FF, E000..10FFFF)", payload[p:i])
+			// RFC 5228 §2.4.2.4 forbids a range error unless the entire
+			// sequence fits the grammar. Remember the first bad value while
+			// checking the remaining separators and digit runs.
+			if rangeErr == nil {
+				rangeErr = fmt.Errorf("encoded-character: unicode value %q is outside the valid range (0..D7FF, E000..10FFFF)", payload[p:i])
+			}
+		} else {
+			b.WriteRune(rune(cp))
 		}
-		b.WriteRune(rune(cp))
 		if i >= n {
-			return b.String(), true, nil
+			break
 		}
 		if !isEncBlank(payload[i]) {
 			return "", false, nil
 		}
 		i = skipEncBlanks(payload, i)
 		if i >= n {
-			return b.String(), true, nil
+			break
 		}
 	}
+	if rangeErr != nil {
+		return "", true, rangeErr
+	}
+	return b.String(), true, nil
 }
 
 func isHexDigit(c byte) bool {
@@ -1871,15 +1879,25 @@ func hexVal(c byte) byte {
 	return c - '0'
 }
 
-// isEncBlank reports whether c is a "blank" separator per RFC 5228 §2.4.2.4
-// (blank = WSP / CRLF).
+// isEncBlank identifies possible blank separator octets. skipEncBlanks checks
+// that a line break is a complete CRLF (RFC 5228 §2.4.2.4).
 func isEncBlank(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
 }
 
 func skipEncBlanks(s string, i int) int {
-	for i < len(s) && isEncBlank(s[i]) {
-		i++
+	for i < len(s) {
+		switch s[i] {
+		case ' ', '\t':
+			i++
+		case '\r':
+			if i+1 >= len(s) || s[i+1] != '\n' {
+				return i
+			}
+			i += 2
+		default:
+			return i
+		}
 	}
 	return i
 }
