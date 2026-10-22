@@ -25,6 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Breaking:** Parse and Validate reject raw NUL anywhere in script source,
+  including ignored comments and multiline strings (RFC 5228 §2.1). Encoded
+  NUL string values remain valid. SIEVE-CORE-37 now has exhaustive insertion
+  and legal-octet tests; the remaining bare-line-ending gap is CORE-44.
+
 - **Breaking:** invalid header-name operands no longer match fields, and
   `address` only tests standard address-bearing headers. Required address
   headers now work when supplied only in `Headers.Raw`. Incoming envelope

@@ -278,6 +278,12 @@ func (l *lexer) errf(format string, args ...interface{}) error {
 
 // tokenize scans the whole source into a token slice terminated by tEOF.
 func (l *lexer) tokenize() ([]token, error) {
+	// RFC 5228 §2.1 forbids raw NUL everywhere, including comments and
+	// multiline strings. Check source before skipping or decoding any of it;
+	// encoded-character may still produce NUL in a string value (§2.4.2.4).
+	if i := strings.IndexByte(l.src, 0); i >= 0 {
+		return nil, fmt.Errorf("sieve: line %d: NUL byte in script", 1+strings.Count(l.src[:i], "\n"))
+	}
 	var toks []token
 	for {
 		if err := l.skipTrivia(); err != nil {
@@ -399,7 +405,7 @@ func (l *lexer) readQuotedString() (string, error) {
 			// backslash, but neither permits NUL, CR or LF after it.
 			if l.pos+1 < len(l.src) {
 				switch l.src[l.pos+1] {
-				case 0, '\r', '\n':
+				case '\r', '\n':
 					return "", l.errf("invalid escaped octet in quoted string")
 				}
 				l.pos++
@@ -422,9 +428,6 @@ func (l *lexer) readQuotedString() (string, error) {
 		case '\n':
 			// A lone LF (not part of a CRLF) is not a valid quoted-char.
 			return "", l.errf("bare LF in quoted string")
-		case 0:
-			// RFC 5228 §2.4.2 forbids the NUL octet in strings.
-			return "", l.errf("NUL byte in quoted string")
 		default:
 			b.WriteByte(c)
 			l.pos++
@@ -579,7 +582,9 @@ type parser struct {
 
 // Parse parses a Sieve script into an evaluable [Script]. It is strict about
 // the constructs it understands and lenient about unknown extensions (see the
-// package overview). Nesting of tests and control blocks is capped at
+// package overview). Raw NUL is forbidden throughout the source, including
+// comments; encoded-character may produce NUL in string values.
+// Nesting of tests and control blocks is capped at
 // [DefaultMaxDepth] (override with [WithMaxDepth]); a script that exceeds the
 // cap is rejected rather than allowed to exhaust the stack at parse or
 // evaluation time. Reject/ereject and vacation on the same control path are
