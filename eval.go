@@ -206,7 +206,8 @@ type Outcome struct {
 type Vacation struct {
 	// Interval is the minimum period between replies to the same sender for
 	// this response: :days is clamped to 1..365, default 7; :seconds retains
-	// its sub-day precision (RFC 6131).
+	// its sub-day precision, including zero, with a maximum of 2147483647
+	// seconds (RFC 6131). It requires vacation-seconds, which implies vacation.
 	Interval time.Duration
 	Subject  string
 	// SubjectSet distinguishes an explicit empty subject from an omitted one.

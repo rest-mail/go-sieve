@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Checklist: 124/178 mapped](https://img.shields.io/badge/checklist-124%2F178%20mapped-blue)](CHECKLIST.md)
+[![Checklist: 136/195 mapped](https://img.shields.io/badge/checklist-136%2F195%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -41,14 +41,17 @@ takes effect. A runtime error during evaluation fails safe to the implicit keep
 - **Tests**: `address`, `header`, `envelope`, `exists`, `size` (`:over`/`:under`),
   `body`, `allof`, `anyof`, `not`, `true`/`false`.
 - **Actions**: `keep`, `discard`, `fileinto` (+`:create`), `redirect`, `reject`,
-  `imap4flags` (`setflag`/`addflag`/`removeflag`), `vacation`, `notify`.
+  `imap4flags` (`setflag`/`addflag`/`removeflag`), `vacation` (including
+  RFC 6131 `vacation-seconds`), and the local `notify` action.
 - **Match types**: `:is`, `:contains`, `:matches` (glob with `*` and `?`), plus a
   non-standard `:regex`. **Comparators**: `i;ascii-casemap` (default),
   `i;octet`, `i;ascii-numeric`. **Address parts**: `:all`/`:localpart`/`:domain`.
 - **Extension validation**: undeclared extensions and unknown commands, tests,
   and tagged arguments are errors. The RFC 5490 `mailbox` capability currently
   supports `fileinto :create` only; `mailboxexists` is not implemented.
-  `mboxmetadata` and `servermetadata` are not supported.
+  `mboxmetadata`, `servermetadata`, `relational`, `subaddress`, `variables`
+  and standardized `enotify` are not supported. Local `regex` uses Go regular
+  expressions; local `notify` is not RFC 5435 conformance.
 - No external dependencies in the library. The tests alone use
   [foxcpp/go-sieve](https://github.com/foxcpp/go-sieve) (MIT) as an
   independent reference: `diff_test.go` runs the same scripts on the same
@@ -147,7 +150,10 @@ forward the message either way, and leave the keep decision to
 redirect). For a `vacation` action the evaluator reports the SMTP envelope
 sender in `Vacation.ReplyTo` and the minimum reply interval in
 `Vacation.Interval`. `:days` defaults to 7 and is clamped to 1..365 days before
-conversion to a duration; `:seconds` retains its precision. A missing or null
+conversion to a duration. `:seconds` requires `require "vacation-seconds"`,
+which also enables base `vacation`. It retains second precision, including zero,
+and caps at 2147483647 seconds before duration conversion; `:days` and `:seconds`
+together are an error. A missing or null
 reverse-path gets no callback. Neither do messages not addressed personally to
 an envelope recipient or a `:addresses` alias, mailing-list and automated mail,
 bulk/list/junk mail, or excluded system senders. Supply only the evaluated user's
@@ -224,7 +230,7 @@ listed in [COVERAGE.md](COVERAGE.md)) and fuzzes each fuzz target (`FuzzParse`,
 
 The coverage badge shows the enforced minimum; measured statement coverage is
 printed in each CI run's **Verify RFC** log. The checklist badge counts
-requirements mapped to tests over all checklist rows, including the 54 `n/a`
+requirements mapped to tests over all checklist rows, including the 59 `n/a`
 rows with documented reasons. CI checks the badge against the actual checklist
 and its test mappings. The CI badge reports whether verification passed.
 

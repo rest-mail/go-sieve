@@ -14,8 +14,8 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 [README](README.md#the-rfc-checklist).
 
 RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`),
-RFC 5232 (`imap4flags`), RFC 5173 (`body`) and RFC 5490 (`mailbox`) are checked
-clause by clause in their own sections. The `Received` and loop requirements of
+RFC 5232 (`imap4flags`), RFC 5173 (`body`), RFC 5490 (`mailbox`) and
+RFC 6131 (`vacation-seconds`) are checked clause by clause in their own sections. The `Received` and loop requirements of
 `redirect` belong to the host.
 
 `TestDifferentialEvaluate` and `TestDifferentialParse` check the RFC 5228 items
@@ -95,12 +95,23 @@ they name against an independent implementation,
 
 ## Beyond RFC 5228: the extensions the package implements
 
-The package also implements extensions that RFC 5228 only allows. Each has a row below mapping its existing tests; checking RFC 5490 requirement by requirement is not done yet. RFC 5429, RFC 5230, RFC 3894, RFC 5232 and RFC 5173 have their own sections after this one.
+The capability inventory is checked by `TestExtensionCapabilityInventory`.
+`fileinto` and `envelope` belong to RFC 5228 (SIEVE-ACT-02 and SIEVE-TST-05),
+`encoded-character` to SIEVE-LEX-06, and the three comparators to SIEVE-MT-05/07.
+`reject`, `ereject`, `vacation`, `vacation-seconds`, `copy`, `imap4flags`, `body`
+and `mailbox` have separate sections below. `regex` and `notify` are local
+extensions; their names do not establish conformance to an RFC or draft.
+
+The broad overview rows below retain their existing test mappings. In
+particular, SIEVE-EXT-02 proves flag callbacks, not delivery of flags: FLAGS-18/19
+record that gap. FLAGS-17, BODY-07 and MAILBOX-08 still need owner decisions.
+Relational, subaddress and variables are not implemented; numeric equality,
+ordinary address parts and literal strings do not provide those capabilities.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
-| SIEVE-EXT-01 | RFC 5230 | Normative | `vacation` (with `:days`, `:seconds`, `:subject`, a reason) asks the host to send an auto-reply to the envelope sender; it is suppressed for the null reverse-path. | `TestSieve_Vacation_Basic`, `TestSieve_Vacation_DefaultDays`, `TestSieve_Vacation_Conditional`, `TestSieve_Vacation_UsesEnvelopeSender`, `TestSieve_Vacation_MultiLine`, `TestSieve_Vacation_SecondsGranularity`, `TestSieve_Vacation_NullReversePathSuppressed`, `TestVacation_ReplyTo`, `TestExtensionArguments_Parse` |
-| SIEVE-EXT-02 | RFC 5232 | Normative | `setflag`, `addflag` and `removeflag` change the flag set that later `keep` and `fileinto` use. | `TestSieve_SetAndAddFlag`, `TestSieve_RemoveFlag`, `TestSieve_SetFlagEscaped`, `TestExtensionArguments_Parse` |
+| SIEVE-EXT-01 | RFC 5230, 6131 | Normative | `vacation` (with `:days`, `:seconds`, `:subject`, a reason) asks the host to send an auto-reply to the envelope sender; it is suppressed for the null reverse-path. | `TestSieve_Vacation_Basic`, `TestSieve_Vacation_DefaultDays`, `TestSieve_Vacation_Conditional`, `TestSieve_Vacation_UsesEnvelopeSender`, `TestSieve_Vacation_MultiLine`, `TestSieve_Vacation_SecondsGranularity`, `TestSieve_Vacation_NullReversePathSuppressed`, `TestVacation_ReplyTo`, `TestExtensionArguments_Parse` |
+| SIEVE-EXT-02 | RFC 5232 | Normative | `setflag`, `addflag` and `removeflag` report flag changes through the host callback; the unimplemented delivery semantics are recorded in FLAGS-18/19. | `TestSieve_SetAndAddFlag`, `TestSieve_RemoveFlag`, `TestSieve_SetFlagEscaped`, `TestExtensionArguments_Parse` |
 | SIEVE-EXT-03 | RFC 5173 | Normative | `body` tests the text of the message body (HTML tags stripped, the plain part of a multipart preferred) with a match type and comparator. | `TestSieve_BodyContains`, `TestSieve_BodyContains_NoMatch`, `TestSieve_BodyContains_HTMLStripped`, `TestSieve_BodyContains_MultipartPlainPreferred`, `TestSieve_BodyIs`, `TestExtractBodyText_PlainText`, `TestExtractBodyText_HTML`, `TestExtractBodyText_Multipart`, `TestExtractBodyText_MultipartHTMLOnly`, `TestStripHTMLTags`, `TestEvaluate_BodyTest_DepthBounded`, `TestEvaluate_BodyTest_ContentDepthBounded`, `TestEvaluate_BodyTest_DepthWithinCapStillMatches`, `TestEvaluate_BodyTest_PartCountBounded` |
 | SIEVE-EXT-04 | RFC 3894 | Normative | `:copy` on `fileinto` and `redirect` leaves the implicit keep in effect. | `TestSieve_RedirectCopyTag`, `TestSieve_CopyImplicitKeep`, `TestSieve_FileintoCopyDistinctFromConsuming`, `TestExtensionArguments_Parse`, `TestDifferentialEvaluate` |
 | SIEVE-EXT-05 | RFC 5429, 5490 | Normative | `reject` refuses the message with a reason (each clause of RFC 5429 is in the next section); `fileinto :create` asks the host to create the mailbox. | `TestSieve_Reject`, `TestSieve_FileintoCreate`, `TestExtensionArguments_Parse` |
@@ -316,3 +327,54 @@ test and cannot yet be evaluated.
 | MAILBOX-10 | 3.1 | Normative | An existence/permission check does not guarantee a subsequent delivery will succeed, such as when over quota. | n/a: follows MAILBOX-08; delivery and quota enforcement are the host's responsibility. |
 | MAILBOX-11 | 3.3–3.4 | Normative | `mboxmetadata` provides mailbox annotation matching and existence tests, using the script user's permissions and private annotations. | n/a: unsupported separate capability; the parser rejects `require "mboxmetadata"`. |
 | MAILBOX-12 | 4–5 | Normative | `servermetadata` provides server annotation matching and existence tests; annotation access uses the script user's context, handles temporary failures and preserves script-level confidentiality. | n/a: unsupported separate capability; no annotations are retrieved and the parser rejects `require "servermetadata"`. |
+
+
+## Capability boundary and unimplemented extensions
+
+These rows distinguish implemented behavior from unsupported, independently
+negotiated extensions. Rejection tests in EXT-CAP-01 prove the boundary, not the
+missing features. The unsupported rows are not clause-by-clause audits of RFCs
+this library does not implement.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| EXT-CAP-01 | RFC 5228 §3.2 | MUST | Accept exactly the inventoried capabilities; reject unsupported capability declarations and syntax rather than execute a partial script. | `TestExtensionCapabilityInventory` |
+| RELATIONAL-01 | RFC 5231 §1, §4.1–4.2 | Normative | `relational` adds ordered value comparisons and entity counts. | n/a: not implemented; `require "relational"`, `:value` and `:count` are rejected; `i;ascii-numeric` supports equality only. |
+| SUBADDRESS-01 | RFC 5233 §3–4 | Normative | `subaddress` adds user/detail address parts using the encompassing mail system's encoding. | n/a: not implemented; declaration and `:user`/`:detail` are rejected; there is no host subaddress policy API. |
+| VARIABLES-01 | RFC 5229 §2–5 | Normative | `variables` enables interpolation, assignment and string-value tests. | n/a: not implemented; declaration, `set` and `string` are rejected; `${name}` stays literal without the extension. |
+| ENOTIFY-01 | RFC 5435 §2 | Normative | The standardized notification capability is `enotify`. | n/a: not implemented; `enotify` is rejected; the local `notify` action only forwards method/message and does not implement RFC 5435 validation, options, tests or transport policy. |
+
+
+## Local regex contract (no RFC conformance claim)
+
+`regex` selects Go's `regexp` syntax, including its lack of backreferences.
+It is not a claim to implement the Sieve regex Internet-Draft. These rows pin
+observable package behavior separately from normative RFC requirements. The default regex mode uses Unicode case folding from Go,
+unlike the ASCII-only folding used by the core match types.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| REGEX-01 | Local extension | Normative | `:regex` requires `regex`; matching searches within a value unless the expression supplies anchors. | `TestRegex_ExtensionContract` |
+| REGEX-02 | Local extension | Normative | `i;octet` preserves case; the default comparator enables Go regular-expression case-insensitive matching. | `TestRegex_ExtensionContract` |
+| REGEX-03 | Local extension | Normative | Invalid or unsupported expressions do not match and do not stop later actions. | `TestRegex_ExtensionContract` |
+
+
+## RFC 6131 — vacation seconds
+
+[RFC 6131](https://www.rfc-editor.org/rfc/rfc6131) extends the existing vacation
+callback. The site maximum is 2147483647 seconds, applied before conversion to
+`time.Duration`. The RFC's range prose inconsistently includes/excludes 2^31;
+the parser accepts that value too and caps it. No persistent timer is maintained
+by this library.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| SECONDS-01 | RFC 6131 §2 | Normative | `:seconds` requires `vacation-seconds`. | `TestVacationSeconds_Capability` |
+| SECONDS-02 | RFC 6131 §2, §5.1 | MUST | `vacation-seconds` implies base `vacation`; the latter declaration may be omitted. | `TestVacationSeconds_Capability` |
+| SECONDS-03 | RFC 6131 §2 | MUST | Reject simultaneous `:days` and `:seconds`; seconds takes one nonnegative Sieve number. | `TestVacationSeconds_ExclusiveTags` |
+| SECONDS-04 | RFC 6131 §2 | MUST | Accept the full valid seconds range without error. | `TestVacationSeconds_Intervals` |
+| SECONDS-05 | RFC 6131 §2 | Normative | Preserve second granularity and permit zero as the effective interval. | `TestVacationSeconds_Intervals` |
+| SECONDS-06 | RFC 6131 §2 | MAY | Cap excessive intervals at a site maximum of at least 86400 seconds. | `TestVacationSeconds_Intervals` |
+| SECONDS-07 | RFC 6131 §2 | Normative | Use the site default when both interval tags are omitted. | `TestVacationSeconds_Intervals` |
+| SECONDS-08 | RFC 6131 §3 | Normative | The meeting example requests a 1800-second reply interval. | `TestVacationSeconds_RFCExample` |
+| SECONDS-09 | RFC 6131 §2, §4 | SHOULD | Consider reply volume with short intervals. | n/a: host owns sending, persistent suppression and rate limits; interval zero requests no time-based suppression. |
