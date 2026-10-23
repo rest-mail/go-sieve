@@ -25,6 +25,8 @@ jobs:
          {"package":".","target":"FuzzDecodeEncodedCharacters"},
          {"package":".","target":"FuzzBodyContentTypeSelection"},
          {"package":".","target":"FuzzComparatorIdentifier"},
+         {"package":".","target":"FuzzMatchesReference"},
+         {"package":".","target":"FuzzASCIINumericReference"},
          {"package":".","target":"FuzzSieveNumberReference"}]
 
   fixtures:

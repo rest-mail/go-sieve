@@ -749,31 +749,21 @@ func headerValues(msg *Message, name string) []string {
 	return out
 }
 
-// unfoldAndTrim applies RFC 5322 §2.2.3 unfolding to a header value — each line
-// break (CRLF, or a bare CR/LF) that introduces folding whitespace is removed
-// along with that whitespace and replaced by a single space — and then strips
-// leading and trailing mail whitespace (SP, HTAB and line breaks), as RFC 5228
-// §5.7 requires the header test to ignore. Other controls and Unicode spaces
-// are header content, not RFC 5322 folding whitespace. Values without a line
-// break take a fast path that only trims.
+// unfoldAndTrim applies RFC 5322 §2.2.3 unfolding to a header value:
+// remove only CRLF immediately followed by SP or HTAB, preserving the folding
+// whitespace itself. Then strip leading and trailing mail whitespace (SP, HTAB
+// and line breaks), as RFC 5228 §5.7 requires the header test to ignore.
+// Non-folding line breaks, other controls and Unicode spaces remain header
+// content. Values without a CRLF take a fast path that only trims.
 func unfoldAndTrim(v string) string {
-	if !strings.ContainsAny(v, "\r\n") {
+	if !strings.Contains(v, "\r\n") {
 		return strings.Trim(v, " \t\r\n")
 	}
 	var b strings.Builder
 	b.Grow(len(v))
 	for i := 0; i < len(v); i++ {
-		if c := v[i]; c == '\r' || c == '\n' {
-			// Collapse the line break and any adjoining folding whitespace
-			// (further CR/LF, SP, or HTAB) into a single space.
-			for i+1 < len(v) {
-				if n := v[i+1]; n == '\r' || n == '\n' || n == ' ' || n == '\t' {
-					i++
-					continue
-				}
-				break
-			}
-			b.WriteByte(' ')
+		if v[i] == '\r' && i+2 < len(v) && v[i+1] == '\n' && (v[i+2] == ' ' || v[i+2] == '\t') {
+			i++ // Remove CRLF only; copy all following whitespace unchanged.
 			continue
 		}
 		b.WriteByte(v[i])
@@ -931,14 +921,24 @@ func dropSourceRoute(addr string) string {
 // address. For an address without an "@", the whole string is the local part
 // and the domain is empty.
 func addressPartOf(addr, part string) string {
+	// The last @ may be dtext inside a bracketed domain literal (RFC
+	// 2822 §3.4.1). Locate the separator before that literal, while still
+	// allowing @ inside a quoted local-part. Structured addresses and
+	// envelope values are already validated by the host.
+	i := strings.LastIndexByte(addr, '@')
+	if strings.HasSuffix(addr, "]") {
+		if literal := strings.LastIndex(addr, "@["); literal >= 0 {
+			i = literal
+		}
+	}
 	switch part {
 	case ":localpart":
-		if i := strings.LastIndex(addr, "@"); i >= 0 {
+		if i >= 0 {
 			return addr[:i]
 		}
 		return addr
 	case ":domain":
-		if i := strings.LastIndex(addr, "@"); i >= 0 {
+		if i >= 0 {
 			return addr[i+1:]
 		}
 		return ""
