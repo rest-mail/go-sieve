@@ -185,7 +185,10 @@ it is false, even one for the empty string (RFC 5173 §4).
 
 The RFC 5228 core audit also records host duties and known gaps: MIME header
 charset preparation, redirect policy/trace/loop controls, strict whole-script
-line endings and octets, and full structured-address validation. Redirect
+line endings, and full structured-address validation. Raw NUL and bare CR
+are rejected throughout the source, including comments and multiline strings;
+encoded-character may produce either in string values. Bare LF outside quoted
+strings remains a known line-ending gap (SIEVE-CORE-44). Redirect
 targets are checked after encoded-character decoding as a single mailbox using
 Go `net/mail`, with groups and source routes refused. The original valid value
 is passed unchanged to `Executor.Redirect`. This accepts named and quoted

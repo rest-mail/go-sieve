@@ -27,15 +27,25 @@ shows every kind of leftover token is still refused.
 `TestRFC5228SourceNULRejected` and `TestRFC5228SourceNULDiagnostic` cover
 whole-source NUL rejection and its line diagnostic in `tokenize`; the now
 redundant quoted-string NUL branches were removed.
+`TestRFC5228SourceBareCRRejected`, `TestRFC5228SourceCRFollowingOctets` and
+`TestRFC5228SourceCRDiagnostic` cover whole-source bare-CR rejection in
+`tokenize`, including terminal CR and all following octets.
+`TestRFC5228SourceCRLFPreserved` checks CRLF and encoded CR values; the now
+redundant quoted-string bare-CR branch was removed.
 `TestRFC5228SourceNonNULOctets` preserves every legal non-linebreak octet in
 comments and multiline strings, and encoded NUL values.
 `TestQuotedString_EscapedOctets` covers the remaining escaped-octet rejection
 in `readQuotedString` against all 256 octets, and
 `TestQuotedString_EscapedLineBreakAndTruncation` covers incomplete escapes.
+The header-unfolding change is covered by
+`TestRFC5228HeaderUnfoldPreservesWhitespace` and
+`TestRFC5228HeaderUnfoldWSPSequences`: valid folds, preserved SP/HTAB sequences,
+non-folding line breaks, the no-CRLF path, and structured/raw header matching.
+Full coverage is remeasured by CI.
 `TestRFC5228AddressLiteralParts` covers separator selection before bracketed
 domain literals, including literals containing `@`, ordinary domains and
 quoted local-parts through address/envelope evaluation and source routes.
-Every statement of `eval.go` is covered:
+Every statement of `eval.go` was covered before this change:
 `TestSize_ReconstructionCountsRawHeaders` and `TestSize_ReconstructionPartBudget`
 cover raw headers and the part budget in the reconstructed size,
 `TestAddress_RawHeaderOnlyNamed` the raw-header name filter of `addressList`, and
@@ -65,3 +75,9 @@ and `vacationAllowed`. The local Pi cannot start the race detector
 (`ThreadSanitizer: unsupported VMA range`, found 47, supported 48), so the figures
 above were measured with atomic coverage without `-race`; CI retains the pinned
 race-coverage workflow on its supported runner.
+
+`TestRFC5228HeaderTrimPreservesNonWSP` and
+`TestRFC5228HeaderTrimBoundaryOctets` cover the mail-whitespace trimming in both
+paths of `unfoldAndTrim`, including raw and structured headers, non-ASCII spaces,
+opaque octets, and controls that are not mail whitespace. No coverage exception
+is added; the shared CI coverage floor remains 95%.

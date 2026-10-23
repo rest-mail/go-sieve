@@ -714,7 +714,7 @@ if header :contains "X-Test" "  foo" { fileinto "Padded"; }`
 func TestSieve_HeaderUnfoldsContinuation(t *testing.T) {
 	// RFC 5322 §2.2.3 unfolding: a folded header (CRLF + folding whitespace)
 	// is a single logical value. header :is must compare against the unfolded
-	// value with the fold collapsed to a single space, not the raw CRLF/WSP.
+	// value with CRLF removed and its following space preserved.
 	email := sieveEmail()
 	email.Headers.Raw = map[string][]string{"X-Test": {"foo\r\n bar"}}
 	script := `require "fileinto";
