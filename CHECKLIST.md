@@ -94,6 +94,7 @@ The extension audits and the owner decisions on hasflag, delivered flags,
 | SIEVE-CORE-47 | 5.7; RFC 5322 §2.2.3 | Normative | Before header matching, unfold by removing only CRLF immediately followed by SP or HTAB; preserve the whitespace octets rather than collapsing them. | `TestRFC5228HeaderUnfoldPreservesWhitespace`, `TestRFC5228HeaderUnfoldWSPSequences` |
 | SIEVE-CORE-48 | 5.7; RFC 5322 §§2.2.3, 3.2.2 | Normative | Header comparison strips mail whitespace at value boundaries, preserving other control octets and Unicode spaces as content. | `TestRFC5228HeaderTrimPreservesNonWSP`, `TestRFC5228HeaderTrimBoundaryOctets` |
 | SIEVE-CORE-49 | 2.1–2.3, 8.1 | Normative | A raw CR must be followed immediately by LF everywhere in script source, including comments and multiline strings; encoded-character may produce a bare CR value. | `TestRFC5228SourceBareCRRejected`, `TestRFC5228SourceCRFollowingOctets`, `TestRFC5228SourceCRDiagnostic`, `TestRFC5228SourceCRLFPreserved`, `FuzzParse` |
+| SIEVE-CORE-50 | 2.7.4, 5.1, 5.4; RFC 2822 §3.4.1 | Normative | For host-validated structured addresses and envelopes, localpart/domain extraction splits before a bracketed domain literal, preserving any @ within its dtext. | `TestRFC5228AddressLiteralParts` |
 
 ## Lexical structure (§2.2–2.4)
 

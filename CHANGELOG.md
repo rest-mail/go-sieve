@@ -27,6 +27,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   against raw or host-decoded structured headers. Adds checked CORE-48 tests
   for all non-linebreak boundary octets and Unicode whitespace on both paths.
 
+- Address and envelope `:localpart` / `:domain` tests split before a
+  bracketed domain literal, preserving `@` inside its content instead of
+  treating it as the mailbox separator (RFC 5228 §2.7.4). Checked CORE-50
+  covers structured address fields, sender/recipient envelopes, quoted
+  local-parts and source routes. Host input validation remains required.
+
 - Malformed `${unicode:...}` encodings remain literal even when an early
   digit run names a surrogate or an out-of-range scalar (RFC 5228 §2.4.2.4).
   Range errors are reported only after the entire sequence fits the grammar;

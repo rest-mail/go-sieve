@@ -42,6 +42,9 @@ The header-unfolding change is covered by
 `TestRFC5228HeaderUnfoldWSPSequences`: valid folds, preserved SP/HTAB sequences,
 non-folding line breaks, the no-CRLF path, and structured/raw header matching.
 Full coverage is remeasured by CI.
+`TestRFC5228AddressLiteralParts` covers separator selection before bracketed
+domain literals, including literals containing `@`, ordinary domains and
+quoted local-parts through address/envelope evaluation and source routes.
 Every statement of `eval.go` was covered before this change:
 `TestSize_ReconstructionCountsRawHeaders` and `TestSize_ReconstructionPartBudget`
 cover raw headers and the part budget in the reconstructed size,
