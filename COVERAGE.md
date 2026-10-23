@@ -27,12 +27,25 @@ shows every kind of leftover token is still refused.
 `TestRFC5228SourceNULRejected` and `TestRFC5228SourceNULDiagnostic` cover
 whole-source NUL rejection and its line diagnostic in `tokenize`; the now
 redundant quoted-string NUL branches were removed.
+`TestRFC5228SourceBareCRRejected`, `TestRFC5228SourceCRFollowingOctets` and
+`TestRFC5228SourceCRDiagnostic` cover whole-source bare-CR rejection in
+`tokenize`, including terminal CR and all following octets.
+`TestRFC5228SourceCRLFPreserved` checks CRLF and encoded CR values; the now
+redundant quoted-string bare-CR branch was removed.
 `TestRFC5228SourceNonNULOctets` preserves every legal non-linebreak octet in
 comments and multiline strings, and encoded NUL values.
 `TestQuotedString_EscapedOctets` covers the remaining escaped-octet rejection
 in `readQuotedString` against all 256 octets, and
 `TestQuotedString_EscapedLineBreakAndTruncation` covers incomplete escapes.
-Every statement of `eval.go` is covered:
+The header-unfolding change is covered by
+`TestRFC5228HeaderUnfoldPreservesWhitespace` and
+`TestRFC5228HeaderUnfoldWSPSequences`: valid folds, preserved SP/HTAB sequences,
+non-folding line breaks, the no-CRLF path, and structured/raw header matching.
+Full coverage is remeasured by CI.
+`TestRFC5228AddressLiteralParts` covers separator selection before bracketed
+domain literals, including literals containing `@`, ordinary domains and
+quoted local-parts through address/envelope evaluation and source routes.
+Every statement of `eval.go` was covered before this change:
 `TestSize_ReconstructionCountsRawHeaders` and `TestSize_ReconstructionPartBudget`
 cover raw headers and the part budget in the reconstructed size,
 `TestAddress_RawHeaderOnlyNamed` the raw-header name filter of `addressList`, and
