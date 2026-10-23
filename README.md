@@ -245,7 +245,9 @@ func TestSieve_Stop(t *testing.T) {
 CI also fails below 95% statement coverage (the statements left uncovered are
 listed in [COVERAGE.md](COVERAGE.md)) and fuzzes each fuzz target (`FuzzParse`,
 `FuzzDecodeEncodedCharacters`, `FuzzBodyContentTypeSelection`,
-`FuzzComparatorIdentifier`) for 30 seconds.
+`FuzzComparatorIdentifier`, `FuzzMatchesReference`) for 30 seconds.
+The wildcard fuzz target compares both direct matching and Parse/Evaluate against
+an independent dynamic-programming reference, with bounded input lengths.
 
 The coverage badge shows the enforced minimum; measured statement coverage is
 printed in each CI run's **Verify RFC** log. The checklist badge counts
