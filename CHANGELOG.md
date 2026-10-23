@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Non-folding line breaks are preserved. Adds checked SIEVE-CORE-47 tests for
   raw and structured headers and all short SP/HTAB folding sequences.
 
+- **Breaking:** `Parse` and `Validate` reject bare CR throughout script source,
+  including whitespace, comments and multiline strings (RFC 5228 §8.1).
+  CRLF pairs and encoded CR values are preserved. Checked SIEVE-CORE-49 tests
+  cover lexical contexts, all following octets and line diagnostics; FuzzParse
+  checks the invariant. Bare LF outside quoted strings remains a known gap.
+
 - Header tests trim mail whitespace rather than Unicode whitespace at value
   boundaries (RFC 5228 §5.7; RFC 5322 §3.2.2). Non-breaking spaces, other
   Unicode spaces, vertical tabs and form feeds remain significant content,

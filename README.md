@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Checklist: 162/247 mapped](https://img.shields.io/badge/checklist-162%2F247%20mapped-blue)](CHECKLIST.md)
+[![Checklist: 163/248 mapped](https://img.shields.io/badge/checklist-163%2F248%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -185,7 +185,10 @@ it is false, even one for the empty string (RFC 5173 §4).
 
 The RFC 5228 core audit also records host duties and known gaps: MIME header
 charset preparation, redirect policy/trace/loop controls, strict whole-script
-line endings and octets, and full structured-address validation. Redirect
+line endings, and full structured-address validation. Raw NUL and bare CR
+are rejected throughout the source, including comments and multiline strings;
+encoded-character may produce either in string values. Bare LF outside quoted
+strings remains a known line-ending gap (SIEVE-CORE-44). Redirect
 targets are checked after encoded-character decoding as a single mailbox using
 Go `net/mail`, with groups and source routes refused. The original valid value
 is passed unchanged to `Executor.Redirect`. This accepts named and quoted

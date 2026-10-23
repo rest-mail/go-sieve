@@ -27,6 +27,11 @@ shows every kind of leftover token is still refused.
 `TestRFC5228SourceNULRejected` and `TestRFC5228SourceNULDiagnostic` cover
 whole-source NUL rejection and its line diagnostic in `tokenize`; the now
 redundant quoted-string NUL branches were removed.
+`TestRFC5228SourceBareCRRejected`, `TestRFC5228SourceCRFollowingOctets` and
+`TestRFC5228SourceCRDiagnostic` cover whole-source bare-CR rejection in
+`tokenize`, including terminal CR and all following octets.
+`TestRFC5228SourceCRLFPreserved` checks CRLF and encoded CR values; the now
+redundant quoted-string bare-CR branch was removed.
 `TestRFC5228SourceNonNULOctets` preserves every legal non-linebreak octet in
 comments and multiline strings, and encoded NUL values.
 `TestQuotedString_EscapedOctets` covers the remaining escaped-octet rejection
