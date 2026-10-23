@@ -81,3 +81,9 @@ race-coverage workflow on its supported runner.
 paths of `unfoldAndTrim`, including raw and structured headers, non-ASCII spaces,
 opaque octets, and controls that are not mail whitespace. No coverage exception
 is added; the shared CI coverage floor remains 95%.
+
+`TestASCIINumericReferenceBoundaries` checks numeric comparison against an
+independent `math/big` oracle, including 4096-digit runs, machine-integer
+boundaries and every octet as a prefix/terminator. `FuzzASCIINumericReference`
+checks the direct comparator and public parser/evaluator with bounded arbitrary
+byte strings. No runtime coverage exception or gate change is introduced.
