@@ -26,7 +26,8 @@ jobs:
          {"package":".","target":"FuzzBodyContentTypeSelection"},
          {"package":".","target":"FuzzComparatorIdentifier"},
          {"package":".","target":"FuzzMatchesReference"},
-         {"package":".","target":"FuzzASCIINumericReference"}]
+         {"package":".","target":"FuzzASCIINumericReference"},
+         {"package":".","target":"FuzzSieveNumberReference"}]
 
   fixtures:
     name: Workflow fixtures

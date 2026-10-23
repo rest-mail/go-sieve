@@ -13,6 +13,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and a bounded differential fuzz target through Parse/Evaluate and both byte
   comparators. CI runs the new target for 30 seconds. Runtime behavior is unchanged.
 
+- An independent arbitrary-precision reference for RFC 5228 integer literals
+  and size comparisons. Checked tests cover binary quantifiers, leading zeros,
+  int64 overflow, all token octets and strict comparison boundaries through
+  the public API. `FuzzSieveNumberReference` runs for 30 seconds in CI.
+
 ### Fixed
 
 - Header matching unfolds values by removing only CRLF followed by SP or HTAB

@@ -98,7 +98,7 @@ class CallerFixtures(unittest.TestCase):
         self.assertEqual(targets, [{'package': '.', 'target': name} for name in
                                    ['FuzzParse', 'FuzzDecodeEncodedCharacters', 'FuzzBodyContentTypeSelection',
                                     'FuzzComparatorIdentifier', 'FuzzMatchesReference',
-                                    'FuzzASCIINumericReference']])
+                                    'FuzzASCIINumericReference', 'FuzzSieveNumberReference']])
         key = lambda item: (item['package'], item['target'])
         self.assertEqual(sorted(targets, key=key), sorted(repository_fuzz_targets(), key=key))
 
@@ -164,7 +164,7 @@ class ProducerContractFixtures(unittest.TestCase):
             self.proof['verify'](inputs())
         names = ['FuzzParse', 'FuzzDecodeEncodedCharacters', 'FuzzBodyContentTypeSelection',
                  'FuzzComparatorIdentifier', 'FuzzMatchesReference',
-                 'FuzzASCIINumericReference']
+                 'FuzzASCIINumericReference', 'FuzzSieveNumberReference']
         self.assertEqual(calls, [
             *[('test', '-list=^Fuzz', '.')] * len(names),
             ('test', '-race', '-count=1', '-covermode=atomic', '-coverprofile=coverage.out', './...'),

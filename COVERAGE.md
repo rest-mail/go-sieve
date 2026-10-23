@@ -87,3 +87,8 @@ independent `math/big` oracle, including 4096-digit runs, machine-integer
 boundaries and every octet as a prefix/terminator. `FuzzASCIINumericReference`
 checks the direct comparator and public parser/evaluator with bounded arbitrary
 byte strings. No runtime coverage exception or gate change is introduced.
+
+`number_reference_test.go` supplements number-parser statement coverage with an
+independent `math/big` oracle, quantifier overflow boundaries, all token octets
+and public size comparisons. It adds no runtime statements or coverage
+exceptions; the shared 95% CI floor remains unchanged.
