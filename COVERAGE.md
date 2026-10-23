@@ -37,7 +37,12 @@ comments and multiline strings, and encoded NUL values.
 `TestQuotedString_EscapedOctets` covers the remaining escaped-octet rejection
 in `readQuotedString` against all 256 octets, and
 `TestQuotedString_EscapedLineBreakAndTruncation` covers incomplete escapes.
-Every statement of `eval.go` is covered:
+The header-unfolding change is covered by
+`TestRFC5228HeaderUnfoldPreservesWhitespace` and
+`TestRFC5228HeaderUnfoldWSPSequences`: valid folds, preserved SP/HTAB sequences,
+non-folding line breaks, the no-CRLF path, and structured/raw header matching.
+Full coverage is remeasured by CI.
+Every statement of `eval.go` was covered before this change:
 `TestSize_ReconstructionCountsRawHeaders` and `TestSize_ReconstructionPartBudget`
 cover raw headers and the part budget in the reconstructed size,
 `TestAddress_RawHeaderOnlyNamed` the raw-header name filter of `addressList`, and
