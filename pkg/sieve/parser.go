@@ -1,6 +1,17 @@
 package sieve
 
-// This file implements a tokenizer and recursive-descent parser for a
+import (
+	"fmt"
+	"net/mail"
+	"strings"
+	"time"
+	"unicode"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve/internal/grammar"
+	"github.com/rest-mail/go-sieve/pkg/sieve/internal/match"
+)
+
+// This file implements a recursive-descent parser over internal grammar tokens for a
 // practical subset of the Sieve mail-filtering language (RFC 5228), plus a
 // few widely used extensions (envelope, body, imap4flags, vacation, notify)
 // and a non-standard :regex match type retained for backwards compatibility.
@@ -12,16 +23,6 @@ package sieve
 // must precede every other command, and an unknown command or test (including a
 // typo) is an error rather than a silent no-op. See supportedCapabilities for
 // the set of extensions this package implements.
-
-import (
-	"fmt"
-	"math"
-	"net/mail"
-	"strconv"
-	"strings"
-	"time"
-	"unicode"
-)
 
 // ── AST ──────────────────────────────────────────────────────────────
 
@@ -237,341 +238,10 @@ func WithMaxDepth(n int) Option {
 	}
 }
 
-// ── Tokenizer ────────────────────────────────────────────────────────
-
-type tokKind int
-
-const (
-	tEOF tokKind = iota
-	tIdent
-	tTag
-	tString
-	tNumber
-	tLBrace
-	tRBrace
-	tLParen
-	tRParen
-	tLBracket
-	tRBracket
-	tComma
-	tSemicolon
-)
-
-type token struct {
-	kind tokKind
-	str  string // ident/tag name (lowercased) or string value
-	num  int64  // for tNumber
-	line int
-}
-
-type lexer struct {
-	src  string
-	pos  int
-	line int
-}
-
-func newLexer(src string) *lexer { return &lexer{src: src, line: 1} }
-
-func (l *lexer) errf(format string, args ...interface{}) error {
-	return fmt.Errorf("sieve: line %d: %s", l.line, fmt.Sprintf(format, args...))
-}
-
-// tokenize scans the whole source into a token slice terminated by tEOF.
-func (l *lexer) tokenize() ([]token, error) {
-	// RFC 5228 §2.1 forbids raw NUL everywhere, including comments and
-	// multiline strings. Check source before skipping or decoding any of it;
-	// encoded-character may still produce NUL in a string value (§2.4.2.4).
-	if i := strings.IndexByte(l.src, 0); i >= 0 {
-		return nil, fmt.Errorf("sieve: line %d: NUL byte in script", 1+strings.Count(l.src[:i], "\n"))
-	}
-	// RFC 5228 §8.1 permits CR only in a CRLF pair, in every lexical
-	// context. Validate before comments or multiline strings can hide it.
-	// Encoded-character expansion happens later and may produce a bare CR.
-	for i := 0; i < len(l.src); i++ {
-		if l.src[i] == '\r' && (i+1 == len(l.src) || l.src[i+1] != '\n') {
-			return nil, fmt.Errorf("sieve: line %d: bare CR in script", 1+strings.Count(l.src[:i], "\n"))
-		}
-	}
-	var toks []token
-	for {
-		if err := l.skipTrivia(); err != nil {
-			return nil, err
-		}
-		if l.pos >= len(l.src) {
-			toks = append(toks, token{kind: tEOF, line: l.line})
-			return toks, nil
-		}
-
-		// Multi-line string: "text:" at a token boundary, followed only by
-		// optional whitespace / comment until end of line.
-		if l.atMultiLineString() {
-			s, err := l.readMultiLineString()
-			if err != nil {
-				return nil, err
-			}
-			toks = append(toks, token{kind: tString, str: s, line: l.line})
-			continue
-		}
-
-		c := l.src[l.pos]
-		switch {
-		case c == '{':
-			toks = append(toks, token{kind: tLBrace, line: l.line})
-			l.pos++
-		case c == '}':
-			toks = append(toks, token{kind: tRBrace, line: l.line})
-			l.pos++
-		case c == '(':
-			toks = append(toks, token{kind: tLParen, line: l.line})
-			l.pos++
-		case c == ')':
-			toks = append(toks, token{kind: tRParen, line: l.line})
-			l.pos++
-		case c == '[':
-			toks = append(toks, token{kind: tLBracket, line: l.line})
-			l.pos++
-		case c == ']':
-			toks = append(toks, token{kind: tRBracket, line: l.line})
-			l.pos++
-		case c == ',':
-			toks = append(toks, token{kind: tComma, line: l.line})
-			l.pos++
-		case c == ';':
-			toks = append(toks, token{kind: tSemicolon, line: l.line})
-			l.pos++
-		case c == '"':
-			startLine := l.line // a CRLF inside the string advances l.line
-			s, err := l.readQuotedString()
-			if err != nil {
-				return nil, err
-			}
-			toks = append(toks, token{kind: tString, str: s, line: startLine})
-		case c == ':':
-			tag := l.readTag()
-			toks = append(toks, token{kind: tTag, str: tag, line: l.line})
-		case c >= '0' && c <= '9':
-			n, err := l.readNumber()
-			if err != nil {
-				return nil, err
-			}
-			toks = append(toks, token{kind: tNumber, num: n, line: l.line})
-		case isIdentStart(c):
-			toks = append(toks, token{kind: tIdent, str: strings.ToLower(l.readIdent()), line: l.line})
-		default:
-			return nil, l.errf("unexpected character %q", string(c))
-		}
-	}
-}
-
-// skipTrivia advances over whitespace, hash comments and bracket comments.
-func (l *lexer) skipTrivia() error {
-	for l.pos < len(l.src) {
-		c := l.src[l.pos]
-		switch {
-		case c == '\n':
-			l.line++
-			l.pos++
-		case c == ' ' || c == '\t' || c == '\r':
-			l.pos++
-		case c == '#':
-			for l.pos < len(l.src) && l.src[l.pos] != '\n' {
-				l.pos++
-			}
-		case c == '/' && l.pos+1 < len(l.src) && l.src[l.pos+1] == '*':
-			l.pos += 2
-			for {
-				if l.pos+1 >= len(l.src) {
-					return l.errf("unterminated bracket comment")
-				}
-				if l.src[l.pos] == '*' && l.src[l.pos+1] == '/' {
-					l.pos += 2
-					break
-				}
-				if l.src[l.pos] == '\n' {
-					l.line++
-				}
-				l.pos++
-			}
-		default:
-			return nil
-		}
-	}
-	return nil
-}
-
-func (l *lexer) readQuotedString() (string, error) {
-	l.pos++ // opening quote
-	var b strings.Builder
-	for l.pos < len(l.src) {
-		c := l.src[l.pos]
-		switch c {
-		case '"':
-			l.pos++
-			return b.String(), nil
-		case '\\':
-			// RFC 5228 §8.1: quoted-special and quoted-other remove the
-			// backslash, but neither permits NUL, CR or LF after it.
-			if l.pos+1 < len(l.src) {
-				switch l.src[l.pos+1] {
-				case '\r', '\n':
-					return "", l.errf("invalid escaped octet in quoted string")
-				}
-				l.pos++
-				b.WriteByte(l.src[l.pos])
-				l.pos++
-				continue
-			}
-			l.pos++
-		case '\r':
-			// tokenize has already checked that every CR belongs to CRLF.
-			// Preserve the pair in the value (RFC 5228 §8.1 quoted-safe).
-			b.WriteString("\r\n")
-			l.pos += 2
-			l.line++
-		case '\n':
-			// A lone LF (not part of a CRLF) is not a valid quoted-char.
-			return "", l.errf("bare LF in quoted string")
-		default:
-			b.WriteByte(c)
-			l.pos++
-		}
-	}
-	return "", l.errf("unterminated string")
-}
-
-func (l *lexer) readTag() string {
-	start := l.pos
-	l.pos++ // colon
-	for l.pos < len(l.src) && isIdentChar(l.src[l.pos]) {
-		l.pos++
-	}
-	return strings.ToLower(l.src[start:l.pos])
-}
-
-func (l *lexer) readIdent() string {
-	start := l.pos
-	for l.pos < len(l.src) && isIdentChar(l.src[l.pos]) {
-		l.pos++
-	}
-	return l.src[start:l.pos]
-}
-
-// readNumber reads a non-negative integer with an optional K/M/G quantifier
-// (RFC 5228 §2.4.1). K=1024, M=1024^2, G=1024^3.
-func (l *lexer) readNumber() (int64, error) {
-	start := l.pos
-	for l.pos < len(l.src) && l.src[l.pos] >= '0' && l.src[l.pos] <= '9' {
-		l.pos++
-	}
-	digits := l.src[start:l.pos]
-	n, err := strconv.ParseInt(digits, 10, 64)
-	if err != nil {
-		return 0, l.errf("invalid number %q", digits)
-	}
-	if l.pos < len(l.src) {
-		var factor int64
-		switch l.src[l.pos] {
-		case 'K', 'k':
-			factor = 1024
-		case 'M', 'm':
-			factor = 1024 * 1024
-		case 'G', 'g':
-			factor = 1024 * 1024 * 1024
-		}
-		if factor != 0 {
-			// Guard the quantifier multiply: n is non-negative, so an overflow
-			// would wrap to a negative (or truncated) limit and silently invert
-			// a size test. RFC 5228 §2.4.1 makes an unrepresentable number a
-			// syntax error, so reject it rather than wrap.
-			if n > math.MaxInt64/factor {
-				lit := l.src[start : l.pos+1] // digits plus the quantifier
-				return 0, l.errf("number %q overflows int64", lit)
-			}
-			n *= factor
-			l.pos++
-		}
-	}
-	return n, nil
-}
-
-// atMultiLineString reports whether the cursor sits on a "text:" multi-line
-// string token: the literal "text:" followed by only whitespace and an
-// optional hash comment up to the end of the line.
-func (l *lexer) atMultiLineString() bool {
-	const marker = "text:"
-	if l.pos+len(marker) > len(l.src) {
-		return false
-	}
-	if !strings.EqualFold(l.src[l.pos:l.pos+len(marker)], marker) {
-		return false
-	}
-	i := l.pos + len(marker)
-	for i < len(l.src) && (l.src[i] == ' ' || l.src[i] == '\t' || l.src[i] == '\r') {
-		i++
-	}
-	if i < len(l.src) && l.src[i] == '#' {
-		for i < len(l.src) && l.src[i] != '\n' {
-			i++
-		}
-	}
-	return i >= len(l.src) || l.src[i] == '\n'
-}
-
-// readMultiLineString consumes a "text:" block up to a line containing only a
-// single period, applying dot-unstuffing (a leading ".." becomes ".").
-func (l *lexer) readMultiLineString() (string, error) {
-	// Skip "text:" and the remainder of the introducing line.
-	l.pos += len("text:")
-	for l.pos < len(l.src) && l.src[l.pos] != '\n' {
-		l.pos++
-	}
-	if l.pos < len(l.src) {
-		l.pos++ // consume newline
-		l.line++
-	}
-
-	var b strings.Builder
-	for {
-		if l.pos >= len(l.src) {
-			return "", l.errf("unterminated multi-line string")
-		}
-		lineStart := l.pos
-		for l.pos < len(l.src) && l.src[l.pos] != '\n' {
-			l.pos++
-		}
-		line := l.src[lineStart:l.pos]
-		ending := "\n"
-		if strings.HasSuffix(line, "\r") {
-			line = strings.TrimSuffix(line, "\r")
-			ending = "\r\n"
-		}
-		if l.pos < len(l.src) {
-			l.pos++ // newline
-			l.line++
-		}
-		if line == "." {
-			return b.String(), nil
-		}
-		if strings.HasPrefix(line, "..") {
-			line = line[1:] // Only doubled leading dots are unstuffed (§2.4.2).
-		}
-		b.WriteString(line)
-		b.WriteString(ending)
-	}
-}
-
-func isIdentStart(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
-}
-
-func isIdentChar(c byte) bool {
-	return isIdentStart(c) || (c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_'
-}
-
 // ── Parser ───────────────────────────────────────────────────────────
 
 type parser struct {
-	toks     []token
+	toks     []grammar.Token
 	pos      int
 	requires []string
 
@@ -602,12 +272,12 @@ func parseSieveScript(src string, opts ...Option) (*Script, error) {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	toks, err := newLexer(src).tokenize()
+	toks, err := grammar.New(src).Tokenize()
 	if err != nil {
 		return nil, err
 	}
 	p := &parser{toks: toks, maxDepth: cfg.maxDepth, required: map[string]bool{}}
-	// At top level parseCommands returns without an error only at tEOF; a
+	// At top level parseCommands returns without an error only at EOF; a
 	// stray "}" or any other leftover token is already an error there.
 	cmds, err := p.parseCommands(false)
 	if err != nil {
@@ -658,9 +328,9 @@ func checkActionCompatibility(cmds []sieveCmd, seen actionUsage) (actionUsage, e
 	return seen, nil
 }
 
-func (p *parser) peek() token { return p.toks[p.pos] }
+func (p *parser) peek() grammar.Token { return p.toks[p.pos] }
 
-func (p *parser) next() token {
+func (p *parser) next() grammar.Token {
 	t := p.toks[p.pos]
 	if p.pos < len(p.toks)-1 {
 		p.pos++
@@ -669,37 +339,37 @@ func (p *parser) next() token {
 }
 
 func (p *parser) errf(format string, args ...interface{}) error {
-	return fmt.Errorf("sieve: line %d: %s", p.peek().line, fmt.Sprintf(format, args...))
+	return fmt.Errorf("sieve: line %d: %s", p.peek().Line, fmt.Sprintf(format, args...))
 }
 
-func (p *parser) describe(t token) string {
-	switch t.kind {
-	case tEOF:
+func (p *parser) describe(t grammar.Token) string {
+	switch t.Kind {
+	case grammar.EOF:
 		return "end of script"
-	case tIdent:
-		return fmt.Sprintf("identifier %q", t.str)
-	case tTag:
-		return fmt.Sprintf("tag %q", t.str)
-	case tString:
+	case grammar.Ident:
+		return fmt.Sprintf("identifier %q", t.Str)
+	case grammar.Tag:
+		return fmt.Sprintf("tag %q", t.Str)
+	case grammar.String:
 		return "string"
-	case tNumber:
+	case grammar.Number:
 		return "number"
 	default:
 		return "token"
 	}
 }
 
-func (p *parser) expect(k tokKind, what string) (token, error) {
-	if p.peek().kind != k {
-		return token{}, p.errf("expected %s, got %s", what, p.describe(p.peek()))
+func (p *parser) expect(k grammar.Kind, what string) (grammar.Token, error) {
+	if p.peek().Kind != k {
+		return grammar.Token{}, p.errf("expected %s, got %s", what, p.describe(p.peek()))
 	}
 	tok := p.next()
-	if k == tString {
+	if k == grammar.String {
 		s, err := p.decodeStringConstant(tok)
 		if err != nil {
-			return token{}, err
+			return grammar.Token{}, err
 		}
-		tok.str = s
+		tok.Str = s
 	}
 	return tok, nil
 }
@@ -711,13 +381,13 @@ func (p *parser) expect(k tokKind, what string) (token, error) {
 // other string constant becomes its decoded value at parse time; the AST and the
 // evaluator therefore see the intended octets. A well-formed but out-of-range
 // ${unicode:...} value is reported as an error against the token's line.
-func (p *parser) decodeStringConstant(tok token) (string, error) {
+func (p *parser) decodeStringConstant(tok grammar.Token) (string, error) {
 	if !p.required["encoded-character"] {
-		return tok.str, nil
+		return tok.Str, nil
 	}
-	s, err := decodeEncodedCharacters(tok.str)
+	s, err := grammar.DecodeEncodedCharacters(tok.Str)
 	if err != nil {
-		return "", fmt.Errorf("sieve: line %d: %s", tok.line, err)
+		return "", fmt.Errorf("sieve: line %d: %s", tok.Line, err)
 	}
 	return s, nil
 }
@@ -728,13 +398,13 @@ func (p *parser) parseCommands(inBlock bool) ([]sieveCmd, error) {
 	var cmds []sieveCmd
 	for {
 		t := p.peek()
-		if t.kind == tEOF {
+		if t.Kind == grammar.EOF {
 			if inBlock {
 				return nil, p.errf("expected } but reached end of script")
 			}
 			return cmds, nil
 		}
-		if t.kind == tRBrace {
+		if t.Kind == grammar.RBrace {
 			if !inBlock {
 				return nil, p.errf("unexpected }")
 			}
@@ -752,10 +422,10 @@ func (p *parser) parseCommands(inBlock bool) ([]sieveCmd, error) {
 
 func (p *parser) parseCommand() (sieveCmd, error) {
 	t := p.peek()
-	if t.kind != tIdent {
+	if t.Kind != grammar.Ident {
 		return nil, p.errf("expected a command, got %s", p.describe(t))
 	}
-	name := p.next().str
+	name := p.next().Str
 
 	// RFC 5228 §3.2: require must precede every other command. Record that a
 	// non-require command has been seen so a later require is rejected.
@@ -865,7 +535,7 @@ func (p *parser) parseIf() (sieveCmd, error) {
 	}
 	branches := []sieveBranch{{test: test, block: block}}
 
-	for p.peek().kind == tIdent && p.peek().str == "elsif" {
+	for p.peek().Kind == grammar.Ident && p.peek().Str == "elsif" {
 		p.next()
 		t, err := p.parseTest()
 		if err != nil {
@@ -878,7 +548,7 @@ func (p *parser) parseIf() (sieveCmd, error) {
 		branches = append(branches, sieveBranch{test: t, block: b})
 	}
 
-	if p.peek().kind == tIdent && p.peek().str == "else" {
+	if p.peek().Kind == grammar.Ident && p.peek().Str == "else" {
 		p.next()
 		b, err := p.parseBlock()
 		if err != nil {
@@ -897,14 +567,14 @@ func (p *parser) parseBlock() ([]sieveCmd, error) {
 	}
 	defer func() { p.blockDepth-- }()
 
-	if _, err := p.expect(tLBrace, "{"); err != nil {
+	if _, err := p.expect(grammar.LBrace, "{"); err != nil {
 		return nil, err
 	}
 	cmds, err := p.parseCommands(true)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := p.expect(tRBrace, "}"); err != nil {
+	if _, err := p.expect(grammar.RBrace, "}"); err != nil {
 		return nil, err
 	}
 	return cmds, nil
@@ -912,7 +582,7 @@ func (p *parser) parseBlock() ([]sieveCmd, error) {
 
 // finishStatement consumes the terminating semicolon of a command.
 func (p *parser) finishStatement() error {
-	_, err := p.expect(tSemicolon, ";")
+	_, err := p.expect(grammar.Semicolon, ";")
 	return err
 }
 
@@ -920,8 +590,8 @@ func (p *parser) finishStatement() error {
 // accepted is the :flags tagged argument of RFC 5232 §5, once "imap4flags" is
 // declared. Anything else, such as keep "x";, is refused.
 func (p *parser) parseKeep() (sieveCmd, error) {
-	for p.peek().kind == tTag {
-		tag := p.next().str
+	for p.peek().Kind == grammar.Tag {
+		tag := p.next().Str
 		if tag != ":flags" {
 			return nil, p.errf("unexpected tagged argument %q on keep", tag)
 		}
@@ -938,8 +608,8 @@ func (p *parser) parseKeep() (sieveCmd, error) {
 func (p *parser) parseFileinto() (sieveCmd, error) {
 	cmd := &fileintoCmd{}
 	seen := map[string]bool{}
-	for p.peek().kind == tTag {
-		tag := p.next().str
+	for p.peek().Kind == grammar.Tag {
+		tag := p.next().Str
 		if seen[tag] {
 			return nil, p.errf("duplicate fileinto argument %q", tag)
 		}
@@ -969,19 +639,19 @@ func (p *parser) parseFileinto() (sieveCmd, error) {
 			return nil, p.errf("unknown fileinto argument %q", tag)
 		}
 	}
-	folder, err := p.expect(tString, "a folder name")
+	folder, err := p.expect(grammar.String, "a folder name")
 	if err != nil {
 		return nil, err
 	}
-	cmd.folder = folder.str
+	cmd.folder = folder.Str
 	return cmd, p.finishStatement()
 }
 
 func (p *parser) parseRedirect() (sieveCmd, error) {
 	cmd := &redirectCmd{}
 	seen := map[string]bool{}
-	for p.peek().kind == tTag {
-		tag := p.next().str
+	for p.peek().Kind == grammar.Tag {
+		tag := p.next().Str
 		if seen[tag] {
 			return nil, p.errf("duplicate redirect argument %q", tag)
 		}
@@ -997,7 +667,7 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 			return nil, p.errf("unknown redirect argument %q", tag)
 		}
 	}
-	addr, err := p.expect(tString, "a redirect address")
+	addr, err := p.expect(grammar.String, "a redirect address")
 	if err != nil {
 		return nil, err
 	}
@@ -1006,19 +676,19 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 	// or any other control character (readily smuggled in via a "text:" literal)
 	// would let a host that builds SMTP commands or message headers from the
 	// address be tricked into command/header injection, so reject it here.
-	if r := firstControlChar(addr.str); r >= 0 {
-		return nil, fmt.Errorf("sieve: line %d: redirect address contains a forbidden control character (%#U)", addr.line, r)
+	if r := firstControlChar(addr.Str); r >= 0 {
+		return nil, fmt.Errorf("sieve: line %d: redirect address contains a forbidden control character (%#U)", addr.Line, r)
 	}
 	// RFC 5228 §2.4.2.3 permits one mailbox, not a group or source route.
 	// ParseAddress alone accepts a group containing one mailbox, so check the
 	// delimiters too. Validate the decoded value, but preserve it for the host.
-	if _, err := mail.ParseAddress(placeholderDomainLiterals(addr.str)); err != nil {
-		return nil, fmt.Errorf("sieve: line %d: invalid redirect address: %w", addr.line, err)
+	if _, err := mail.ParseAddress(placeholderDomainLiterals(addr.Str)); err != nil {
+		return nil, fmt.Errorf("sieve: line %d: invalid redirect address: %w", addr.Line, err)
 	}
-	if hasAddressGroupOrRoute(addr.str) {
-		return nil, fmt.Errorf("sieve: line %d: redirect address must not contain a group or source route", addr.line)
+	if hasAddressGroupOrRoute(addr.Str) {
+		return nil, fmt.Errorf("sieve: line %d: redirect address must not contain a group or source route", addr.Line)
 	}
-	cmd.addr = addr.str
+	cmd.addr = addr.Str
 	return cmd, p.finishStatement()
 }
 
@@ -1137,11 +807,11 @@ func firstControlChar(s string) rune {
 // single required argument, reject <reason: string>, so a bare reject; is
 // refused.
 func (p *parser) parseReject(extended bool) (sieveCmd, error) {
-	reason, err := p.expect(tString, "a reason string")
+	reason, err := p.expect(grammar.String, "a reason string")
 	if err != nil {
 		return nil, err
 	}
-	return &rejectCmd{reason: reason.str, extended: extended}, p.finishStatement()
+	return &rejectCmd{reason: reason.Str, extended: extended}, p.finishStatement()
 }
 
 func (p *parser) parseFlag(op string) (sieveCmd, error) {
@@ -1215,8 +885,8 @@ func isIMAPAtom(s string) bool {
 func (p *parser) parseVacation() (sieveCmd, error) {
 	cmd := &vacationCmd{interval: 7 * 24 * time.Hour}
 	seen := map[string]bool{}
-	for p.peek().kind == tTag {
-		tag := p.next().str
+	for p.peek().Kind == grammar.Tag {
+		tag := p.next().Str
 		if seen[tag] {
 			return nil, p.errf("duplicate vacation argument %q", tag)
 		}
@@ -1226,39 +896,39 @@ func (p *parser) parseVacation() (sieveCmd, error) {
 		}
 		switch tag {
 		case ":days":
-			n, err := p.expect(tNumber, "a day count")
+			n, err := p.expect(grammar.Number, "a day count")
 			if err != nil {
 				return nil, err
 			}
-			days := min(max(n.num, 1), 365)
+			days := min(max(n.Num, 1), 365)
 			cmd.interval = time.Duration(days) * 24 * time.Hour
 		case ":seconds":
 			if err := p.requireCapability("vacation-seconds", "vacation :seconds"); err != nil {
 				return nil, err
 			}
-			n, err := p.expect(tNumber, "a seconds count")
+			n, err := p.expect(grammar.Number, "a seconds count")
 			if err != nil {
 				return nil, err
 			}
 			// RFC 6131 §2 permits a site maximum of at least one day.
 			// Accept all representable Sieve numbers, capping before duration
 			// conversion so a huge count cannot wrap to zero or negative.
-			cmd.interval = time.Duration(min(n.num, 1<<31-1)) * time.Second
+			cmd.interval = time.Duration(min(n.Num, 1<<31-1)) * time.Second
 		case ":subject", ":from", ":handle":
-			s, err := p.expect(tString, "a string")
+			s, err := p.expect(grammar.String, "a string")
 			if err != nil {
 				return nil, err
 			}
 			switch tag {
 			case ":subject":
-				cmd.subject, cmd.subjectSet = s.str, true
+				cmd.subject, cmd.subjectSet = s.Str, true
 			case ":from":
-				if _, err := mail.ParseAddressList(s.str); err != nil {
+				if _, err := mail.ParseAddressList(s.Str); err != nil {
 					return nil, p.errf("invalid vacation :from mailbox-list: %v", err)
 				}
-				cmd.from = s.str
+				cmd.from = s.Str
 			case ":handle":
-				cmd.handle, cmd.handleSet = s.str, true
+				cmd.handle, cmd.handleSet = s.Str, true
 			}
 		case ":addresses":
 			addresses, err := p.parseStringList()
@@ -1272,42 +942,42 @@ func (p *parser) parseVacation() (sieveCmd, error) {
 			return nil, p.errf("unknown vacation argument %q", tag)
 		}
 	}
-	body, err := p.expect(tString, "a vacation reason")
+	body, err := p.expect(grammar.String, "a vacation reason")
 	if err != nil {
 		return nil, err
 	}
-	cmd.body = body.str
+	cmd.body = body.Str
 	return cmd, p.finishStatement()
 }
 
 func (p *parser) parseNotify() (sieveCmd, error) {
 	cmd := &notifyCmd{}
-	for p.peek().kind == tTag {
-		switch p.next().str {
+	for p.peek().Kind == grammar.Tag {
+		switch p.next().Str {
 		case ":method":
-			s, err := p.expect(tString, "a notification method")
+			s, err := p.expect(grammar.String, "a notification method")
 			if err != nil {
 				return nil, err
 			}
-			cmd.method = s.str
+			cmd.method = s.Str
 		case ":message":
-			s, err := p.expect(tString, "a message")
+			s, err := p.expect(grammar.String, "a message")
 			if err != nil {
 				return nil, err
 			}
-			cmd.message = s.str
+			cmd.message = s.Str
 		case ":options":
 			if _, err := p.parseStringList(); err != nil {
 				return nil, err
 			}
 		case ":from", ":importance", ":id":
-			if _, err := p.expect(tString, "a string"); err != nil {
+			if _, err := p.expect(grammar.String, "a string"); err != nil {
 				return nil, err
 			}
 		}
 	}
 	// RFC 5435 puts the method in a trailing positional string.
-	if cmd.method == "" && p.peek().kind == tString {
+	if cmd.method == "" && p.peek().Kind == grammar.String {
 		method, err := p.decodeStringConstant(p.next())
 		if err != nil {
 			return nil, err
@@ -1327,10 +997,10 @@ func (p *parser) parseTest() (sieveTest, error) {
 	defer func() { p.testDepth-- }()
 
 	t := p.peek()
-	if t.kind != tIdent {
+	if t.Kind != grammar.Ident {
 		return nil, p.errf("expected a test, got %s", p.describe(t))
 	}
-	name := p.next().str
+	name := p.next().Str
 
 	switch name {
 	case "allof":
@@ -1386,7 +1056,7 @@ func (p *parser) parseTest() (sieveTest, error) {
 }
 
 func (p *parser) parseTestList() ([]sieveTest, error) {
-	if _, err := p.expect(tLParen, "("); err != nil {
+	if _, err := p.expect(grammar.LParen, "("); err != nil {
 		return nil, err
 	}
 	var tests []sieveTest
@@ -1396,13 +1066,13 @@ func (p *parser) parseTestList() ([]sieveTest, error) {
 			return nil, err
 		}
 		tests = append(tests, t)
-		if p.peek().kind == tComma {
+		if p.peek().Kind == grammar.Comma {
 			p.next()
 			continue
 		}
 		break
 	}
-	if _, err := p.expect(tRParen, ")"); err != nil {
+	if _, err := p.expect(grammar.RParen, ")"); err != nil {
 		return nil, err
 	}
 	return tests, nil
@@ -1411,8 +1081,8 @@ func (p *parser) parseTestList() ([]sieveTest, error) {
 func (p *parser) parseSizeTest() (sieveTest, error) {
 	st := &sizeTest{}
 	gotOp := false
-	for p.peek().kind == tTag {
-		tag := p.next().str
+	for p.peek().Kind == grammar.Tag {
+		tag := p.next().Str
 		switch tag {
 		case ":over", ":under":
 			// RFC 5228 §5.9: size takes exactly one of :over / :under. A second
@@ -1430,11 +1100,11 @@ func (p *parser) parseSizeTest() (sieveTest, error) {
 	if !gotOp {
 		return nil, p.errf("size test requires :over or :under")
 	}
-	n, err := p.expect(tNumber, "a size limit")
+	n, err := p.expect(grammar.Number, "a size limit")
 	if err != nil {
 		return nil, err
 	}
-	st.limit = n.num
+	st.limit = n.Num
 	return st, nil
 }
 
@@ -1468,8 +1138,8 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 		bodyTransform: defaultBodyTransform,
 	}
 	var matchTypeSet, comparatorSet, addressPartSet, bodyTransformSet bool
-	for p.peek().kind == tTag {
-		tag := p.next().str
+	for p.peek().Kind == grammar.Tag {
+		tag := p.next().Str
 		switch tag {
 		case ":is", ":contains", ":matches":
 			if matchTypeSet {
@@ -1492,14 +1162,14 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 			if comparatorSet {
 				return opts, p.errf("duplicate :comparator: a test takes at most one comparator")
 			}
-			s, err := p.expect(tString, "a comparator name")
+			s, err := p.expect(grammar.String, "a comparator name")
 			if err != nil {
 				return opts, err
 			}
 			comparatorSet = true
 			// RFC 4790 §3.1 restricts collation identifiers to US-ASCII.
 			// Unicode lowercasing would accept dotted I as an ASCII i.
-			opts.comparator = asciiCasemapFold(s.str)
+			opts.comparator = match.ASCIIFold(s.Str)
 			// RFC 4790/5228: only i;ascii-casemap and i;octet are built in; any
 			// other comparator (e.g. i;ascii-numeric) needs a matching require.
 			if opts.comparator != defaultComparator && opts.comparator != "i;octet" {
@@ -1623,7 +1293,7 @@ func (p *parser) parseEnvelopeTest() (sieveTest, error) {
 	// RFC 5228 §5.4 recommends an error for unknown envelope parts. Check
 	// every decoded operand now, even in a branch that will not be evaluated.
 	for _, part := range parts {
-		switch asciiCasemapFold(part) {
+		switch match.ASCIIFold(part) {
 		case "from", "to":
 		default:
 			return nil, p.errf("unknown envelope part %q", part)
@@ -1667,262 +1337,42 @@ func (p *parser) parseBodyTest() (sieveTest, error) {
 // an empty list from being silently accepted where the grammar requires a value
 // (e.g. `exists []`, which would otherwise evaluate true vacuously).
 func (p *parser) parseStringList() ([]string, error) {
-	if p.peek().kind == tString {
+	if p.peek().Kind == grammar.String {
 		s, err := p.decodeStringConstant(p.next())
 		if err != nil {
 			return nil, err
 		}
 		return []string{s}, nil
 	}
-	open, err := p.expect(tLBracket, "a string or string list")
+	open, err := p.expect(grammar.LBracket, "a string or string list")
 	if err != nil {
 		return nil, err
 	}
 	var list []string
-	for p.peek().kind != tRBracket {
-		s, err := p.expect(tString, "a string")
+	for p.peek().Kind != grammar.RBracket {
+		s, err := p.expect(grammar.String, "a string")
 		if err != nil {
 			return nil, err
 		}
-		list = append(list, s.str)
-		if p.peek().kind == tComma {
+		list = append(list, s.Str)
+		if p.peek().Kind == grammar.Comma {
 			p.next()
 			// RFC 5228 §8.1: string-list = "[" string *("," string) "]", so a
 			// comma must be followed by another string.
-			if p.peek().kind == tRBracket {
+			if p.peek().Kind == grammar.RBracket {
 				return nil, p.errf("expected a string after the comma, got ]")
 			}
 			continue
 		}
 		break
 	}
-	if _, err := p.expect(tRBracket, "]"); err != nil {
+	if _, err := p.expect(grammar.RBracket, "]"); err != nil {
 		return nil, err
 	}
 	if len(list) == 0 {
-		return nil, fmt.Errorf("sieve: line %d: empty string list []: a string list must contain at least one string", open.line)
+		return nil, fmt.Errorf("sieve: line %d: empty string list []: a string list must contain at least one string", open.Line)
 	}
 	return list, nil
 }
 
 // ── encoded-character (RFC 5228 §2.4.2.4) ────────────────────────────
-
-// decodeEncodedCharacters applies the "encoded-character" transformation to s.
-// Within a string, "${hex:HH HH ...}" is replaced by the octets named by its
-// blank-separated 1*2-hex-digit groups, and "${unicode:XXXX ...}" by the UTF-8
-// encoding of its blank-separated code points. The keywords are matched
-// case-insensitively. A "${...}" run that does not match the grammar is left
-// exactly as written (not an error); a well-formed ${unicode:...} whose value is
-// a surrogate (U+D800..U+DFFF) or exceeds U+10FFFF is an error. The transform is
-// a single left-to-right pass — its own output is never re-scanned, so at most
-// one transformation is applied to any position (RFC 5228 §2.4.2.4).
-func decodeEncodedCharacters(s string) (string, error) {
-	// Fast path: without a "${" nothing can match, so the string is unchanged.
-	if !strings.Contains(s, "${") {
-		return s, nil
-	}
-	var b strings.Builder
-	b.Grow(len(s))
-	for i := 0; i < len(s); {
-		if s[i] == '$' && i+1 < len(s) && s[i+1] == '{' {
-			decoded, end, err := decodeEncodedSequence(s, i)
-			if err != nil {
-				return "", err
-			}
-			if end > i {
-				b.WriteString(decoded)
-				i = end
-				continue
-			}
-		}
-		b.WriteByte(s[i])
-		i++
-	}
-	return b.String(), nil
-}
-
-// decodeEncodedSequence tries to decode a single "${hex:...}" or "${unicode:...}"
-// sequence beginning at start, where s[start:start+2] is "${". On a grammar match
-// it returns the decoded octets and the index just past the closing "}"; when the
-// run does not match the grammar it returns end == start so the caller emits the
-// "$" literally and resumes at the following octet. A well-formed but out-of-range
-// ${unicode:...} value returns an error.
-func decodeEncodedSequence(s string, start int) (decoded string, end int, err error) {
-	body := s[start+2:] // text after "${"
-	var payloadStart int
-	isUnicode := false
-	switch {
-	case hasASCIIFoldPrefix(body, "hex:"):
-		payloadStart = start + 2 + len("hex:")
-	case hasASCIIFoldPrefix(body, "unicode:"):
-		payloadStart = start + 2 + len("unicode:")
-		isUnicode = true
-	default:
-		return "", start, nil // unknown encoding keyword: leave literal
-	}
-	// The payload contains only hex digits and blanks, so the first "}" (if any)
-	// terminates the sequence.
-	rel := strings.IndexByte(s[payloadStart:], '}')
-	if rel < 0 {
-		return "", start, nil // no closing brace: leave literal
-	}
-	payload := s[payloadStart : payloadStart+rel]
-	if isUnicode {
-		out, ok, verr := decodeUnicodeSeq(payload)
-		if verr != nil {
-			return "", 0, verr
-		}
-		if !ok {
-			return "", start, nil
-		}
-		return out, payloadStart + rel + 1, nil
-	}
-	out, ok := decodeHexSeq(payload)
-	if !ok {
-		return "", start, nil
-	}
-	return out, payloadStart + rel + 1, nil
-}
-
-// decodeHexSeq parses a hex-pair-seq — "*blank hex-pair *(1*blank hex-pair)
-// *blank" where hex-pair is 1*2HEXDIG — and returns the octets it names. ok is
-// false when payload does not match the grammar (a non-hex character, or a digit
-// run that is not split into blank-separated 1-or-2-digit pairs), so the caller
-// leaves the sequence literal.
-func decodeHexSeq(payload string) (string, bool) {
-	var b strings.Builder
-	i, n := skipEncBlanks(payload, 0), len(payload)
-	if i >= n {
-		return "", false // a hex-pair-seq requires at least one hex-pair
-	}
-	for {
-		if i >= n || !isHexDigit(payload[i]) {
-			return "", false
-		}
-		v := hexVal(payload[i])
-		i++
-		if i < n && isHexDigit(payload[i]) { // optional second digit of the pair
-			v = v<<4 | hexVal(payload[i])
-			i++
-		}
-		b.WriteByte(v)
-		if i >= n {
-			return b.String(), true
-		}
-		if !isEncBlank(payload[i]) {
-			return "", false // a hex-pair must be followed by a blank or the end
-		}
-		i = skipEncBlanks(payload, i)
-		if i >= n {
-			return b.String(), true // trailing blanks
-		}
-	}
-}
-
-// decodeUnicodeSeq parses a unicode-hex-seq — "*blank unicode-hex *(1*blank
-// unicode-hex) *blank" where unicode-hex is 1*HEXDIG — and returns the UTF-8
-// encoding of the code points it names. ok is false when payload does not match
-// the grammar (the caller then leaves the sequence literal); err is non-nil when
-// a well-formed value is a surrogate (U+D800..U+DFFF) or exceeds U+10FFFF.
-func decodeUnicodeSeq(payload string) (string, bool, error) {
-	var b strings.Builder
-	var rangeErr error
-	i, n := skipEncBlanks(payload, 0), len(payload)
-	if i >= n {
-		return "", false, nil
-	}
-	for {
-		if i >= n || !isHexDigit(payload[i]) {
-			return "", false, nil
-		}
-		p := i
-		for i < n && isHexDigit(payload[i]) { // 1*HEXDIG
-			i++
-		}
-		cp, perr := strconv.ParseUint(payload[p:i], 16, 32)
-		if perr != nil || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) {
-			// RFC 5228 §2.4.2.4 forbids a range error unless the entire
-			// sequence fits the grammar. Remember the first bad value while
-			// checking the remaining separators and digit runs.
-			if rangeErr == nil {
-				rangeErr = fmt.Errorf("encoded-character: unicode value %q is outside the valid range (0..D7FF, E000..10FFFF)", payload[p:i])
-			}
-		} else {
-			b.WriteRune(rune(cp))
-		}
-		if i >= n {
-			break
-		}
-		if !isEncBlank(payload[i]) {
-			return "", false, nil
-		}
-		i = skipEncBlanks(payload, i)
-		if i >= n {
-			break
-		}
-	}
-	if rangeErr != nil {
-		return "", true, rangeErr
-	}
-	return b.String(), true, nil
-}
-
-func isHexDigit(c byte) bool {
-	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-}
-
-// hexVal returns the value of the hex digit c, which the caller has checked
-// with isHexDigit.
-func hexVal(c byte) byte {
-	switch {
-	case c >= 'a':
-		return c - 'a' + 10
-	case c >= 'A':
-		return c - 'A' + 10
-	}
-	return c - '0'
-}
-
-// isEncBlank identifies possible blank separator octets. skipEncBlanks checks
-// that a line break is a complete CRLF (RFC 5228 §2.4.2.4).
-func isEncBlank(c byte) bool {
-	return c == ' ' || c == '\t' || c == '\r' || c == '\n'
-}
-
-func skipEncBlanks(s string, i int) int {
-	for i < len(s) {
-		switch s[i] {
-		case ' ', '\t':
-			i++
-		case '\r':
-			if i+1 >= len(s) || s[i+1] != '\n' {
-				return i
-			}
-			i += 2
-		default:
-			return i
-		}
-	}
-	return i
-}
-
-// hasASCIIFoldPrefix reports whether s begins with prefix, folding only the
-// US-ASCII letters A–Z (RFC 5228 §2.4.2.4 makes the "hex"/"unicode" keywords
-// case-insensitive). prefix must be lowercase ASCII. It deliberately does not use
-// Go's Unicode-aware case folding, so no non-ASCII octet can masquerade as a
-// keyword letter.
-func hasASCIIFoldPrefix(s, prefix string) bool {
-	if len(s) < len(prefix) {
-		return false
-	}
-	for i := 0; i < len(prefix); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		if c != prefix[i] {
-			return false
-		}
-	}
-	return true
-}

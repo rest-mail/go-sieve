@@ -10,7 +10,7 @@ alone is RFC 5228.
 
 An item that does not apply to a library (because it is the host's job, say) or
 is a known gap says "n/a" and why. CI checks this file against the tests with
-`go run ./internal/checklist`; the format is described in the
+`go run ./internal/checklist pkg/sieve pkg/sieve/internal/grammar pkg/sieve/rfctest`; the format is described in the
 [README](README.md#the-rfc-checklist).
 
 RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`),
@@ -64,7 +64,7 @@ The extension audits and the owner decisions on hasflag, delivered flags,
 | SIEVE-CORE-17 | 4.2 | MUST | Preserve existing Received fields and increase their count before a redirected message leaves the implementation. | n/a: the host owns wire serialization and trace fields; a Received added before filtering can satisfy the increase. No message header is added by this evaluator. |
 | SIEVE-CORE-18 | 4.2 | MUST | A redirected message with a null incoming envelope sender must retain a null outgoing envelope sender. | n/a: Executor.Redirect receives the destination and copy flag; the host retains the original envelope and selects the outgoing reverse-path. This cannot be certified by a destination callback test. |
 | SIEVE-CORE-19 | 4.2, 10 | MUST | Provide administrator controls to limit redirect abuse, specifically the number of redirects per script. | n/a: host policy duty; there is no built-in redirect count option. A host Executor must enforce the limit and signal a runtime error when exceeded. |
-| SIEVE-CORE-20 | 4.2 | MUST NOT | A redirect silently ignored for policy reasons must not cancel the implicit keep. | n/a: known API gap: Redirect has no return value for a policy skip and the evaluator cancels keep before the callback. A host must not silently skip and rely on Outcome.ImplicitKeep; it must preserve delivery itself or signal an error for the fail-safe keep. |
+| SIEVE-CORE-20 | 4.2 | MUST NOT | A redirect silently ignored for policy reasons must not cancel the implicit keep. | n/a: planned (https://github.com/rest-mail/go-sieve/issues/93): Redirect has no return value for a policy skip and the evaluator cancels keep before the callback. A host must not silently skip and rely on Outcome.ImplicitKeep; it must preserve delivery itself or signal an error for the fail-safe keep. |
 | SIEVE-CORE-21 | 4.4 | MUST | Discard is silent and does not generate a DSN, MDN or other non-delivery notification. | `TestRFC5228DiscardIsSilent` |
 | SIEVE-CORE-22 | 5.1 | MUST | Restrict address tests to address-bearing fields and include From, To, Cc, Bcc, Sender, Resent-From and Resent-To. | `TestRFC5228AddressHeaderRestriction` |
 | SIEVE-CORE-23 | 5.4 | MUST | Drop source routes before every envelope comparison, including all, localpart and domain. | `TestRFC5228EnvelopeDropsSourceRoutes` |
@@ -88,7 +88,7 @@ The extension audits and the owner decisions on hasflag, delivered flags,
 | SIEVE-CORE-41 | 5.1 | SHOULD | Include other fields using an address-list body in address tests. | `TestRFC5228AddressHeaderRestriction` |
 | SIEVE-CORE-42 | 5.4 | Normative | Only envelope recipient information for the evaluated user is available in the to part. | n/a: the host must populate Envelope.To with only the current delivery recipient identities; the library cannot infer user ownership from an arbitrary supplied list. |
 | SIEVE-CORE-43 | 7 | Normative | Use application/sieve when transmitting a Sieve script as a MIME entity. | n/a: this parser has no script transmission or MIME serialization facility. |
-| SIEVE-CORE-44 | 2.1–2.3, 8.1 | Normative | CR and LF occur only as the CRLF line ending in script source. | n/a: known lexer gap outside quoted strings: bare LF is still accepted in whitespace, comments and multiline strings. SIEVE-CORE-49 proves whole-source bare-CR rejection; SIEVE-LEX-03 proves quoted-string validation. |
+| SIEVE-CORE-44 | 2.1–2.3, 8.1 | Normative | CR and LF occur only as the CRLF line ending in script source. | n/a: planned (https://github.com/rest-mail/go-sieve/issues/92): outside quoted strings, bare LF is still accepted in whitespace, comments and multiline strings. SIEVE-CORE-49 proves whole-source bare-CR rejection; SIEVE-LEX-03 proves quoted-string validation. |
 | SIEVE-CORE-45 | 2.4.2.3 | Normative | Accept the complete sieve-address grammar, including obsolete addr-spec forms and folding whitespace in domain literals inherited from RFC 2822. | n/a: redirect uses Go net/mail mailbox syntax, which rejects some obsolete forms. Domain literals are checked as non-empty dtext independently of the Go version (IPv4, IPv6: and general literals are tested by CORE-39), but FWS inside a literal is rejected; this is not complete grammar conformance. |
 | SIEVE-CORE-46 | 2.4.2.2, 5.1, 5.5, 5.7; RFC 5322 §3.6.8 | Normative | Header field names use ASCII case-insensitive matching, independently of the value comparator; non-ASCII names in raw message headers cannot alias valid names. | `TestRFC5228RawHeaderNameASCIICase`, `TestRFC5228RawHeaderNameOctets` |
 | SIEVE-CORE-47 | 5.7; RFC 5322 §2.2.3 | Normative | Before header matching, unfold by removing only CRLF immediately followed by SP or HTAB; preserve the whitespace octets rather than collapsing them. | `TestRFC5228HeaderUnfoldPreservesWhitespace`, `TestRFC5228HeaderUnfoldWSPSequences` |
@@ -180,7 +180,10 @@ extensions; their names do not establish conformance to an RFC or draft.
 
 The broad overview rows below retain their existing test mappings. In
 particular, SIEVE-EXT-02 proves flag callbacks, not delivery of flags: FLAGS-18/19
-record that gap. FLAGS-17, BODY-07 and MAILBOX-08 still need owner decisions.
+record that gap. Planned flag state, raw-body matching and mailbox queries are tracked in
+[go-sieve#89](https://github.com/rest-mail/go-sieve/issues/89),
+[#90](https://github.com/rest-mail/go-sieve/issues/90) and
+[#91](https://github.com/rest-mail/go-sieve/issues/91).
 Relational, subaddress and variables are not implemented; numeric equality,
 ordinary address parts and literal strings do not provide those capabilities.
 
@@ -340,8 +343,8 @@ rows about variable names cover only the error they must cause.
 | FLAGS-14 | 6 | Normative | The extension does not change the implicit keep. | `TestFlags_ImplicitKeepUnchanged` |
 | FLAGS-15 | 3 | MUST NOT | Scripts do not assume the order or the case of flags in a list. | n/a: a requirement on scripts, not on the implementation. |
 | FLAGS-16 | 3 | Normative | Without a variable name the actions work on the internal variable, empty when the script starts; `addflag` adds, `removeflag` removes and `setflag` replaces. | n/a: host's job: the host holds the set and applies each operation `Executor.Flag` reports. |
-| FLAGS-17 | 1, 4 | MUST | The `hasflag` test (match type defaulting to `:is`, comparator defaulting to `i;ascii-casemap`, `:count` counting distinct flags). | n/a: not supported yet, see rest-mail/rest-mail-server#374: the library does not hold the flag set, so it cannot test it. |
-| FLAGS-18 | 3, 5 | MUST | `keep` and `fileinto` (and the implicit keep) deliver with the internal variable's flags, or with only the `:flags` list when it is given. | n/a: not supported yet, see rest-mail/rest-mail-server#374: `:flags` is parsed and then dropped, as `Executor.Keep` and `Executor.FileInto` carry no flags. |
+| FLAGS-17 | 1, 4 | MUST | The `hasflag` test (match type defaulting to `:is`, comparator defaulting to `i;ascii-casemap`, `:count` counting distinct flags). | n/a: not supported yet, see https://github.com/rest-mail/go-sieve/issues/89: the library does not hold the flag set, so it cannot test it. |
+| FLAGS-18 | 3, 5 | MUST | `keep` and `fileinto` (and the implicit keep) deliver with the internal variable's flags, or with only the `:flags` list when it is given. | n/a: not supported yet, see https://github.com/rest-mail/go-sieve/issues/89: `:flags` is parsed and then dropped, as `Executor.Keep` and `Executor.FileInto` carry no flags. |
 | FLAGS-19 | 3; RFC 5228 §2.10.3 | MUST | When repeated `keep` or `fileinto` deliveries are merged, the last list of flags wins. | n/a: not supported yet, follows FLAGS-18. |
 | FLAGS-20 | 5 | MUST | Flags the mailbox cannot store are ignored, and failing to store one is not a runtime error. | n/a: host's job: the library stores nothing, and `Executor.Flag` returns no error. |
 | FLAGS-21 | 7 | Normative | The extension sets flags only on the message being processed, never on other messages in the store. | n/a: host's job: `Executor.Flag` is called for the current message only. |
@@ -365,7 +368,7 @@ names and matches them. `:text` (the default) matches one string: the first
 | BODY-04 | 5 | Normative | The default body transform is `:text`. | `TestBody_DefaultTransformIsText` |
 | BODY-05 | 4 | Normative | A message that is a header with no empty line after it has no body: every body test is false, even one for the empty string. | `TestBody_NoBodyIsFalse` |
 | BODY-06 | 4 | Normative | The body is matched as a whole, not line by line, so the strings matched hold CRLFs. | `TestBody_NotLineByLine` |
-| BODY-07 | 5.1 | MUST | `:raw` matches the whole undecoded body as one string: transfer encodings stay, and boundaries and the MIME headers of nested parts are part of the content. | n/a: not supported yet, see rest-mail/rest-mail-server#374: `Message` holds no undecoded body, so `:raw` matches the same text as `:text`. |
+| BODY-07 | 5.1 | MUST | `:raw` matches the whole undecoded body as one string: transfer encodings stay, and boundaries and the MIME headers of nested parts are part of the content. | n/a: not supported yet, see https://github.com/rest-mail/go-sieve/issues/90: `Message` holds no undecoded body, so `:raw` matches the same text as `:text`. |
 | BODY-08 | 5.1 | MUST NOT | A message with syntax errors is still filtered with `:raw`. | n/a: host's job: the host parses the message into `Message`; evaluation never refuses one. |
 | BODY-09 | 5.2 | Normative | A `:content` type of `""` matches every type, a bare type each of its subtypes, and `type/subtype` only itself; one that begins or ends with a slash or has two slashes matches none. | `TestBody_ContentTypeRules`, `FuzzBodyContentTypeSelection` |
 | BODY-10 | 5.2 | Normative | The search for `:content` parts descends into multipart and `message/rfc822` parts; every part of a matching type is searched, and the test is true if any part matches any key. | `TestBody_ContentRecursive`, `TestBody_RFCExample` |
@@ -399,7 +402,7 @@ test and cannot yet be evaluated.
 | MAILBOX-05 | 3.2 | Normative | Create a missing mailbox before delivering into it. | n/a: host's job: `Executor.FileInto` receives the folder and creation request; the library has no storage access. |
 | MAILBOX-06 | 3.2 | Normative | If the mailbox already exists, ignore the creation request. | n/a: host's job: only the host can determine whether the mailbox exists. |
 | MAILBOX-07 | 3.2; RFC 5228 §2.10.6 | Normative | A creation failure is an execution error, with fail-safe keep rather than message loss. | `TestMailbox_CreationFailure` |
-| MAILBOX-08 | 3.1 | Normative | `mailboxexists` accepts a string list and is true only when every mailbox exists and permits delivery by the script user. | n/a: not supported yet, see rest-mail/rest-mail-server#374: the evaluator has no mailstore query API; this also prevents running the RFC's example. |
+| MAILBOX-08 | 3.1 | Normative | `mailboxexists` accepts a string list and is true only when every mailbox exists and permits delivery by the script user. | n/a: not supported yet, see https://github.com/rest-mail/go-sieve/issues/91: the evaluator has no mailstore query API; this also prevents running the RFC's example. |
 | MAILBOX-09 | 3.1 | Normative | For IMAP storage, delivery eligibility means READ-WRITE without ACL, or the user's p or i ACL right. | n/a: follows MAILBOX-08; the host must check the evaluated user's rights, not just existence. |
 | MAILBOX-10 | 3.1 | Normative | An existence/permission check does not guarantee a subsequent delivery will succeed, such as when over quota. | n/a: follows MAILBOX-08; delivery and quota enforcement are the host's responsibility. |
 | MAILBOX-11 | 3.3–3.4 | Normative | `mboxmetadata` provides mailbox annotation matching and existence tests, using the script user's permissions and private annotations. | n/a: unsupported separate capability; the parser rejects `require "mboxmetadata"`. |

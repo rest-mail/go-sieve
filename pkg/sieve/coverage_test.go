@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve/internal/grammar"
 )
 
 // fullMessage is a message with every structured header set.
@@ -188,13 +190,13 @@ func TestEncodedCharacter_SequenceErrors(t *testing.T) {
 		"${":                     "${",
 		"$${hex:41}":             "$A",
 	} {
-		got, err := decodeEncodedCharacters(in)
+		got, err := grammar.DecodeEncodedCharacters(in)
 		if err != nil || got != want {
 			t.Errorf("decode(%q) = %q, %v; want %q", in, got, err, want)
 		}
 	}
 	for _, in := range []string{"${unicode:D800}", "${unicode:DFFF}", "${unicode:110000}", "${unicode:41 110000}", "${unicode:1234567}"} {
-		if _, err := decodeEncodedCharacters(in); err == nil {
+		if _, err := grammar.DecodeEncodedCharacters(in); err == nil {
 			t.Errorf("decode(%q) succeeded, want an error", in)
 		}
 	}

@@ -3,6 +3,8 @@ package sieve
 import (
 	"strings"
 	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve/internal/grammar"
 )
 
 // TestMultiLineString_HashCommentAfterMarker covers the RFC 5228 §8.1 rule
@@ -31,18 +33,18 @@ func TestMultiLineString_HashCommentAfterMarker(t *testing.T) {
 	}
 	for _, tc := range valid {
 		t.Run(tc.name, func(t *testing.T) {
-			toks, err := newLexer(tc.src + "keep").tokenize()
+			toks, err := grammar.New(tc.src + "keep").Tokenize()
 			if err != nil {
 				t.Fatalf("tokenize: %v", err)
 			}
-			if len(toks) != 3 || toks[0].kind != tString || toks[1].kind != tIdent || toks[2].kind != tEOF {
+			if len(toks) != 3 || toks[0].Kind != grammar.String || toks[1].Kind != grammar.Ident || toks[2].Kind != grammar.EOF {
 				t.Fatalf("tokens = %+v, want string, keep, EOF", toks)
 			}
-			if toks[0].str != tc.want {
-				t.Errorf("string = %q, want %q", toks[0].str, tc.want)
+			if toks[0].Str != tc.want {
+				t.Errorf("string = %q, want %q", toks[0].Str, tc.want)
 			}
-			if want := strings.Count(tc.src, "\n") + 1; toks[1].line != want {
-				t.Errorf("keep is on line %d, want %d", toks[1].line, want)
+			if want := strings.Count(tc.src, "\n") + 1; toks[1].Line != want {
+				t.Errorf("keep is on line %d, want %d", toks[1].Line, want)
 			}
 		})
 	}

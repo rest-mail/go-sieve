@@ -1,9 +1,11 @@
-package sieve
+package rfctest
 
 import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve"
 )
 
 // These tests check RFC 5232 (the "imap4flags" extension) clause by clause.
@@ -14,7 +16,7 @@ import (
 // the Executor, in order, as "op:flag flag".
 func flagOps(t *testing.T, script string) []string {
 	t.Helper()
-	s, err := Parse(script)
+	s, err := sieve.Parse(script)
 	if err != nil {
 		t.Fatalf("Parse(%q): %v", script, err)
 	}
@@ -43,7 +45,7 @@ func TestFlags_RequiresCapability(t *testing.T) {
 		`require ["imap4flags", "fileinto"]; fileinto :flags "a" "Archive";`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := sieve.Validate(s); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -55,7 +57,7 @@ func TestFlags_RequiresCapability(t *testing.T) {
 		`require "fileinto"; fileinto :flags "a" "Archive";`,
 	}
 	for _, s := range bad {
-		if err := Validate(s); err == nil {
+		if err := sieve.Validate(s); err == nil {
 			t.Errorf("%q: accepted without require \"imap4flags\", want an error", s)
 		}
 	}
@@ -87,7 +89,7 @@ func TestFlags_VariableNameRefused(t *testing.T) {
 		`require "imap4flags"; addflag "flagvar" ["\\Deleted", "\\Answered"];`,
 		`require "imap4flags"; removeflag "flagvar" "$MDNRequired";`,
 	} {
-		if err := Validate(s); err == nil {
+		if err := sieve.Validate(s); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -103,7 +105,7 @@ func TestFlags_FlagsTagSyntax(t *testing.T) {
 		`require ["imap4flags", "fileinto"]; fileinto :flags "\\Seen" "Archive";`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := sieve.Validate(s); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -114,7 +116,7 @@ func TestFlags_FlagsTagSyntax(t *testing.T) {
 		`require "imap4flags"; discard :flags "a";`,
 	}
 	for _, s := range bad {
-		if err := Validate(s); err == nil {
+		if err := sieve.Validate(s); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -201,7 +203,7 @@ removeflag "a A a";`)
 func TestFlags_RFCExamples(t *testing.T) {
 	big := sieveEmail()
 	big.RawSize = 600 * 1024
-	s, err := Parse(`require "imap4flags"; if size :over 500K { setflag "\\Deleted"; }`)
+	s, err := sieve.Parse(`require "imap4flags"; if size :over 500K { setflag "\\Deleted"; }`)
 	if err != nil {
 		t.Fatal(err)
 	}

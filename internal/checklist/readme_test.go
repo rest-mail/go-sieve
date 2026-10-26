@@ -15,7 +15,7 @@ func TestReadmeChecklistBadge(t *testing.T) {
 	root := filepath.Join("..", "..")
 	file := filepath.Join(root, "CHECKLIST.md")
 	var out bytes.Buffer
-	if code := run([]string{"-file", file, root}, &out, &out); code != 0 {
+	if code := run([]string{"-file", file, filepath.Join(root, "pkg", "sieve"), filepath.Join(root, "pkg", "sieve", "internal", "grammar"), filepath.Join(root, "pkg", "sieve", "rfctest")}, &out, &out); code != 0 {
 		t.Fatalf("invalid checklist (exit %d):\n%s", code, out.String())
 	}
 	items, err := parseChecklist(file, func(format string, args ...any) {

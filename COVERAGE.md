@@ -1,6 +1,6 @@
-# Coverage exceptions
+# Coverage gate and remaining work
 
-CI fails when statement coverage of `./...` falls below 95%. CI measured 99.5%
+CI requires at least **95% statement coverage** of `./...`. CI measured 99.5%
 (the package alone 99.6%) on main before the lexer gaps below were closed; the
 statements below are the ones left uncovered. Add an entry here whenever you
 leave a statement uncovered.
@@ -20,7 +20,7 @@ scripts where the comment ends the source, the closing `.` is missing, a word
 stands before the comment or a bracket comment stands in for it.
 `TestLexer_Errors` and `TestRFC5228_SyntaxErrors` cover unexpected characters,
 unterminated strings and bracket comments, and numbers that overflow.
-`parseSieveScript` no longer checks for a token left after the top-level
+`parseSieveScript` in `pkg/sieve/parser.go` no longer checks for a token left after the top-level
 commands: `parseCommands(false)` returns without an error only at the end of
 the script, so the check could not fire. `TestParse_TopLevelLeftoverTokens`
 shows every kind of leftover token is still refused.
@@ -45,21 +45,21 @@ Full coverage is remeasured by CI.
 `TestRFC5228AddressLiteralParts` covers separator selection before bracketed
 domain literals, including literals containing `@`, ordinary domains and
 quoted local-parts through address/envelope evaluation and source routes.
-Every statement of `eval.go` was covered before this change:
+Every statement of `pkg/sieve/eval.go` was covered before this change:
 `TestSize_ReconstructionCountsRawHeaders` and `TestSize_ReconstructionPartBudget`
 cover raw headers and the part budget in the reconstructed size,
 `TestAddress_RawHeaderOnlyNamed` the raw-header name filter of `addressList`, and
-`TestEvalTest_UnknownIsFalse` the fail-closed end of `evalTest`. `matchOne` has
+`TestEvalTest_UnknownIsFalse` the fail-closed end of `evalTest`. `match.One` in `pkg/sieve/internal/match` has
 no unreachable fallback any more: `:is` is its default case.
 `TestEncodedCharacter_SequenceErrors` covers every statement of
-`decodeEncodedCharacters`.
+`grammar.DecodeEncodedCharacters`.
 `TestEncodedCharacterUnicodeMalformedRangeLiteral` and
 `TestEncodedCharacterUnicodeMalformedRangeOctets` cover deferred Unicode range
 errors: malformed payloads stay literal, a well-formed payload reports its first
 invalid scalar, and independently valid neighboring encodings still decode.
 `TestEncodedCharacterBlankGrammar` covers SP/HTAB/CRLF separators and malformed
 line endings in both hex and Unicode payloads.
-`asciiNumeric` no longer has a gap: it keeps the digit run as a string, so a
+`match.ASCIINumeric` no longer has a gap: it keeps the digit run as a string, so a
 number too long for a uint64 cannot fail to parse.
 `TestASCIINumericFirstOctet` checks every possible initial octet through public
 body evaluation, and `TestASCIINumericRFCExamplesAndPrefixes` checks numeric
@@ -88,7 +88,30 @@ boundaries and every octet as a prefix/terminator. `FuzzASCIINumericReference`
 checks the direct comparator and public parser/evaluator with bounded arbitrary
 byte strings. No runtime coverage exception or gate change is introduced.
 
-`number_reference_test.go` supplements number-parser statement coverage with an
+`pkg/sieve/number_reference_test.go` supplements number-parser statement coverage with an
 independent `math/big` oracle, quantifier overflow boundaries, all token octets
 and public size comparisons. It adds no runtime statements or coverage
 exceptions; the shared 95% CI floor remains unchanged.
+
+## Package split (v0.7.0)
+
+Lexical grammar and encoded strings live in `pkg/sieve/internal/grammar`;
+byte comparators and glob matching live in `pkg/sieve/internal/match`.
+The black-box suite in `pkg/sieve/rfctest` uses only the public API. CI measures
+all packages with `-coverpkg=./...` so these cross-package proofs count.
+The local proof helper retains the shared 95% gate and input validation, adding
+cross-package instrumentation and execution-bounded fuzzing (500000 executions).
+The pinned shared producer has no coverage-package input, so the caller cannot
+request that instrumentation through its existing contract.
+
+```sh
+GOMAXPROCS=2 GOTOOLCHAIN=go1.25.10 go test -p 1 -race -count=1 -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out
+go run ./internal/checklist pkg/sieve pkg/sieve/internal/grammar pkg/sieve/rfctest
+```
+
+The v0.7.0 package split was checked on Go 1.25.10 darwin/arm64 with
+`GOMAXPROCS=2` and `-p 1`. Total statement coverage is **99.8% before and
+after** the move; the post-split measurement includes the race detector.
+All 299 Test, Fuzz and Example functions are retained, and all seven fuzz
+targets pass execution-bounded local smoke runs of 2000 executions each.

@@ -1,13 +1,15 @@
-package sieve
+package rfctest
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve"
 )
 
 // matchedFolder runs a script that files into "hit" when its test matches, and
 // reports whether it did.
-func matchedFolder(t *testing.T, test string, msg *Message) bool {
+func matchedFolder(t *testing.T, test string, msg *sieve.Message) bool {
 	t.Helper()
 	r := runSieve(t, `require ["fileinto", "envelope"]; if `+test+` { fileinto "hit"; }`, msg)
 	return folderOf(r) == "hit"
@@ -22,7 +24,7 @@ func TestRFC5228_IdentifiersCaseInsensitive(t *testing.T) {
 	if folderOf(r) != "hit" {
 		t.Errorf("an upper-case script did not file into hit: %+v", r)
 	}
-	if err := Validate(`if header :IS :COMPARATOR "I;OCTET" "a" "b" { keep; }`); err != nil {
+	if err := sieve.Validate(`if header :IS :COMPARATOR "I;OCTET" "a" "b" { keep; }`); err != nil {
 		t.Errorf("tag and comparator names are case-insensitive, got %v", err)
 	}
 }
@@ -76,7 +78,7 @@ func TestRFC5228_SyntaxErrors(t *testing.T) {
 		"string where a block is expected": `if true "x";`,
 	}
 	for name, script := range bad {
-		if err := Validate(script); err == nil {
+		if err := sieve.Validate(script); err == nil {
 			t.Errorf("%s: %q was accepted", name, script)
 		}
 	}
@@ -90,7 +92,7 @@ func TestRFC5228_SyntaxErrors(t *testing.T) {
 		"nested blocks":            "if true { if false { stop; } elsif true { keep; } else { discard; } }",
 	}
 	for name, script := range good {
-		if err := Validate(script); err != nil {
+		if err := sieve.Validate(script); err != nil {
 			t.Errorf("%s: %q was rejected: %v", name, script, err)
 		}
 	}
@@ -101,7 +103,7 @@ func TestRFC5228_SyntaxErrors(t *testing.T) {
 //
 // checklist: SIEVE-CMD-03
 func TestRFC5228_MultipleRequires(t *testing.T) {
-	s, err := Parse(`require "fileinto"; require ["envelope", "reject"]; keep;`)
+	s, err := sieve.Parse(`require "fileinto"; require ["envelope", "reject"]; keep;`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,18 +113,18 @@ func TestRFC5228_MultipleRequires(t *testing.T) {
 	if s.Empty() {
 		t.Error("a script with a keep is not empty")
 	}
-	only, err := Parse("# nothing but\nrequire \"fileinto\";")
+	only, err := sieve.Parse("# nothing but\nrequire \"fileinto\";")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !only.Empty() {
 		t.Error("a script of only a require is empty")
 	}
-	var nilScript *Script
+	var nilScript *sieve.Script
 	if !nilScript.Empty() {
 		t.Error("a nil script is empty")
 	}
-	if err := Validate(`require "fileinto"; keep; require "envelope";`); err == nil {
+	if err := sieve.Validate(`require "fileinto"; keep; require "envelope";`); err == nil {
 		t.Error("a require after another command must be rejected")
 	}
 }
@@ -307,13 +309,13 @@ func TestRFC5228_EnvelopeUnknownPartsRejected(t *testing.T) {
 			`anyof (true, envelope :is ` + parts + ` "")`,
 		} {
 			script := `require ["envelope", "encoded-character"]; if ` + condition + ` { keep; }`
-			parsed, err := Parse(script)
+			parsed, err := sieve.Parse(script)
 			if err == nil || parsed != nil {
 				t.Errorf("Parse accepted unknown envelope part: %s", script)
 			} else if !strings.Contains(err.Error(), "unknown envelope part") {
 				t.Errorf("unexpected error for %s: %v", parts, err)
 			}
-			if err := Validate(script); err == nil {
+			if err := sieve.Validate(script); err == nil {
 				t.Errorf("Validate accepted unknown envelope part: %s", script)
 			}
 		}

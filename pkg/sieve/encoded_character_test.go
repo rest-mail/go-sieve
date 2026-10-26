@@ -3,6 +3,8 @@ package sieve
 import (
 	"strings"
 	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve/internal/grammar"
 )
 
 // These tests pin down the RFC 5228 §2.4.2.4 "encoded-character" extension
@@ -119,7 +121,7 @@ func TestDecodeEncodedCharacters_RFCExamples(t *testing.T) {
 		{"no sequences here", "no sequences here"},
 	}
 	for _, c := range cases {
-		got, err := decodeEncodedCharacters(c.in)
+		got, err := grammar.DecodeEncodedCharacters(c.in)
 		if err != nil {
 			t.Errorf("decodeEncodedCharacters(%q) unexpected error: %v", c.in, err)
 			continue
@@ -143,7 +145,7 @@ func TestDecodeEncodedCharacters_OutOfRangeUnicode(t *testing.T) {
 		"${unicode:110000}",     // one past U+10FFFF
 		"${unicode:FFFFFFFFFF}", // too large to hold
 	} {
-		if _, err := decodeEncodedCharacters(in); err == nil {
+		if _, err := grammar.DecodeEncodedCharacters(in); err == nil {
 			t.Errorf("decodeEncodedCharacters(%q): expected an out-of-range error", in)
 		}
 	}

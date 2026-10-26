@@ -1,4 +1,4 @@
-package sieve
+package rfctest
 
 import (
 	"bufio"
@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve"
 
 	foxsieve "github.com/foxcpp/go-sieve"
 	"github.com/foxcpp/go-sieve/interp"
@@ -37,13 +39,13 @@ const (
 	diffEnvelopeTo   = "roadrunner+lists@acme.example.com"
 )
 
-func diffMessage() *Message {
-	return &Message{
-		Envelope: Envelope{From: diffEnvelopeFrom, To: []string{diffEnvelopeTo}},
-		Headers: Headers{
-			From:      []Address{{Name: "Wile E. Coyote", Address: "coyote@desert.example.org"}},
-			To:        []Address{{Name: "Road Runner", Address: "roadrunner@acme.example.com"}, {Address: "beep@acme.example.com"}},
-			Cc:        []Address{{Name: "Acme Sales", Address: "sales@ACME.example.com"}},
+func diffMessage() *sieve.Message {
+	return &sieve.Message{
+		Envelope: sieve.Envelope{From: diffEnvelopeFrom, To: []string{diffEnvelopeTo}},
+		Headers: sieve.Headers{
+			From:      []sieve.Address{{Name: "Wile E. Coyote", Address: "coyote@desert.example.org"}},
+			To:        []sieve.Address{{Name: "Road Runner", Address: "roadrunner@acme.example.com"}, {Address: "beep@acme.example.com"}},
+			Cc:        []sieve.Address{{Name: "Acme Sales", Address: "sales@ACME.example.com"}},
 			Subject:   "I have a present for you",
 			Date:      "Tue, 1 Apr 1997 09:06:31 -0800",
 			MessageID: "<anvil-1@desert.example.org>",
@@ -52,7 +54,7 @@ func diffMessage() *Message {
 				"X-Mailer":     {"Acme Mailer 3000"},
 			},
 		},
-		Body:    Body{ContentType: "text/plain", Content: "Look, I'm sorry about the whole anvil thing.\r\n"},
+		Body:    sieve.Body{ContentType: "text/plain", Content: "Look, I'm sorry about the whole anvil thing.\r\n"},
 		RawSize: int64(len(diffEmail)),
 	}
 }
@@ -67,9 +69,9 @@ func (e *diffExec) FileInto(folder string, _ bool) {
 func (e *diffExec) Redirect(addr string, cp bool) {
 	e.actions = append(e.actions, fmt.Sprintf("redirect:%s copy=%t", addr, cp))
 }
-func (e *diffExec) Flag(string, []string) {}
-func (e *diffExec) Vacation(Vacation)     {}
-func (e *diffExec) Notify(string, string) {}
+func (e *diffExec) Flag(string, []string)   {}
+func (e *diffExec) Vacation(sieve.Vacation) {}
+func (e *diffExec) Notify(string, string)   {}
 
 // deliveries sorts actions and drops repeats: delivering twice to one place is
 // one delivery (RFC 5228 §2.10.3).
@@ -81,7 +83,7 @@ func deliveries(actions []string) []string {
 // ours runs a script through this library and returns where the message is
 // delivered, the implicit keep included.
 func ours(script string) ([]string, error) {
-	s, err := Parse(script)
+	s, err := sieve.Parse(script)
 	if err != nil {
 		return nil, err
 	}

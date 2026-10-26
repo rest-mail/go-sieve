@@ -1,78 +1,12 @@
-// Package sieve parses and executes scripts written in the Sieve mail-filtering
-// language (RFC 5228) — the language mail servers use to let users sort, file,
-// redirect, and auto-reply to incoming mail.
-//
-// Parsing and evaluation are decoupled from any mailbox model. A caller [Parse]s
-// a script once into a [Script], adapts its own email into the neutral [Message]
-// type, and calls [Script.Evaluate] with an [Executor] it implements. The
-// evaluator walks the script, evaluates each test against the message, and calls
-// the Executor's methods to apply the actions the script selected (fileinto,
-// redirect, imap4flags, vacation, notify, keep). The two terminal dispositions,
-// discard and reject, are reported through the returned [Outcome] rather than
-// the Executor. How each action maps onto a real mailbox — folder names, flag
-// storage, vacation de-duplication, notification transport — is entirely the
-// Executor's concern: this package decides what to do, the host decides how. It
-// depends only on the Go standard library.
-//
-// # Evaluating a script
-//
-//	script, err := sieve.Parse(src)
-//	if err != nil {
-//		// syntax error
-//	}
-//	outcome := script.Evaluate(msg, exec) // exec implements sieve.Executor
-//	switch outcome.Disposition {
-//	case sieve.Discard:
-//		// silently drop the message
-//	case sieve.Reject:
-//		// refuse it, citing outcome.RejectReason
-//	default:
-//		// deliver, honouring the actions exec recorded; additionally deliver to
-//		// the default mailbox when outcome.ImplicitKeep is set (the RFC 5228
-//		// §2.10.2 implicit keep)
-//	}
-//
-// The evaluator applies the RFC 5228 §2.10.2 implicit keep: unless the script
-// cancels it with keep, fileinto, redirect, or discard, the message is delivered
-// to the default mailbox, signalled by [Outcome.ImplicitKeep]. A fileinto or
-// redirect tagged :copy (RFC 3894 §3) does not cancel it. A discard only
-// cancels that keep — it does not stop the script, so later actions still run.
-// A runtime error during evaluation fails safe to the implicit keep (§2.10.6),
-// reported via [Outcome.Error], rather than losing the message.
-//
-// Use [Validate] to check a script's syntax without evaluating it.
-//
-// # Supported language
-//
-// Control commands: if / elsif / else, require, stop.
-//
-// Tests: address, header, envelope, exists, size (:over / :under), body, allof,
-// anyof, not, true / false.
-//
-// Actions: keep, discard, fileinto (with :create), redirect, reject, imap4flags
-// (setflag / addflag / removeflag), vacation, notify.
-//
-// Match types: :is, :contains, :matches (glob with * and ?), and a non-standard
-// :regex extension. Comparators: i;ascii-casemap (the default), i;octet, and
-// i;ascii-numeric. Address parts: :all, :localpart, :domain.
-//
-// # require and extensions
-//
-// Parsing enforces RFC 5228 "require" semantics. Every extension a script uses
-// must be declared with require before use; requiring an extension this package
-// does not implement is an error; require must precede every other command; and
-// an unknown command or test (including a typo) is a parse error rather than a
-// silent no-op. [Parse] and [Validate] therefore reject a script that uses an
-// unsupported or undeclared extension instead of running it partially.
-// [Script.Requires] reports the extensions the script declared via "require".
 package sieve
 
 import (
 	"fmt"
 	"net/mail"
-	"regexp"
 	"strings"
 	"time"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve/internal/match"
 )
 
 // Message is the neutral view of an email the evaluator tests against. A host
@@ -567,18 +501,18 @@ func evalTest(t sieveTest, msg *Message) bool {
 		return size < tt.limit
 	case *headerTest:
 		values := gatherHeaderValues(msg, tt.headers)
-		return matchAny(values, tt.matchType, tt.comparator, tt.keys)
+		return match.Any(values, tt.matchType, tt.comparator, tt.keys)
 	case *addressTest:
 		values := gatherAddressValues(msg, tt.headers, tt.addressPart)
-		return matchAny(values, tt.matchType, tt.comparator, tt.keys)
+		return match.Any(values, tt.matchType, tt.comparator, tt.keys)
 	case *envelopeTest:
 		values := gatherEnvelopeValues(msg, tt.parts, tt.addressPart)
-		return matchAny(values, tt.matchType, tt.comparator, tt.keys)
+		return match.Any(values, tt.matchType, tt.comparator, tt.keys)
 	case *bodyTest:
 		if msg.NoBody {
 			return false
 		}
-		return matchAny(bodyValues(msg, tt), tt.matchType, tt.comparator, tt.keys)
+		return match.Any(bodyValues(msg, tt), tt.matchType, tt.comparator, tt.keys)
 	}
 	return false
 }
@@ -735,7 +669,7 @@ func headerValues(msg *Message, name string) []string {
 		out = append(out, msg.Headers.References...)
 	}
 	for k, vals := range msg.Headers.Raw {
-		if asciiCasemapFold(k) == lower {
+		if match.ASCIIFold(k) == lower {
 			out = append(out, vals...)
 		}
 	}
@@ -827,7 +761,7 @@ func addressList(msg *Message, name string) []string {
 		out = append(out, addressSpecs(msg.Headers.Bcc)...)
 	}
 	for k, vals := range msg.Headers.Raw {
-		if asciiCasemapFold(k) != lower {
+		if match.ASCIIFold(k) != lower {
 			continue
 		}
 		for _, v := range vals {
@@ -949,188 +883,6 @@ func addressPartOf(addr, part string) string {
 
 // ── Matching ─────────────────────────────────────────────────────────
 
-// matchAny reports whether any value matches any key under the given match
-// type and comparator.
-func matchAny(values []string, matchType, comparator string, keys []string) bool {
-	for _, v := range values {
-		for _, k := range keys {
-			if matchOne(v, k, matchType, comparator) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func matchOne(value, key, matchType, comparator string) bool {
-	switch matchType {
-	case ":contains":
-		if comparator == "i;octet" {
-			return strings.Contains(value, key)
-		}
-		return strings.Contains(asciiCasemapFold(value), asciiCasemapFold(key))
-	case ":matches":
-		return wildcardMatch(foldForComparator(value, comparator), foldForComparator(key, comparator))
-	case ":regex":
-		prefix := "(?i)"
-		if comparator == "i;octet" {
-			prefix = ""
-		}
-		re, err := regexp.Compile(prefix + key)
-		if err != nil {
-			return false // skip invalid regex
-		}
-		return re.MatchString(value)
-	default:
-		// ":is", the default match type (RFC 5228 §2.7.1). The parser accepts
-		// no other tag, so nothing else reaches here.
-		return compareIs(value, key, comparator)
-	}
-}
-
-func compareIs(value, key, comparator string) bool {
-	switch comparator {
-	case "i;octet":
-		return value == key
-	case "i;ascii-numeric":
-		nv, okv := asciiNumeric(value)
-		nk, okk := asciiNumeric(key)
-		if !okv || !okk {
-			// Non-numbers are all equal to one another and unequal to numbers.
-			return !okv && !okk
-		}
-		return nv == nk
-	default: // i;ascii-casemap
-		return asciiCasemapFold(value) == asciiCasemapFold(key)
-	}
-}
-
-// asciiNumeric returns the value of the leading run of digits per the
-// i;ascii-numeric comparator (RFC 4790 §9.1.1), as that run with its leading
-// zeros removed ("0" for a run of zeros). The comparator's integers have no
-// upper bound, so the value is kept as a digit string rather than parsed into a
-// fixed-width integer: two runs are equal exactly when the strings are. Returns
-// false when the value does not begin with a digit (positive infinity).
-func asciiNumeric(s string) (string, bool) {
-	// The first octet must be a digit (RFC 4790 §9.1.1). Whitespace,
-	// including Unicode whitespace, denotes infinity just like any other
-	// non-digit prefix. Header-specific trimming happens in headerValues.
-	end := 0
-	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
-		end++
-	}
-	if end == 0 {
-		return "", false
-	}
-	digits := strings.TrimLeft(s[:end], "0")
-	if digits == "" {
-		return "0", true
-	}
-	return digits, true
-}
-
-func foldForComparator(s, comparator string) string {
-	if comparator == "i;octet" {
-		return s
-	}
-	return asciiCasemapFold(s)
-}
-
-// asciiCasemapFold applies the i;ascii-casemap comparator's case fold
-// (RFC 4790 §9.2, RFC 5228 §2.7.3): ONLY the US-ASCII letters A–Z (0x41–0x5A)
-// fold to a–z. Every other octet — all non-letter ASCII and every byte ≥ 0x80,
-// including the interior bytes of multi-byte UTF-8 sequences — is left
-// byte-exact, so non-ASCII characters are compared unchanged and cannot be
-// folded onto an ASCII look-alike (e.g. ſ U+017F, Kelvin sign K U+212A). This
-// deliberately avoids Go's Unicode-aware strings.ToLower/EqualFold, which fold
-// beyond US-ASCII and would let a filter be evaded or over-match.
-func asciiCasemapFold(s string) string {
-	var b []byte
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			if b == nil {
-				b = []byte(s)
-			}
-			b[i] = c + ('a' - 'A')
-		}
-	}
-	if b == nil {
-		return s
-	}
-	return string(b)
-}
-
-// wildcardMatch implements Sieve :matches semantics (RFC 5228 §2.7.1): '*'
-// matches zero or more characters, '?' matches exactly one, and a backslash
-// escapes the next character. Both value and pattern are octet strings under
-// this evaluator's comparator model (i;octet, i;ascii-casemap), so a
-// "character" is a single octet: '?' matches exactly one byte and '*' scans
-// byte by byte. A multi-byte UTF-8 sequence is therefore NOT one '?' — it takes
-// as many '?' as it has octets. The whole value must be matched (anchored).
-//
-// It runs a linear scan with a single backtrack point for the most recent '*',
-// which is sufficient because '*' is the only construct that consumes a
-// variable number of octets.
-func wildcardMatch(value, pattern string) bool {
-	// vi, pi index value and pattern by octet. star records the pattern index
-	// just after the most recent '*'; starMatch records how much of value that
-	// '*' has been credited so far, so a later mismatch can extend it by one
-	// octet and retry.
-	vi, pi := 0, 0
-	star, starMatch := -1, 0
-	for vi < len(value) {
-		if pi < len(pattern) {
-			switch pattern[pi] {
-			case '*':
-				star, starMatch = pi, vi
-				pi++
-				continue
-			case '?':
-				// '?' matches exactly one octet of value.
-				vi++
-				pi++
-				continue
-			case '\\':
-				// A backslash escapes the following octet, matching it
-				// literally; a trailing backslash is itself a literal '\'.
-				lit := byte('\\')
-				adv := 1
-				if pi+1 < len(pattern) {
-					lit = pattern[pi+1]
-					adv = 2
-				}
-				if value[vi] == lit {
-					vi++
-					pi += adv
-					continue
-				}
-			default:
-				if value[vi] == pattern[pi] {
-					vi++
-					pi++
-					continue
-				}
-			}
-		}
-		// Literal/'?' mismatch (or pattern exhausted): backtrack to the last
-		// '*' and let it swallow one more octet, if there was one.
-		if star >= 0 {
-			pi = star + 1
-			starMatch++
-			vi = starMatch
-			continue
-		}
-		return false
-	}
-	// Value fully consumed: the remaining pattern matches only if it is nothing
-	// but '*' (each matching the empty string).
-	for pi < len(pattern) && pattern[pi] == '*' {
-		pi++
-	}
-	return pi == len(pattern)
-}
-
 // ── Body text extraction ─────────────────────────────────────────────
 
 // bodyValues returns the strings a body test matches against. With :content
@@ -1180,11 +932,11 @@ func contentTypeMatches(spec, contentType string) bool {
 	mediaType, _, _ := strings.Cut(contentType, ";")
 	// MIME type tokens are US-ASCII (RFC 2045 §5.1). Unicode case folding
 	// would equate, for example, text/plaİn with text/plain.
-	mediaType = asciiCasemapFold(strings.TrimSpace(mediaType))
+	mediaType = match.ASCIIFold(strings.TrimSpace(mediaType))
 	if mediaType == "" {
 		mediaType = "text/plain"
 	}
-	spec = asciiCasemapFold(spec)
+	spec = match.ASCIIFold(spec)
 	if strings.Contains(spec, "/") {
 		return mediaType == spec
 	}

@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	sievegrammar "github.com/rest-mail/go-sieve/pkg/sieve/internal/grammar"
 )
 
 var sieveNumberGrammar = regexp.MustCompile(`^[0-9]+[kKmMgG]?$`)
@@ -42,11 +44,11 @@ func checkSieveNumberReference(t *testing.T, literal string) {
 	t.Helper()
 	want, grammar := referenceSieveNumber(literal)
 	representable := grammar && want.IsInt64()
-	l := newLexer(literal)
-	got, err := l.readNumber()
-	accepted := err == nil && l.pos == len(literal)
+	l := sievegrammar.New(literal)
+	got, err := l.ReadNumber()
+	accepted := err == nil && l.Pos == len(literal)
 	if accepted != representable {
-		t.Fatalf("readNumber(%q): value=%d, consumed=%d, error=%v; representable=%v", literal, got, l.pos, err, representable)
+		t.Fatalf("readNumber(%q): value=%d, consumed=%d, error=%v; representable=%v", literal, got, l.Pos, err, representable)
 	}
 	if accepted && got != want.Int64() {
 		t.Fatalf("readNumber(%q)=%d, want %s", literal, got, want)

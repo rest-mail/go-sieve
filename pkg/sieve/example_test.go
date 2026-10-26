@@ -3,7 +3,7 @@ package sieve_test
 import (
 	"fmt"
 
-	sieve "github.com/rest-mail/go-sieve"
+	sieve "github.com/rest-mail/go-sieve/pkg/sieve"
 )
 
 // mailbox is a minimal sieve.Executor that records where the script decided to

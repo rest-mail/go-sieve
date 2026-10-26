@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve/internal/match"
 )
 
 // referenceMatches interprets RFC 5228 §2.7.1 with a set of reachable value
@@ -104,7 +106,7 @@ func checkMatchesReference(t *testing.T, value, pattern string, public bool) {
 	t.Helper()
 	for _, comparator := range []string{"i;octet", "i;ascii-casemap"} {
 		want := referenceMatches(value, pattern, comparator)
-		if got := matchOne(value, pattern, ":matches", comparator); got != want {
+		if got := match.One(value, pattern, ":matches", comparator); got != want {
 			t.Fatalf("%s value %q pattern %q: got %v, reference %v", comparator, value, pattern, got, want)
 		}
 		if public {
@@ -169,7 +171,7 @@ func TestMatchesReferenceExhaustive(t *testing.T) {
 }
 
 // FuzzMatchesReference checks arbitrary byte strings against an independent
-// dynamic-programming oracle through both matchOne and Parse/Evaluate.
+// dynamic-programming oracle through both match.One and Parse/Evaluate.
 // Limits bound the O(value × pattern) oracle and public parsing work per input.
 //
 // checklist: SIEVE-MT-03

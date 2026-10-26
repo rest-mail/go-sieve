@@ -1,8 +1,10 @@
-package sieve
+package rfctest
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve"
 )
 
 // These tests check RFC 3894 (the "copy" extension) clause by clause; the
@@ -19,7 +21,7 @@ func TestCopy_RequiresCapability(t *testing.T) {
 		`require ["fileinto", "copy"]; fileinto :copy "Archive";`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := sieve.Validate(s); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -29,7 +31,7 @@ func TestCopy_RequiresCapability(t *testing.T) {
 		`require "fileinto"; if true { fileinto :copy "Archive"; }`,
 	}
 	for _, s := range bad {
-		if err := Validate(s); err == nil {
+		if err := sieve.Validate(s); err == nil {
 			t.Errorf("%q: accepted without require \"copy\", want an error", s)
 		}
 	}
@@ -47,7 +49,7 @@ func TestCopy_Syntax(t *testing.T) {
 		`require ["copy", "fileinto"]; fileinto :copy "Archive";`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := sieve.Validate(s); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -62,7 +64,7 @@ func TestCopy_Syntax(t *testing.T) {
 		`require "copy"; if header :copy "Subject" "x" { keep; }`,
 	}
 	for _, s := range bad {
-		if err := Validate(s); err == nil {
+		if err := sieve.Validate(s); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -79,7 +81,7 @@ func TestCopy_InAdditionToOtherActions(t *testing.T) {
 		name         string
 		script       string
 		applied      []string
-		disposition  Disposition
+		disposition  sieve.Disposition
 		implicitKeep bool
 	}{
 		{
@@ -118,7 +120,7 @@ discard;`,
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			s, err := Parse(tc.script)
+			s, err := sieve.Parse(tc.script)
 			if err != nil {
 				t.Fatalf("Parse: %v", err)
 			}
@@ -145,7 +147,7 @@ discard;`,
 //
 // checklist: COPY-05
 func TestCopy_RFCExample(t *testing.T) {
-	s, err := Parse(`require ["copy", "fileinto"];
+	s, err := sieve.Parse(`require ["copy", "fileinto"];
 fileinto :copy "incoming";
 # ... more processing follows ...
 if header :contains "Subject" "no such subject" { discard; }`)
