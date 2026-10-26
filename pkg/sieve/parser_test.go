@@ -1,6 +1,10 @@
 package sieve
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve/internal/grammar"
+)
 
 // checklist: SIEVE-CMD-01
 func TestParseSieveScript_RequiresAndCommands(t *testing.T) {
@@ -162,7 +166,7 @@ func TestLexQuotedString_RejectsBareCRAndNUL(t *testing.T) {
 		{"lone-lf", "\"a\nb\""},
 	}
 	for _, tc := range bad {
-		if _, err := newLexer(tc.src).tokenize(); err == nil {
+		if _, err := grammar.New(tc.src).Tokenize(); err == nil {
 			t.Errorf("%s: expected a lex error for %q, got none", tc.name, tc.src)
 		}
 	}
@@ -173,15 +177,15 @@ func TestLexQuotedString_AcceptsCRLF(t *testing.T) {
 	// A CRLF pair inside a quoted string is permitted (quoted-safe = CRLF), so a
 	// multi-line quoted string must lex and preserve the CRLF in its value.
 	src := "\"line1\r\nline2\""
-	toks, err := newLexer(src).tokenize()
+	toks, err := grammar.New(src).Tokenize()
 	if err != nil {
 		t.Fatalf("expected a CRLF inside a quoted string to lex, got error: %v", err)
 	}
-	if len(toks) < 1 || toks[0].kind != tString {
+	if len(toks) < 1 || toks[0].Kind != grammar.String {
 		t.Fatalf("expected a string token first, got %+v", toks)
 	}
-	if want := "line1\r\nline2"; toks[0].str != want {
-		t.Errorf("quoted string value = %q, want %q", toks[0].str, want)
+	if want := "line1\r\nline2"; toks[0].Str != want {
+		t.Errorf("quoted string value = %q, want %q", toks[0].Str, want)
 	}
 }
 

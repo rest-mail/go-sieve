@@ -4,6 +4,8 @@ import (
 	"math/big"
 	"strings"
 	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve/internal/match"
 )
 
 // numericReference builds an arbitrary-precision integer one decimal place at
@@ -36,7 +38,7 @@ func numericReferenceEqual(a, b string) bool {
 func checkNumericReference(t *testing.T, a, b string) {
 	t.Helper()
 	want := numericReferenceEqual(a, b)
-	if got := compareIs(a, b, "i;ascii-numeric"); got != want {
+	if got := match.Equal(a, b, "i;ascii-numeric"); got != want {
 		t.Fatalf("direct %q == %q: got %v, reference %v", a, b, got, want)
 	}
 	if got := numericBodyMatch(t, a, b); got != want {

@@ -1,9 +1,11 @@
-package sieve
+package rfctest
 
 import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/rest-mail/go-sieve/pkg/sieve"
 )
 
 // RFC 5490 defines three independent capabilities. Only fileinto :create from
@@ -18,7 +20,7 @@ func TestMailbox_RequiresCapability(t *testing.T) {
 		`require "fileinto"; require "mailbox"; fileinto :create "Archive";`,
 	}
 	for _, script := range good {
-		if err := Validate(script); err != nil {
+		if err := sieve.Validate(script); err != nil {
 			t.Errorf("%q: %v", script, err)
 		}
 	}
@@ -29,7 +31,7 @@ func TestMailbox_RequiresCapability(t *testing.T) {
 		`require "fileinto"; if true { fileinto :create "Archive"; }`,
 	}
 	for _, script := range bad {
-		if err := Validate(script); err == nil {
+		if err := sieve.Validate(script); err == nil {
 			t.Errorf("%q: accepted without both required capabilities", script)
 		}
 	}
@@ -48,7 +50,7 @@ func TestMailbox_CreateSyntax(t *testing.T) {
 		`FILEINTO :CREATE "Archive";`,
 	}
 	for _, action := range good {
-		if err := Validate(requires + action); err != nil {
+		if err := sieve.Validate(requires + action); err != nil {
 			t.Errorf("%q: %v", action, err)
 		}
 	}
@@ -64,7 +66,7 @@ func TestMailbox_CreateSyntax(t *testing.T) {
 		`if exists :create "Subject" { keep; }`,
 	}
 	for _, action := range bad {
-		if err := Validate(requires + action); err == nil {
+		if err := sieve.Validate(requires + action); err == nil {
 			t.Errorf("%q: accepted, want a syntax error", action)
 		}
 	}
@@ -120,13 +122,13 @@ func TestMailbox_CreateCallback(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			s, err := Parse(`require ["fileinto", "mailbox", "copy"]; ` + tc.actions)
+			s, err := sieve.Parse(`require ["fileinto", "mailbox", "copy"]; ` + tc.actions)
 			if err != nil {
 				t.Fatal(err)
 			}
 			ex := &mailboxExec{recExec: newRecExec()}
 			out := s.Evaluate(sieveEmail(), ex)
-			if out.Error != nil || out.Disposition != Continue || out.ImplicitKeep != tc.implicitKeep {
+			if out.Error != nil || out.Disposition != sieve.Continue || out.ImplicitKeep != tc.implicitKeep {
 				t.Fatalf("unexpected outcome: %+v", out)
 			}
 			if !reflect.DeepEqual(ex.files, tc.files) {
@@ -138,7 +140,7 @@ func TestMailbox_CreateCallback(t *testing.T) {
 
 // checklist: MAILBOX-07
 func TestMailbox_CreationFailure(t *testing.T) {
-	s, err := Parse(`require ["fileinto", "mailbox"];
+	s, err := sieve.Parse(`require ["fileinto", "mailbox"];
 fileinto :create "Archive";
 keep;
 fileinto "Later";`)
@@ -148,7 +150,7 @@ fileinto "Later";`)
 	failure := errors.New("mailbox creation denied")
 	ex := &mailboxExec{recExec: newRecExec(), fail: failure}
 	out := s.Evaluate(sieveEmail(), ex)
-	if !errors.Is(out.Error, failure) || !out.ImplicitKeep || out.Disposition != Continue {
+	if !errors.Is(out.Error, failure) || !out.ImplicitKeep || out.Disposition != sieve.Continue {
 		t.Fatalf("creation failure must report the error and fail safe to keep: %+v", out)
 	}
 	if want := []mailboxCall{{"Archive", true}}; !reflect.DeepEqual(ex.files, want) {

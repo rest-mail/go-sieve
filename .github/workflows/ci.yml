@@ -10,24 +10,42 @@ permissions:
   contents: read
 
 jobs:
-  # The RFC proof (build, vet, golangci-lint, race tests with at least 95%
-  # coverage, the checklist and 30 seconds of each fuzz target) is go-spf's
-  # reviewed workflow, pinned to one commit. Lines left uncovered on purpose
-  # are listed, with reasons, in COVERAGE.md.
   rfc:
-    name: Verify RFC
-    uses: rest-mail/go-spf/.github/workflows/rfc-verification.yml@7d291c08d310b9c62afc287e75a534a39150fafb
-    with:
-      packages: '["./..."]'
-      checklist-dirs: '["."]'
-      fuzz-targets: >-
-        [{"package":".","target":"FuzzParse"},
-         {"package":".","target":"FuzzDecodeEncodedCharacters"},
-         {"package":".","target":"FuzzBodyContentTypeSelection"},
-         {"package":".","target":"FuzzComparatorIdentifier"},
-         {"package":".","target":"FuzzMatchesReference"},
-         {"package":".","target":"FuzzASCIINumericReference"},
-         {"package":".","target":"FuzzSieveNumberReference"}]
+    name: Verify RFC / RFC proof
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.10"
+          cache: true
+      - name: Build
+        run: go build ./...
+      - name: Run go vet
+        run: go vet ./...
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11.4
+          args: --timeout=5m
+      - name: Race coverage, checklist and fuzz proof
+        env:
+          RFC_PACKAGES: '["./..."]'
+          RFC_CHECKLIST_DIRS: '["./pkg/sieve", "./pkg/sieve/internal/grammar", "./pkg/sieve/rfctest"]'
+          RFC_FUZZ_TARGETS: >-
+            [{"package":"./pkg/sieve","target":"FuzzParse"},
+             {"package":"./pkg/sieve/internal/grammar","target":"FuzzDecodeEncodedCharacters"},
+             {"package":"./pkg/sieve","target":"FuzzBodyContentTypeSelection"},
+             {"package":"./pkg/sieve","target":"FuzzComparatorIdentifier"},
+             {"package":"./pkg/sieve","target":"FuzzMatchesReference"},
+             {"package":"./pkg/sieve","target":"FuzzASCIINumericReference"},
+             {"package":"./pkg/sieve","target":"FuzzSieveNumberReference"}]
+        run: python3 -B .github/scripts/rfc_verification.py
+      - name: Upload fuzz crashers
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashers
+          path: "**/testdata/fuzz"
 
   fixtures:
     name: Workflow fixtures
