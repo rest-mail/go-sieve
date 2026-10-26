@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-26
+
+### Changed (breaking)
+
+- The root package is removed. Import `github.com/rest-mail/go-sieve/pkg/sieve`
+  for the parser, interpreter and host-facing types. The module path and public
+  identifiers are unchanged; constructors need no rename.
+- Lexical grammar, encoded strings and comparison helpers are internal packages
+  under `pkg/sieve/internal`. Black-box RFC proofs live in `pkg/sieve/rfctest`.
+
+| Before (v0.6 and earlier) | After (v0.7) |
+|--------------------------|--------------|
+| `import "github.com/rest-mail/go-sieve"` | `import "github.com/rest-mail/go-sieve/pkg/sieve"` |
+| `sieve.Parse`, `sieve.Validate`, `sieve.Option`, `sieve.WithMaxDepth`, `sieve.DefaultMaxDepth` | Same names, through the new import |
+| `sieve.Script` and its `Requires`, `Empty`, `Evaluate` methods | Same names and behavior, through the new import |
+| `sieve.Message`, `Headers`, `Address`, `Envelope`, `Body`, `Attachment` | Same types, through the new import |
+| `sieve.Executor`, `Vacation`, `Outcome`, `Disposition`, `Continue`, `Discard`, `Reject` | Same host contract, through the new import |
+
+### Documentation
+
+- Reorganize the README around packages, a compiled quick start, features,
+  host responsibilities and deliberate versus planned gaps. Link planned work
+  to issues and give each release a version heading.
+- Backfill v0.5.0 and v0.6.0 from their tagged changelog snapshots, preserving
+  the existing release-note text.
+
 ### Added
 
 - RFC 5228 `:matches` proof against an independent dynamic-programming oracle:
@@ -18,6 +44,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   int64 overflow, all token octets and strict comparison boundaries through
   the public API. `FuzzSieveNumberReference` runs for 30 seconds in CI.
 
+- Checked numeric-comparator differential proof against an independent
+  arbitrary-precision oracle (RFC 4790 §9.1.1), covering every boundary octet,
+  machine-integer overflow, long decimal runs and public script evaluation.
+  `FuzzASCIINumericReference` runs for 30 seconds in the shared CI workflow.
+
+## [0.6.0] - 2026-10-23
+
+### Fixed
+
+- **Breaking:** `Parse` and `Validate` reject bare CR throughout script source,
+  including whitespace, comments and multiline strings (RFC 5228 §8.1).
+  CRLF pairs and encoded CR values are preserved. Checked SIEVE-CORE-49 tests
+  cover lexical contexts, all following octets and line diagnostics; FuzzParse
+  checks the invariant. Bare LF outside quoted strings remains a known gap.
+
+- Address and envelope `:localpart` / `:domain` tests split before a
+  bracketed domain literal, preserving `@` inside its content instead of
+  treating it as the mailbox separator (RFC 5228 §2.7.4). Checked CORE-50
+  covers structured address fields, sender/recipient envelopes, quoted
+  local-parts and source routes. Host input validation remains required.
+
+## [0.5.0] - 2026-10-23
+
 ### Fixed
 
 - Header matching unfolds values by removing only CRLF followed by SP or HTAB
@@ -26,24 +75,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Non-folding line breaks are preserved. Adds checked SIEVE-CORE-47 tests for
   raw and structured headers and all short SP/HTAB folding sequences.
 
-- **Breaking:** `Parse` and `Validate` reject bare CR throughout script source,
-  including whitespace, comments and multiline strings (RFC 5228 §8.1).
-  CRLF pairs and encoded CR values are preserved. Checked SIEVE-CORE-49 tests
-  cover lexical contexts, all following octets and line diagnostics; FuzzParse
-  checks the invariant. Bare LF outside quoted strings remains a known gap.
-
 - Header tests trim mail whitespace rather than Unicode whitespace at value
   boundaries (RFC 5228 §5.7; RFC 5322 §3.2.2). Non-breaking spaces, other
   Unicode spaces, vertical tabs and form feeds remain significant content,
   so they no longer cause false exact matches or disappear from keys matched
   against raw or host-decoded structured headers. Adds checked CORE-48 tests
   for all non-linebreak boundary octets and Unicode whitespace on both paths.
-
-- Address and envelope `:localpart` / `:domain` tests split before a
-  bracketed domain literal, preserving `@` inside its content instead of
-  treating it as the mailbox separator (RFC 5228 §2.7.4). Checked CORE-50
-  covers structured address fields, sender/recipient envelopes, quoted
-  local-parts and source routes. Host input validation remains required.
 
 - Malformed `${unicode:...}` encodings remain literal even when an early
   digit run names a surrogate or an out-of-range scalar (RFC 5228 §2.4.2.4).
@@ -67,12 +104,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `Parse`. At top level `parseCommands` returns without an error only at the
   end of the script; a stray `}` or other leftover token is already refused
   there with "unexpected }" or "expected a command" (RFC 5228 §8.2).
+
 - The unreachable fallback in `matchOne`, which matched an unknown match type as
   `:contains`. `:is`, the default match type (RFC 5228 §2.7.1), is now its
   default case; the parser accepts no other tag, so behaviour is unchanged.
+
 - The unreachable "require inside a block" check in the parser. A block always
   belongs to an `if`, so the "require must appear before any other command"
   error already refuses it (RFC 5228 §3.2); the message is the only change.
+
 - The unreachable parse-error branch in `${hex:...}` decoding. A hex-pair is one
   or two hex digits, so it always fits an octet; the digits are now converted
   directly. Tests cover leading, trailing and mixed blanks in `${hex:...}` and
@@ -136,11 +176,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Checked numeric-comparator differential proof against an independent
-  arbitrary-precision oracle (RFC 4790 §9.1.1), covering every boundary octet,
-  machine-integer overflow, long decimal runs and public script evaluation.
-  `FuzzASCIINumericReference` runs for 30 seconds in the shared CI workflow.
-
 - RFC 5228 sections 1–14 audited against the core checklist; 43 new rows
   distinguish executable requirements, host/specification duties and known
   gaps. Fourteen focused conformance tests cover numeric and byte boundaries,
@@ -159,8 +194,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   comment that ends the script, a missing closing `.`, a word before the
   comment and a bracket comment in its place are refused. This closes the last
   known coverage gap in the lexer.
+
 - README coverage-gate and RFC checklist badges, checked in CI against the
   enforced coverage minimum and the checklist's actual test mappings.
+
 - Differential tests (`diff_test.go`) against
   [foxcpp/go-sieve](https://github.com/foxcpp/go-sieve), a test-only
   dependency: 37 scripts covering RFC 5228's tests, match types, comparators,
@@ -170,22 +207,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   the test: it drops the implicit keep after `stop` (§3.3), and it accepts a
   stray `}`, an `else` with no `if`, two address parts and an unparenthesised
   test list.
+
 - `Message.NoBody` marks a message that is a header with no empty line after
   it. Every `body` test of such a message is false, even one for the empty
   string, and its reconstructed size has no blank line (RFC 5173 §4,
   BODY-05).
+
 - An RFC 5490 section in `CHECKLIST.md` audits `mailbox` (MAILBOX-01 to
   MAILBOX-12), with tests for `fileinto :create` syntax, capability enforcement,
   callback arguments and fail-safe handling of a host creation error.
   `mailboxexists` is recorded as not supported yet; mailbox creation and access
   checks belong to the host. The README and `Executor.FileInto` document the
   partial capability and the host's creation/error contract.
+
 - An RFC 3894 section in `CHECKLIST.md` checks the `copy` extension clause by
   clause (COPY-01 to COPY-06), with tests for its capability, syntax, the RFC's
   example and a copy taken alongside other actions.
+
 - An RFC 5232 section in `CHECKLIST.md` checks the `imap4flags` extension
   clause by clause (FLAGS-01 to FLAGS-21). `hasflag` and delivering with the
   `:flags` list are recorded as not supported yet.
+
 - An RFC 5173 section in `CHECKLIST.md` checks the `body` extension clause by
   clause (BODY-01 to BODY-18). `:raw` matching the undecoded body and telling a
   missing body from an empty one are recorded as not supported yet.
@@ -199,6 +241,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   system flags a client cannot set are dropped, the five settable system flags
   are written in their usual case, and a repeated flag is passed once. Hosts
   that did this themselves can stop.
+
 - **`body :content` matches the parts it names** (RFC 5173 §5.2). The list of
   content types was parsed and ignored, so `:content "text/html"` matched the
   plain-text part. Each part of a listed type (`""` for all, `"text"` for any

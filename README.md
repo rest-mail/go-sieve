@@ -3,69 +3,52 @@
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
 [![Checklist: 164/249 mapped](https://img.shields.io/badge/checklist-164%2F249%20mapped-blue)](CHECKLIST.md)
-[![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve)
+[![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve/pkg/sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
 A parser and interpreter for the Sieve mail-filtering language
 ([RFC 5228](https://www.rfc-editor.org/rfc/rfc5228)) in Go. The library imports
-only the standard library.
+only the standard library. Parse a script once into a `*Script`, adapt a message
+into `Message`, then call `Script.Evaluate` with your `Executor`. The library
+selects actions; your host applies them to its mailstore and transport.
 
-## About
+## Contents
 
-Sieve is the language mail servers use to let users sort, file, redirect, and
-auto-reply to incoming mail without running arbitrary code. This package turns a
-Sieve script into an executable decision over one message.
-
-Parsing and evaluation are decoupled from any mailbox model. You `Parse` a script
-once into a `*Script`, adapt your message into the neutral `Message` type, and
-call `Script.Evaluate` with an `Executor` you implement. The evaluator walks the
-script, evaluates its tests against the message, and calls your Executor's
-methods to apply the actions the script selected — how each action maps onto a
-real mailbox (folder names, flag storage, vacation de-duplication, notification
-transport) is entirely your concern. The package decides *what* to do; your host
-decides *how*. The two terminal dispositions, `discard` and `reject`, are
-reported through the returned `Outcome` rather than the Executor.
-
-Delivery follows RFC 5228's implicit-keep model: unless the script cancels it
-(with `keep`, `fileinto`, `redirect`, or `discard`), the message is delivered to
-the default mailbox, reported as `Outcome.ImplicitKeep`. A `fileinto` or
-`redirect` tagged `:copy` (RFC 3894) leaves the implicit keep in effect, but does
-not bring it back once another action has cancelled it. A `discard` only cancels
-that keep — it does not stop the script, so any other delivering action still
-takes effect. A runtime error during evaluation fails safe to the implicit keep
-(`Outcome.Error`) rather than losing the message.
-
-## Features
-
-- **Control**: `if` / `elsif` / `else`, `require`, `stop`.
-- **Tests**: `address`, `header`, `envelope`, `exists`, `size` (`:over`/`:under`),
-  `body`, `allof`, `anyof`, `not`, `true`/`false`.
-- **Actions**: `keep`, `discard`, `fileinto` (+`:create`), `redirect`, `reject`,
-  `imap4flags` (`setflag`/`addflag`/`removeflag`), `vacation` (including
-  RFC 6131 `vacation-seconds`), and the local `notify` action.
-- **Match types**: `:is`, `:contains`, `:matches` (glob with `*` and `?`), plus a
-  non-standard `:regex`. **Comparators**: `i;ascii-casemap` (default),
-  `i;octet`, `i;ascii-numeric` (a numeric value must begin with an ASCII digit;
-  leading whitespace makes it positive infinity). **Address parts**:
-  `:all`/`:localpart`/`:domain`.
-- **Extension validation**: undeclared extensions and unknown commands, tests,
-  and tagged arguments are errors. The RFC 5490 `mailbox` capability currently
-  supports `fileinto :create` only; `mailboxexists` is not implemented.
-  `mboxmetadata`, `servermetadata`, `relational`, `subaddress`, `variables`
-  and standardized `enotify` are not supported. Local `regex` uses Go regular
-  expressions; local `notify` is not RFC 5435 conformance.
-- No external dependencies in the library. The tests alone use
-  [foxcpp/go-sieve](https://github.com/foxcpp/go-sieve) (MIT) as an
-  independent reference: `diff_test.go` runs the same scripts on the same
-  message through both and compares where the message is delivered.
+- [Install](#install)
+- [Packages](#packages)
+- [Quick start](#quick-start)
+- [Features](#features)
+- [What the library does and what the host must do](#what-the-library-does-and-what-the-host-must-do)
+- [RFC conformance](#rfc-conformance): [the checklist](#the-rfc-checklist), [what it does not do](#what-it-does-not-do), [badges and coverage](#badges-and-coverage)
+- [Changelog](#changelog)
+- [Licence](#licence)
 
 ## Install
 
 ```sh
-go get github.com/rest-mail/go-sieve
+go get github.com/rest-mail/go-sieve@latest
 ```
 
-## Quickstart
+The module declares Go 1.25. The library has no external dependencies; tests use
+[foxcpp/go-sieve](https://github.com/foxcpp/go-sieve) (MIT) as an independent
+reference.
+
+## Packages
+
+| Import path | What it holds |
+|-------------|---------------|
+| `github.com/rest-mail/go-sieve/pkg/sieve` | The public parser and interpreter: `Parse`, `Validate`, `Script`, parser options, message types, `Executor`, `Vacation`, `Outcome` and delivery dispositions. |
+| `pkg/sieve/internal/grammar` | RFC 5228 lexical grammar: tokens, quoted and multiline strings, quantified numbers and encoded-character decoding. Internal: not importable by callers. |
+| `pkg/sieve/internal/match` | Byte comparators, glob matching and the local regular-expression matcher. Internal: not importable by callers. |
+| `pkg/sieve/rfctest` | Black-box RFC and differential tests, using only the public API. |
+
+Upgrading from v0.6 or earlier: the root package is gone. Change the import to
+`github.com/rest-mail/go-sieve/pkg/sieve`; public names and behavior are unchanged.
+[CHANGELOG.md](CHANGELOG.md#070---2026-10-26) has the migration table.
+The parser and interpreter share one package because they operate on the same
+private syntax tree; there are no separate client or server roles.
+
+## Quick start
 
 Parse a script, run it against a message, and inspect the actions it selected.
 Your `Executor` maps each action onto your delivery model; the terminal
@@ -77,7 +60,7 @@ package main
 import (
 	"fmt"
 
-	sieve "github.com/rest-mail/go-sieve"
+	"github.com/rest-mail/go-sieve/pkg/sieve"
 )
 
 // mailbox implements sieve.Executor, applying actions to your delivery model.
@@ -94,7 +77,7 @@ func (m *mailbox) Vacation(v sieve.Vacation)           {}
 func (m *mailbox) Notify(method, message string)       {}
 
 func main() {
-	script, err := sieve.Parse(`require ["fileinto", "imap4flags"];
+	script, err := sieve.Parse(`require ["fileinto", "imap4flags", "mailbox"];
 if header :contains "Subject" "invoice" {
     setflag "\\Flagged";
     fileinto :create "Invoices";
@@ -127,7 +110,36 @@ if header :contains "Subject" "invoice" {
 
 Check a script's syntax without evaluating it with `sieve.Validate(src)`.
 
-## The Executor
+## Features
+
+| Area | Supported behavior |
+|------|--------------------|
+| Control | `if`, `elsif`, `else`, `require`, `stop`. |
+| Core tests | `address`, `header`, `exists`, `size :over/:under`, `allof`, `anyof`, `not`, `true`, `false`. |
+| Core actions | `keep`, `discard`, `redirect`; `fileinto` after `require "fileinto"`. |
+| Matching | `:is`, `:contains`, byte-level `:matches` (`*`, `?`, backslash escapes); `:all`, `:localpart`, `:domain` address parts. |
+| Comparators | `i;ascii-casemap` (default), `i;octet`, `i;ascii-numeric` equality on arbitrarily long digit runs. A non-digit first octet, including leading whitespace, is positive infinity. |
+| Envelope and body | `envelope` (RFC 5228), `body` (RFC 5173): extracted `:text` and MIME-type-selected `:content`. `:raw` currently uses extracted text; see the planned gap below. |
+| Rejection | `reject` and `ereject` (RFC 5429); `Outcome.ExtendedReject` distinguishes them. |
+| Copies and folders | `:copy` on fileinto/redirect (RFC 3894); `fileinto :create` (RFC 5490). The host creates folders. |
+| Flags | `setflag`, `addflag`, `removeflag` callbacks with normalized lists (RFC 5232). `hasflag` and delivery `:flags` remain gaps. |
+| Vacation | RFC 5230 argument validation and suppression rules; RFC 6131 `vacation-seconds`. Persistent suppression and reply transport belong to the host. |
+| Encoded strings | `encoded-character`: `${hex:...}` and `${unicode:...}` (RFC 5228). |
+| Local extensions | `regex` uses Go regular expressions; `notify` forwards method/message. These are not standardized regex or RFC 5435 `enotify` conformance. |
+| Validation and limits | Unsupported or undeclared extensions, unknown commands/tests/tags and duplicate or inapplicable test tags are errors. Default nesting limit 64, configurable with `WithMaxDepth`; body walks are bounded by depth and part count. |
+
+`Script.Requires` reports declared extensions; `Script.Empty` reports an empty
+script. `Validate` accepts the same options as `Parse`. Parsing and evaluation
+are decoupled from the host's mailbox representation.
+
+## What the library does and what the host must do
+
+Delivery follows RFC 5228's implicit keep. Unless `keep`, a consuming `fileinto`
+or `redirect`, or `discard` cancels it, `Outcome.ImplicitKeep` asks the host to
+deliver to the default mailbox. A `:copy` action leaves it in effect but never
+restores a cancelled keep. `discard` does not stop the script, and another
+delivering action takes precedence over discard. Runtime errors fail safe to the
+implicit keep through `Outcome.Error`.
 
 For `FileInto(folder, create)`, a true `create` asks the host to create the
 mailbox before delivery if it is missing, or use it unchanged if it exists
@@ -199,7 +211,9 @@ See the dated audit in [CHECKLIST.md](CHECKLIST.md). Address tests recognize
 From, To, Cc, Bcc, Sender, Reply-To and their Resent variants; unstructured and
 unregistered custom fields are available through `header`, not `address`.
 
-## The RFC checklist
+## RFC conformance
+
+### The RFC checklist
 
 [CHECKLIST.md](CHECKLIST.md) lists the requirements of RFC 5228 item by item,
 and a small program, [`internal/checklist`](internal/checklist/main.go), checks
@@ -242,38 +256,118 @@ func TestSieve_Stop(t *testing.T) {
 - a test names an item that does not exist, is `n/a`, or does not list it;
 - a `Test` or `Fuzz` function names no item (`Example` functions may).
 
-CI also fails below 95% statement coverage (the statements left uncovered are
-listed in [COVERAGE.md](COVERAGE.md)) and fuzzes each fuzz target (`FuzzParse`,
-`FuzzDecodeEncodedCharacters`, `FuzzBodyContentTypeSelection`,
-`FuzzComparatorIdentifier`, `FuzzSieveNumberReference`) for 30 seconds.
 
-`number_reference_test.go` checks RFC 5228 integer literals against a test-only
-`math/big` reference: grammar, binary quantifiers, int64 range boundaries and
-strict size comparisons through Parse/Validate/Evaluate. Fuzzing exercises raw
-token bytes and derived decimal literals with both cases of every quantifier.
-This verifies numeric parsing and comparison, not host wire-size accounting.
+The checker scans each named directory, without recursing. Run all suites:
 
-The coverage badge shows the enforced minimum; measured statement coverage is
-printed in each CI run's **Verify RFC** log. The checklist badge counts
-requirements mapped to tests over all checklist rows, including the 85 `n/a`
-rows with documented reasons. CI checks the badge against the actual checklist
-and its test mappings. The CI badge reports whether verification passed.
+```sh
+go run ./internal/checklist pkg/sieve pkg/sieve/internal/grammar pkg/sieve/rfctest
+```
 
-## Documentation
+The RFC suites in `pkg/sieve/rfctest` drive the public API. Tests needing private
+parser or evaluator state remain beside `pkg/sieve`; lexical tests and decoder
+fuzzing also exercise `pkg/sieve/internal/grammar`. Each Test, Fuzz and Example
+from before the split is retained.
 
-Full API reference:
-[pkg.go.dev/github.com/rest-mail/go-sieve](https://pkg.go.dev/github.com/rest-mail/go-sieve).
+`pkg/sieve/rfctest/diff_test.go` compares the same scripts and messages with
+foxcpp/go-sieve. Independent reference tests also check wildcard matching,
+arbitrary-precision numeric equality and quantified integer literals. They
+exercise grammar, overflow boundaries, all token octets and public evaluation;
+they do not prove host wire-size accounting or mailstore behavior.
+
+### What it does not do
+
+The checklist records unsupported behavior and host duties as `n/a` with a
+reason. That records a boundary or a gap, rather than claiming full conformance.
+
+#### Not supported, by design
+
+| Area | Boundary | Why |
+|------|----------|-----|
+| Mailstore and transport | No storage, folder creation, script upload service, SMTP delivery, redirect trace fields, loop controls, queue or durable action log. | The host owns accounts, storage and delivery policy; an evaluator cannot infer those from one message. |
+| MIME and message adaptation | No wire-message parser, RFC 2047 or charset decoder; structured address and envelope values are trusted. Supply decoded UTF-8 values, validated addresses, only the evaluated user's envelope recipients and `RawSize` for exact size tests. | The neutral message model lets a host reuse its existing message parser and preserve its own wire representation. Undecoded inputs do not provide charset conformance (SIEVE-CORE-04/05/06/40/42). |
+| Reply generation and persistence | Vacation and notify are callbacks; no reply serialization, persistent suppression, clock, MIME encoding or sender authorization. | The host owns outgoing identity, transport, shared response history and rate limits. |
+| Vacation site minimum | `:days` uses a one-day minimum and 365-day maximum; no site-specific minimum setting. | These finite defaults meet RFC 5230 and bound duration conversion; short intervals use `vacation-seconds`. |
+| Arbitrary code | No shell commands or host-language execution. | User filters must select constrained mail actions. |
+
+#### Not planned
+
+| Area | Current boundary |
+|------|------------------|
+| Relational comparisons | No RFC 5231 `relational`, `:value` or `:count`; numeric equality is supported. |
+| Subaddress policy | No RFC 5233 `subaddress`, `:user` or `:detail`, or host delimiter policy API. |
+| Variables | No RFC 5229 assignments or interpolation; `${name}` stays literal. Encoded-character strings are separate. |
+| Metadata | No RFC 5490 `mboxmetadata` or `servermetadata`; no annotation store or permission API. |
+| Standardized notifications | No RFC 5435 `enotify` validation, options, tests or transport policy. The local `notify` action carries method/message only. |
+| Obsolete redirect address forms | Go `net/mail` validation does not accept every obsolete RFC 2822 addr-spec form or folding whitespace inside domain literals (SIEVE-CORE-45). |
+
+#### Planned
+
+| Gap | Issue |
+|-----|-------|
+| Track flags, implement `hasflag`, and preserve delivery `:flags`, including duplicate-delivery rules (FLAGS-17/18/19). | [#89](https://github.com/rest-mail/go-sieve/issues/89) |
+| Supply an undecoded body for `body :raw` (BODY-07). | [#90](https://github.com/rest-mail/go-sieve/issues/90) |
+| Add a user-scoped host query for `mailboxexists` (MAILBOX-08/09/10). | [#91](https://github.com/rest-mail/go-sieve/issues/91) |
+| Reject bare LF throughout script source (SIEVE-CORE-44). | [#92](https://github.com/rest-mail/go-sieve/issues/92) |
+| Report a host policy skip from Redirect without cancelling the implicit keep (SIEVE-CORE-20). | [#93](https://github.com/rest-mail/go-sieve/issues/93) |
+
+### Badges and coverage
+
+The coverage badge shows the **95% minimum** CI enforces; every run prints the
+measured statement coverage. [COVERAGE.md](COVERAGE.md) records the evidence and
+remaining uncovered statements. Coverage uses `-coverpkg=./...` so black-box RFC
+tests count toward the implementation they exercise. CI runs the race detector,
+checklist, workflow fixtures and all seven fuzz targets, bounded by 500000
+executions per target.
+
+The checklist badge counts 164 mapped requirements out of 249 rows, including
+85 `n/a` rows. `TestReadmeChecklistBadge` validates the actual mappings and exact
+badge text; the workflow fixtures check the coverage badge against the gate.
+The CI badge reports whether verification passed.
 
 ## Changelog
 
-Recent releases — see [CHANGELOG.md](CHANGELOG.md) for the complete history.
+Recent releases; see [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
-- **Unreleased** — checked against RFC 5228 item by item; a string list with a trailing comma is now rejected; an RFC checklist, a 95% coverage gate and fuzzing.
-- **v0.3.0** (2026-07-25) — breaking: evaluation `Outcome.ImplicitKeep` host-contract (fixes discard mail-loss) + `Vacation.Days`→`Interval`; comparator and encoded-character conformance.
-- **v0.2.0** (2026-07-25) — breaking: `require` is now enforced; parser recursion bounded and redirect-target/size-quantifier hardening.
-- **v0.1.1** (2026-07-23) — documentation and packaging polish for the initial release.
-- **v0.1.0** (2026-07-23) — initial public release: RFC 5228 Sieve parser and evaluator.
+### v0.7.0 (2026-10-26)
 
-## License
+Breaking import change: public API moves to `pkg/sieve`, with lexical grammar
+and matching helpers internal and a public-API RFC test suite. Wildcard and
+integer parsing gain independent proofs. The changelog has a migration table.
+
+### v0.6.0 (2026-10-23)
+
+Reject bare CR throughout script source and preserve domain literals containing
+`@` in address-part comparisons.
+
+### v0.5.0 (2026-10-23)
+
+RFC and extension audits, independent differential tests, stricter source and
+argument validation, byte-accurate matching, body selection and flag normalization.
+
+### v0.4.0 (2026-10-19)
+
+Breaking host contract: `Executor.Redirect` receives `copy bool`. Vacation safety
+and tracking arguments, extended rejection outcomes, the RFC checklist,
+coverage gate and fuzzing.
+
+### v0.3.0 (2026-07-25)
+
+Breaking host contract: honor `Outcome.ImplicitKeep`; `Vacation.Interval` replaces
+`Days`. Encoded-character decoding and comparator conformance.
+
+### v0.2.0 (2026-07-25)
+
+Breaking validation: enforce `require`. Bound parser recursion and reject
+redirect control characters and overflowing number quantifiers.
+
+### v0.1.1 (2026-07-23)
+
+Documentation and packaging polish.
+
+### v0.1.0 (2026-07-23)
+
+Initial public release: RFC 5228 parser and evaluator.
+
+## Licence
 
 [MIT](LICENSE) © 2026 rest-mail
