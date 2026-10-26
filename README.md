@@ -293,9 +293,6 @@ reason. That records a boundary or a gap, rather than claiming full conformance.
 
 | Area | Current boundary |
 |------|------------------|
-| Relational comparisons | No RFC 5231 `relational`, `:value` or `:count`; numeric equality is supported. |
-| Subaddress policy | No RFC 5233 `subaddress`, `:user` or `:detail`, or host delimiter policy API. |
-| Variables | No RFC 5229 assignments or interpolation; `${name}` stays literal. Encoded-character strings are separate. |
 | Metadata | No RFC 5490 `mboxmetadata` or `servermetadata`; no annotation store or permission API. |
 | Standardized notifications | No RFC 5435 `enotify` validation, options, tests or transport policy. The local `notify` action carries method/message only. |
 | Obsolete redirect address forms | Go `net/mail` validation does not accept every obsolete RFC 2822 addr-spec form or folding whitespace inside domain literals (SIEVE-CORE-45). |
@@ -309,6 +306,9 @@ reason. That records a boundary or a gap, rather than claiming full conformance.
 | Add a user-scoped host query for `mailboxexists` (MAILBOX-08/09/10). | [#91](https://github.com/rest-mail/go-sieve/issues/91) |
 | Reject bare LF throughout script source (SIEVE-CORE-44). | [#92](https://github.com/rest-mail/go-sieve/issues/92) |
 | Report a host policy skip from Redirect without cancelling the implicit keep (SIEVE-CORE-20). | [#93](https://github.com/rest-mail/go-sieve/issues/93) |
+| Relational comparisons (RFC 5231): `:value` with ordered operators and `:count`, beyond today's numeric equality (RELATIONAL-01). | [#95](https://github.com/rest-mail/go-sieve/issues/95) |
+| Subaddresses (RFC 5233): `:user` and `:detail`, with the separator supplied by the host (SUBADDRESS-01). | [#96](https://github.com/rest-mail/go-sieve/issues/96) |
+| Variables (RFC 5229): `set`, interpolation, match variables and the `string` test; `${name}` stays literal until then (VARIABLES-01). | [#97](https://github.com/rest-mail/go-sieve/issues/97) |
 
 ### Badges and coverage
 
