@@ -36,11 +36,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   (`ErrRedirectSkipped`), which no longer cancels the implicit keep, and from a
   runtime failure (any other error), which fails safe to the implicit keep.
   Closes #93.
+- `body :raw` (RFC 5173 §5.1) on the undecoded body. `Message.RawBody` holds
+  everything after the header's empty line as it is on the wire, so transfer
+  encodings, multipart boundaries and nested MIME headers can be matched;
+  `RawBodySet` says the host supplied it. `:text` and `:content` do not read
+  it. Closes #90.
+- The `mailboxexists` test (RFC 5490 §3.1), through `MailboxChecker`, an
+  optional Executor interface. `MailboxExists(name)` answers for the script's
+  user whether the mailbox exists and accepts delivery; the test is true only
+  if every named mailbox does. A lookup error is a runtime error with the
+  fail-safe keep, never a missing mailbox. Closes #91.
+
+### Changed (breaking)
+
+- `body :raw` no longer matches the extracted text. A Message without
+  `RawBodySet` now makes `body :raw` a runtime error,
+  `ErrRawBodyUnavailable`, with the fail-safe implicit keep, because RFC 5173
+  §5.1 forbids decoding for `:raw`. Hosts that run `:raw` scripts must set
+  `RawBody` and `RawBodySet`.
 
 ### Migrating host executors
 
-Nothing breaks: an Executor that implements neither new interface behaves as
-before, but it still stores no delivery flags and cannot skip a redirect.
+An Executor that implements none of the new interfaces behaves as before,
+but it still stores no delivery flags, cannot skip a redirect and cannot
+answer `mailboxexists`. The one break is `body :raw` (above).
 
 - To store flags, add `KeepWithFlags(flags []string)` and
   `FileIntoWithFlags(folder string, create bool, flags []string)`; they replace
@@ -51,6 +70,10 @@ before, but it still stores no delivery flags and cannot skip a redirect.
   and return `sieve.ErrRedirectSkipped`; it replaces `Redirect`. Return other
   errors instead of panicking for a runtime failure.
 - `keep :flags "a" :flags "b";` is now refused, like a repeated `fileinto` tag.
+- To run `mailboxexists`, add `MailboxExists(name string) (bool, error)`,
+  scoped to the script's user. Without it, `mailboxexists` fails safe to the
+  implicit keep with `sieve.ErrMailboxQueryUnavailable`.
+- To run `body :raw`, set `Message.RawBody` and `Message.RawBodySet`.
 
 ## [0.7.0] - 2026-10-26
 

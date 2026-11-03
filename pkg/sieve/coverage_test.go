@@ -304,10 +304,11 @@ func (unknownTest) isTest() {}
 //
 // checklist: SIEVE-CMD-01
 func TestEvalTest_UnknownIsFalse(t *testing.T) {
-	if evalTest(unknownTest{}, sieveEmail(), nil) {
+	st := &evalState{msg: sieveEmail()}
+	if st.evalTest(unknownTest{}) {
 		t.Error("evalTest(unknown) = true, want false")
 	}
-	if !evalTest(&notTest{inner: unknownTest{}}, sieveEmail(), nil) {
+	if !st.evalTest(&notTest{inner: unknownTest{}}) {
 		t.Error("not over an unknown test = false, want true")
 	}
 }
