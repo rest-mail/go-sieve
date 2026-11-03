@@ -162,7 +162,7 @@ func TestEncodedCharacter_InvalidUnicodeIsError(t *testing.T) {
 		`require "encoded-character"; if header :is "Subject" "${unicode:110000}" { keep; }`,
 	}
 	for _, s := range bad {
-		err := Validate(s)
+		err := Validate(crlf(s))
 		if err == nil {
 			t.Errorf("expected an out-of-range/surrogate unicode value to be an error:\n%s", s)
 			continue

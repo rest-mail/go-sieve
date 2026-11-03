@@ -138,7 +138,7 @@ redirect :copy "a@example.com";`,
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			s, err := Parse(tc.script)
+			s, err := Parse(crlf(tc.script))
 			if err != nil {
 				t.Fatalf("Parse: %v", err)
 			}

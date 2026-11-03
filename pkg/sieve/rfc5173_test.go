@@ -10,9 +10,9 @@ import "testing"
 // and reports whether it did for msg.
 func bodyMatches(t *testing.T, script string, msg *Message) bool {
 	t.Helper()
-	s, err := Parse(script)
+	s, err := Parse(crlf(script))
 	if err != nil {
-		t.Fatalf("Parse(%q): %v", script, err)
+		t.Fatalf("Parse(crlf(%q)): %v", script, err)
 	}
 	return s.Evaluate(msg, newRecExec()).Disposition == Discard
 }
@@ -93,7 +93,7 @@ func TestBody_TransformSyntax(t *testing.T) {
 		`require "body"; if body :content ["text/plain", "text/html"] :contains "x" { discard; }`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -104,7 +104,7 @@ func TestBody_TransformSyntax(t *testing.T) {
 		`require "body"; if header :raw :contains "subject" "x" { discard; }`,
 	}
 	for _, s := range bad {
-		if err := Validate(s); err == nil {
+		if err := Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -327,7 +327,7 @@ func TestBody_RFCExample(t *testing.T) {
 		`require ["body", "fileinto"]; if body :content "text" :contains ["missile", "coordinates"] { fileinto "secrets"; } if body :content "audio/mp3" :contains "" { fileinto "jukebox"; }`,
 		`require ["body", "fileinto"]; if body :text :contains "project schedule" { fileinto "project/schedule"; }`,
 	} {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}

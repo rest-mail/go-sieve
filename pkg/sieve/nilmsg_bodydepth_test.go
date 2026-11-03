@@ -15,7 +15,7 @@ func TestEvaluate_NilMessage_DoesNotPanic(t *testing.T) {
 	// exercised rather than skipped.
 	script := `require "fileinto";
 if header :contains "Subject" "test" { fileinto "X"; }`
-	s, err := Parse(script)
+	s, err := Parse(crlf(script))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}

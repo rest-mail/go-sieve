@@ -31,7 +31,7 @@ func TestRFC5228MinimumIntegerRange(t *testing.T) {
 					t.Errorf("%s at %d: got %v, want %v", expr, size, got, want)
 				}
 			}
-			if err := sieve.Validate(fmt.Sprintf("if size %s %d { keep; }", tag, n)); err != nil {
+			if err := sieve.Validate(crlf(fmt.Sprintf("if size %s %d { keep; }", tag, n))); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -55,7 +55,7 @@ func TestRFC5228OpaqueStringOctets(t *testing.T) {
 			if strings.HasPrefix(literal, "text:") {
 				want += "\r\n"
 			}
-			s, err := sieve.Parse(`require "reject"; reject ` + literal + `;`)
+			s, err := sieve.Parse(crlf(`require "reject"; reject ` + literal + `;`))
 			if err != nil {
 				t.Fatalf("octet %d: %v", n, err)
 			}
@@ -83,7 +83,7 @@ func TestRFC5228InvalidHeaderNamesNeverMatch(t *testing.T) {
 				literal += `}"`
 			}
 			for _, expr := range []string{`header :contains ` + literal + ` ""`, `exists ` + literal, `address ` + literal + ` "hit@example.org"`} {
-				s, err := sieve.Parse(`require "encoded-character"; if ` + expr + ` { discard; }`)
+				s, err := sieve.Parse(crlf(`require "encoded-character"; if ` + expr + ` { discard; }`))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -108,7 +108,7 @@ func TestRFC5228EncodedNULDoesNotTruncate(t *testing.T) {
 		`header :is "Subject" "a"`:               false,
 		`header :is "Subject" "a${hex:00}wrong"`: false,
 	} {
-		s, err := sieve.Parse(`require "encoded-character"; if ` + expr + ` { discard; }`)
+		s, err := sieve.Parse(crlf(`require "encoded-character"; if ` + expr + ` { discard; }`))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestRFC5228EncodedNULDoesNotTruncate(t *testing.T) {
 // checklist: SIEVE-CORE-09 SIEVE-CORE-10
 func TestRFC5228RepeatedDeliveryIsNotError(t *testing.T) {
 	for _, src := range []string{`keep;`, `keep; keep;`, `require "fileinto"; fileinto "box";`, `require "fileinto"; fileinto "box"; fileinto "box";`} {
-		s, err := sieve.Parse(src)
+		s, err := sieve.Parse(crlf(src))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +137,7 @@ func TestRFC5228RepeatedDeliveryIsNotError(t *testing.T) {
 // checklist: SIEVE-CORE-11
 func TestRFC5228ChecksExecutedCode(t *testing.T) {
 	for _, src := range []string{`if true { keep "extra"; }`, `if true { redirect; }`, `if true { unknown; }`, `require "unsupported"; discard;`, `if true { fileinto "box"; }`} {
-		s, err := sieve.Parse(src)
+		s, err := sieve.Parse(crlf(src))
 		if err == nil || s != nil {
 			t.Errorf("invalid executable code accepted: %q, script %v, error %v", src, s, err)
 		}
@@ -151,7 +151,7 @@ func TestRFC5228FifteenNestingLevels(t *testing.T) {
 		"if " + strings.Repeat("allof (", 15) + "true" + strings.Repeat(")", 15) + " { keep; }",
 		"if " + strings.Repeat("anyof (", 15) + "true" + strings.Repeat(")", 15) + " { keep; }",
 	} {
-		s, err := sieve.Parse(src)
+		s, err := sieve.Parse(crlf(src))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -224,7 +224,7 @@ func TestRFC5228EnvelopeDropsSourceRoutes(t *testing.T) {
 // checklist: SIEVE-CORE-25
 func TestRFC5228CapabilityStringsCaseSensitive(t *testing.T) {
 	for _, cap := range []string{"FILEINTO", "Fileinto", "Envelope", "ENCODED-CHARACTER", "Comparator-i;octet"} {
-		s, err := sieve.Parse(`require "` + cap + `"; discard;`)
+		s, err := sieve.Parse(crlf(`require "` + cap + `"; discard;`))
 		if err == nil || s != nil {
 			t.Errorf("case variant %q accepted", cap)
 		}
@@ -236,17 +236,15 @@ func TestRFC5228CapabilityStringsCaseSensitive(t *testing.T) {
 
 // checklist: SIEVE-CORE-38
 func TestRFC5228MultilinePreservesSingleDotAndCRLF(t *testing.T) {
-	for _, ending := range []string{"\r\n", "\n"} {
-		src := `require "reject"; reject text:` + ending + ".single" + ending + "..double" + ending + "...triple" + ending + "." + ending + ";"
-		s, err := sieve.Parse(src)
-		if err != nil {
-			t.Fatal(err)
-		}
-		out := s.Evaluate(&sieve.Message{}, newRecExec())
-		want := ".single" + ending + ".double" + ending + "..triple" + ending
-		if out.Disposition != sieve.Reject || out.RejectReason != want || out.Error != nil {
-			t.Fatalf("ending %q: %+v, want %q", ending, out, want)
-		}
+	src := "require \"reject\"; reject text:\r\n.single\r\n..double\r\n...triple\r\n.\r\n;"
+	s, err := sieve.Parse(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := s.Evaluate(&sieve.Message{}, newRecExec())
+	want := ".single\r\n.double\r\n..triple\r\n"
+	if out.Disposition != sieve.Reject || out.RejectReason != want || out.Error != nil {
+		t.Fatalf("%+v, want %q", out, want)
 	}
 }
 
@@ -263,7 +261,7 @@ func TestRFC5228MandatoryCoreSupport(t *testing.T) {
 		}
 	}
 	for _, action := range []string{`keep;`, `discard;`, `redirect "alice@example.org";`} {
-		s, err := sieve.Parse(action)
+		s, err := sieve.Parse(crlf(action))
 		if err != nil {
 			t.Fatal(err)
 		}

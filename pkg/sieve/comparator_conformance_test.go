@@ -24,7 +24,7 @@ if header :is :comparator "i;bogus" "Subject" "x" { keep; }`},
 		{"bogus on address test", `if address :is :comparator "i;bogus" "From" "a@b.com" { keep; }`},
 	}
 	for _, tc := range bad {
-		if err := Validate(tc.script); err == nil {
+		if err := Validate(crlf(tc.script)); err == nil {
 			t.Errorf("%s: expected an unknown comparator to be rejected, got nil:\n%s", tc.name, tc.script)
 		}
 	}
@@ -60,7 +60,7 @@ if envelope :comparator "i;ascii-numeric" :matches "from" "5*" { keep; }`},
 if body :comparator "i;ascii-numeric" :contains "5" { keep; }`},
 	}
 	for _, tc := range bad {
-		if err := Validate(tc.script); err == nil {
+		if err := Validate(crlf(tc.script)); err == nil {
 			t.Errorf("%s: expected i;ascii-numeric with a substring match type to be rejected, got nil:\n%s", tc.name, tc.script)
 		}
 	}
@@ -88,7 +88,7 @@ if header :is :comparator "i;ascii-numeric" "X-Priority" "1" { keep; }`},
 if header :comparator "i;ascii-numeric" "X-Priority" "1" { keep; }`},
 	}
 	for _, tc := range good {
-		if err := Validate(tc.script); err != nil {
+		if err := Validate(crlf(tc.script)); err != nil {
 			t.Errorf("%s: expected a valid comparator/match-type combination to parse, got: %v\n%s", tc.name, err, tc.script)
 		}
 	}

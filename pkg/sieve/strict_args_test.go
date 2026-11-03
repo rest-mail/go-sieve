@@ -14,7 +14,7 @@ func TestKeep_RefusesArguments(t *testing.T) {
 		`require "imap4flags"; keep :flags ["\\Seen", "\\Flagged"];`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -30,7 +30,7 @@ func TestKeep_RefusesArguments(t *testing.T) {
 		`require "imap4flags"; keep :flags "\\Seen" :bogus;`,
 	}
 	for _, s := range bad {
-		if err := Validate(s); err == nil {
+		if err := Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -47,7 +47,7 @@ func TestReject_RequiresReason(t *testing.T) {
 		"require \"reject\"; reject text:\nline one\r\nline two\r\n.\r\n;",
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -63,7 +63,7 @@ func TestReject_RequiresReason(t *testing.T) {
 		`require "reject"; ereject "no";`,
 	}
 	for _, s := range bad {
-		if err := Validate(s); err == nil {
+		if err := Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}

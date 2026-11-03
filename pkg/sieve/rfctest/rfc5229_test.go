@@ -15,7 +15,7 @@ import (
 // varsRun parses and evaluates a script, failing the test on a parse error.
 func varsRun(t *testing.T, script string, msg *sieve.Message) (*recExec, sieve.Outcome) {
 	t.Helper()
-	s, err := sieve.Parse(script)
+	s, err := sieve.Parse(crlf(script))
 	if err != nil {
 		t.Fatalf("Parse: %v\n%s", err, script)
 	}
@@ -311,9 +311,9 @@ func TestVariables_SetName(t *testing.T) {
 //
 // checklist: VARIABLES-10
 func TestVariables_SetScope(t *testing.T) {
-	s, err := sieve.Parse(`require ["fileinto", "variables"];
+	s, err := sieve.Parse(crlf(`require ["fileinto", "variables"];
 if header :is "Subject" "first" { set "seen" "yes"; }
-fileinto "seen=${seen}";`)
+fileinto "seen=${seen}";`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +358,7 @@ func TestVariables_Actions(t *testing.T) {
 	msg := sieveEmail()
 	msg.Headers.Raw = map[string][]string{"X-Tag": {"blue"}}
 	ex := &vacationRec{recExec: newRecExec()}
-	s, err := sieve.Parse(req + `
+	s, err := sieve.Parse(crlf(req + `
 set "h" "x-tag"; set "c" "blue"; set "who" "sender"; set "f" "Seen";
 if allof (header :is "${h}" "${c}", exists ["${h}", "Subject"], envelope :localpart :is "${w}from" "${who}",
           address :localpart :is "From" "${who}", body :content "${t}text" :contains "${k}test") {
@@ -367,7 +367,7 @@ if allof (header :is "${h}" "${c}", exists ["${h}", "Subject"], envelope :localp
     setflag "\\${f} $${c}";
     notify :method "mailto:${who}@example.org" :message "hi ${c}";
     vacation :subject "Re: ${c}" :from "${who}@example.com" :addresses "${who}-alias@example.com" "Away (${c})";
-}`)
+}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -695,11 +695,11 @@ if body :content "${t}" :contains "${k}" { fileinto "hit"; }`, sieveEmail())
 // checklist: VACATION-21
 func TestVariables_VacationTracking(t *testing.T) {
 	ex := &vacationRec{recExec: newRecExec()}
-	s, err := sieve.Parse(`require ["vacation", "variables"];
+	s, err := sieve.Parse(crlf(`require ["vacation", "variables"];
 if header :matches "subject" "*" {
     vacation :subject "Automatic response to: ${1}" :from "${me}" :handle "h-${1}"
              "I'm away -- ${1}";
-}`)
+}`))
 	if err != nil {
 		t.Fatal(err)
 	}

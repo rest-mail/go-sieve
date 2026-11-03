@@ -15,10 +15,10 @@ func numericBodyMatch(t *testing.T, value, key string) bool {
 		fmt.Fprintf(&encoded, "${hex:%02x}", key[i])
 	}
 	src := `require ["body", "encoded-character", "comparator-i;ascii-numeric"]; if body :is :comparator "i;ascii-numeric" "` + encoded.String() + `" { discard; }`
-	if err := Validate(src); err != nil {
+	if err := Validate(crlf(src)); err != nil {
 		t.Fatal(err)
 	}
-	s, err := Parse(src)
+	s, err := Parse(crlf(src))
 	if err != nil {
 		t.Fatal(err)
 	}

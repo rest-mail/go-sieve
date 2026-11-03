@@ -41,7 +41,7 @@ func TestRFC5228HeaderUnfoldPreservesWhitespace(t *testing.T) {
 				for _, comparator := range []string{"i;octet", "i;ascii-casemap"} {
 					for _, match := range []string{":is", ":contains", ":matches"} {
 						script := fmt.Sprintf(`require "encoded-character"; if header %s :comparator "%s" "%s" "${hex:%s}" { discard; }`, match, comparator, name, fmt.Sprintf("% x", []byte(tc.want)))
-						s, err := Parse(script)
+						s, err := Parse(crlf(script))
 						if err != nil {
 							t.Fatal(err)
 						}
@@ -75,7 +75,7 @@ func TestRFC5228HeaderUnfoldWSPSequences(t *testing.T) {
 			for _, match := range []string{":is", ":contains", ":matches"} {
 				for _, key := range []string{want, "foo bar"} {
 					script := fmt.Sprintf(`require "encoded-character"; if header %s :comparator "i;octet" "X-Test" "${hex:%s}" { discard; }`, match, fmt.Sprintf("% x", []byte(key)))
-					s, err := Parse(script)
+					s, err := Parse(crlf(script))
 					if err != nil {
 						t.Fatal(err)
 					}

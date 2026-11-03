@@ -103,8 +103,8 @@ func TestAddressLists_Variables(t *testing.T) {
 	// Still one address at a time, stopping at the first match.
 	long := strings.TrimSuffix(strings.Repeat("a@b.example,", 1000), ",")
 	lists := &parsedLists{fields: map[string]string{"from": "first@example.com," + long}}
-	script, err = Parse(`require ["fileinto", "variables"]; set "f" "From";
-if address :matches "${f}" "*@*" { fileinto "${1}"; }`)
+	script, err = Parse(crlf(`require ["fileinto", "variables"]; set "f" "From";
+if address :matches "${f}" "*@*" { fileinto "${1}"; }`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,8 +117,8 @@ if address :matches "${f}" "*@*" { fileinto "${1}"; }`)
 	// A field name that expands to an invalid one, here the empty string of an
 	// unset variable, is skipped, and an empty addr-spec from the host is never
 	// the matching address, so "*" captures the first real one.
-	script, err = Parse(`require ["fileinto", "variables"];
-if address :matches ["${unset}", "From"] "*" { fileinto "=${0}"; }`)
+	script, err = Parse(crlf(`require ["fileinto", "variables"];
+if address :matches ["${unset}", "From"] "*" { fileinto "=${0}"; }`))
 	if err != nil {
 		t.Fatal(err)
 	}

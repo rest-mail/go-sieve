@@ -37,10 +37,10 @@ func TestRFC5228RedirectAddressSyntax(t *testing.T) {
 						src = "if false { " + src + " }"
 					}
 					src = prefix + src
-					if _, err := Parse(src); err == nil {
+					if _, err := Parse(crlf(src)); err == nil {
 						t.Errorf("Parse accepted invalid redirect: %s", src)
 					}
-					if err := Validate(src); err == nil {
+					if err := Validate(crlf(src)); err == nil {
 						t.Errorf("Validate accepted invalid redirect: %s", src)
 					}
 				}
@@ -71,11 +71,11 @@ func TestRFC5228RedirectAddressPreserved(t *testing.T) {
 					prefix, tag = `require "copy"; `, ":copy "
 				}
 				src := prefix + "redirect " + tag + redirectAddressLiteral(address) + ";"
-				script, err := Parse(src)
+				script, err := Parse(crlf(src))
 				if err != nil {
 					t.Fatalf("Parse rejected valid redirect: %v", err)
 				}
-				if err := Validate(src); err != nil {
+				if err := Validate(crlf(src)); err != nil {
 					t.Fatalf("Validate rejected valid redirect: %v", err)
 				}
 				exec := newRecExec()
@@ -99,10 +99,10 @@ func TestRFC5228RedirectDecodedAddress(t *testing.T) {
 		"user${hex:40}${hex:40}example.org", "${unicode:40}example.org",
 	} {
 		src := `require "encoded-character"; redirect "` + encoded + `";`
-		if _, err := Parse(src); err == nil {
+		if _, err := Parse(crlf(src)); err == nil {
 			t.Errorf("Parse accepted decoded invalid address: %s", src)
 		}
-		if err := Validate(src); err == nil {
+		if err := Validate(crlf(src)); err == nil {
 			t.Errorf("Validate accepted decoded invalid address: %s", src)
 		}
 	}
