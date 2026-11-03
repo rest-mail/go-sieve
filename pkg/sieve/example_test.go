@@ -2,6 +2,7 @@ package sieve_test
 
 import (
 	"fmt"
+	"strings"
 
 	sieve "github.com/rest-mail/go-sieve/pkg/sieve"
 )
@@ -25,11 +26,14 @@ func (m *mailbox) Notify(method, message string)       {}
 // Example parses a small Sieve script, runs it against a message, and inspects
 // the actions the script selected.
 func Example() {
-	script, err := sieve.Parse(`require ["fileinto", "imap4flags", "mailbox"];
+	// Sieve source ends every line in CRLF (RFC 5228 §2). A script written
+	// with Unix line ends is refused, so a host normalises it on upload.
+	src := strings.ReplaceAll(`require ["fileinto", "imap4flags", "mailbox"];
 if header :contains "Subject" "invoice" {
     setflag "\\Flagged";
     fileinto :create "Invoices";
-}`)
+}`, "\n", "\r\n")
+	script, err := sieve.Parse(src)
 	if err != nil {
 		panic(err)
 	}

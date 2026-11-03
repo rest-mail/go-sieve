@@ -61,9 +61,14 @@ func (l *Lexer) Tokenize() ([]Token, error) {
 	// RFC 5228 §8.1 permits CR only in a CRLF pair, in every lexical
 	// context. Validate before comments or multiline strings can hide it.
 	// Encoded-character expansion happens later and may produce a bare CR.
+	// The same grammar has no bare LF either: every line ends in CRLF, in
+	// whitespace, comments, quoted and multiline strings alike.
 	for i := 0; i < len(l.src); i++ {
-		if l.src[i] == '\r' && (i+1 == len(l.src) || l.src[i+1] != '\n') {
+		switch {
+		case l.src[i] == '\r' && (i+1 == len(l.src) || l.src[i+1] != '\n'):
 			return nil, fmt.Errorf("sieve: line %d: bare CR in script", 1+strings.Count(l.src[:i], "\n"))
+		case l.src[i] == '\n' && (i == 0 || l.src[i-1] != '\r'):
+			return nil, fmt.Errorf("sieve: line %d: bare LF in script", 1+strings.Count(l.src[:i], "\n"))
 		}
 	}
 	var toks []Token
@@ -184,10 +189,10 @@ func (l *Lexer) readQuotedString() (string, error) {
 			return b.String(), nil
 		case '\\':
 			// RFC 5228 §8.1: quoted-special and quoted-other remove the
-			// backslash, but neither permits NUL, CR or LF after it.
+			// backslash, but neither permits NUL, CR or LF after it. Tokenize
+			// has refused NUL and any LF outside CRLF, so only CR is left.
 			if l.Pos+1 < len(l.src) {
-				switch l.src[l.Pos+1] {
-				case '\r', '\n':
+				if l.src[l.Pos+1] == '\r' {
 					return "", l.errf("invalid escaped octet in quoted string")
 				}
 				l.Pos++
@@ -197,14 +202,12 @@ func (l *Lexer) readQuotedString() (string, error) {
 			}
 			l.Pos++
 		case '\r':
-			// Tokenize has already checked that every CR belongs to CRLF.
-			// Preserve the pair in the value (RFC 5228 §8.1 quoted-safe).
+			// Tokenize has already checked that every CR and LF belongs to
+			// CRLF. Preserve the pair in the value (RFC 5228 §8.1
+			// quoted-safe).
 			b.WriteString("\r\n")
 			l.Pos += 2
 			l.line++
-		case '\n':
-			// A lone LF (not part of a CRLF) is not a valid quoted-char.
-			return "", l.errf("bare LF in quoted string")
 		default:
 			b.WriteByte(c)
 			l.Pos++
@@ -313,12 +316,9 @@ func (l *Lexer) readMultiLineString() (string, error) {
 		for l.Pos < len(l.src) && l.src[l.Pos] != '\n' {
 			l.Pos++
 		}
-		line := l.src[lineStart:l.Pos]
-		ending := "\n"
-		if strings.HasSuffix(line, "\r") {
-			line = strings.TrimSuffix(line, "\r")
-			ending = "\r\n"
-		}
+		// Tokenize has checked that every line ends in CRLF; only a last
+		// line cut off by the end of the source has no CR to drop.
+		line := strings.TrimSuffix(l.src[lineStart:l.Pos], "\r")
 		if l.Pos < len(l.src) {
 			l.Pos++ // newline
 			l.line++
@@ -330,7 +330,7 @@ func (l *Lexer) readMultiLineString() (string, error) {
 			line = line[1:] // Only doubled leading dots are unstuffed (§2.4.2).
 		}
 		b.WriteString(line)
-		b.WriteString(ending)
+		b.WriteString("\r\n")
 	}
 }
 

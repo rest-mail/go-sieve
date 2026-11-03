@@ -199,11 +199,12 @@ message that is only a header, with no empty line after it: every `body` test of
 it is false, even one for the empty string (RFC 5173 §4).
 
 The RFC 5228 core audit also records host duties and known gaps: MIME header
-charset preparation, redirect policy/trace/loop controls, strict whole-script
-line endings, and full structured-address validation. Raw NUL and bare CR
-are rejected throughout the source, including comments and multiline strings;
-encoded-character may produce either in string values. Bare LF outside quoted
-strings remains a known line-ending gap (SIEVE-CORE-44). Redirect
+charset preparation, redirect policy/trace/loop controls, and full
+structured-address validation. Raw NUL, bare CR and bare LF are rejected
+throughout the source, including comments and multiline strings, so every line
+must end in CRLF; a host should convert a script saved with Unix line endings
+when it is uploaded. Encoded-character may produce any of them in string
+values (SIEVE-CORE-44, SIEVE-CORE-49). Redirect
 targets are checked after encoded-character decoding as a single mailbox using
 Go `net/mail`, with groups and source routes refused. The original valid value
 is passed unchanged to `Executor.Redirect`. This accepts named and quoted
@@ -307,7 +308,6 @@ reason. That records a boundary or a gap, rather than claiming full conformance.
 | Track flags, implement `hasflag`, and preserve delivery `:flags`, including duplicate-delivery rules (FLAGS-17/18/19). | [#89](https://github.com/rest-mail/go-sieve/issues/89) |
 | Supply an undecoded body for `body :raw` (BODY-07). | [#90](https://github.com/rest-mail/go-sieve/issues/90) |
 | Add a user-scoped host query for `mailboxexists` (MAILBOX-08/09/10). | [#91](https://github.com/rest-mail/go-sieve/issues/91) |
-| Reject bare LF throughout script source (SIEVE-CORE-44). | [#92](https://github.com/rest-mail/go-sieve/issues/92) |
 | Report a host policy skip from Redirect without cancelling the implicit keep (SIEVE-CORE-20). | [#93](https://github.com/rest-mail/go-sieve/issues/93) |
 
 ### Badges and coverage

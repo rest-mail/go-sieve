@@ -29,7 +29,7 @@ func TestSubaddress_RequiresCapability(t *testing.T) {
 		`require ["envelope", "subaddress"]; if envelope :detail "to" "sieve" { keep; }`,
 	}
 	for _, s := range good {
-		if err := sieve.Validate(s); err != nil {
+		if err := sieve.Validate(crlf(s)); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -41,7 +41,7 @@ func TestSubaddress_RequiresCapability(t *testing.T) {
 		`require "sub-address"; if address :user "to" "ken" { keep; }`,
 	}
 	for _, s := range bad {
-		if err := sieve.Validate(s); err == nil {
+		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted without require \"subaddress\", want an error", s)
 		}
 	}
@@ -64,7 +64,7 @@ func TestSubaddress_Syntax(t *testing.T) {
 		`address :user :count "eq" "to" "1"`,
 	}
 	for _, test := range good {
-		if err := sieve.Validate(req + `if ` + test + ` { keep; }`); err != nil {
+		if err := sieve.Validate(crlf(req + `if ` + test + ` { keep; }`)); err != nil {
 			t.Errorf("%s: %v", test, err)
 		}
 	}
@@ -80,7 +80,7 @@ func TestSubaddress_Syntax(t *testing.T) {
 		`envelope :all :detail "to" "ken"`,
 	}
 	for _, test := range bad {
-		if err := sieve.Validate(req + `if ` + test + ` { keep; }`); err == nil {
+		if err := sieve.Validate(crlf(req + `if ` + test + ` { keep; }`)); err == nil {
 			t.Errorf("%s: accepted, want an error", test)
 		}
 	}
@@ -289,7 +289,7 @@ func TestSubaddress_RFCExample(t *testing.T) {
        redirect "ken@example.net";
    }
 `
-	s, err := sieve.Parse(script)
+	s, err := sieve.Parse(crlf(script))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}

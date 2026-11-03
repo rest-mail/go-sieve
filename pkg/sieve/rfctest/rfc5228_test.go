@@ -78,7 +78,7 @@ func TestRFC5228_SyntaxErrors(t *testing.T) {
 		"string where a block is expected": `if true "x";`,
 	}
 	for name, script := range bad {
-		if err := sieve.Validate(script); err == nil {
+		if err := sieve.Validate(crlf(script)); err == nil {
 			t.Errorf("%s: %q was accepted", name, script)
 		}
 	}
@@ -92,7 +92,7 @@ func TestRFC5228_SyntaxErrors(t *testing.T) {
 		"nested blocks":            "if true { if false { stop; } elsif true { keep; } else { discard; } }",
 	}
 	for name, script := range good {
-		if err := sieve.Validate(script); err != nil {
+		if err := sieve.Validate(crlf(script)); err != nil {
 			t.Errorf("%s: %q was rejected: %v", name, script, err)
 		}
 	}
@@ -113,7 +113,7 @@ func TestRFC5228_MultipleRequires(t *testing.T) {
 	if s.Empty() {
 		t.Error("a script with a keep is not empty")
 	}
-	only, err := sieve.Parse("# nothing but\nrequire \"fileinto\";")
+	only, err := sieve.Parse(crlf("# nothing but\nrequire \"fileinto\";"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,13 +309,13 @@ func TestRFC5228_EnvelopeUnknownPartsRejected(t *testing.T) {
 			`anyof (true, envelope :is ` + parts + ` "")`,
 		} {
 			script := `require ["envelope", "encoded-character"]; if ` + condition + ` { keep; }`
-			parsed, err := sieve.Parse(script)
+			parsed, err := sieve.Parse(crlf(script))
 			if err == nil || parsed != nil {
 				t.Errorf("Parse accepted unknown envelope part: %s", script)
 			} else if !strings.Contains(err.Error(), "unknown envelope part") {
 				t.Errorf("unexpected error for %s: %v", parts, err)
 			}
-			if err := sieve.Validate(script); err == nil {
+			if err := sieve.Validate(crlf(script)); err == nil {
 				t.Errorf("Validate accepted unknown envelope part: %s", script)
 			}
 		}

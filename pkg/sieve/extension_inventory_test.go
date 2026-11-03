@@ -23,12 +23,12 @@ func TestExtensionCapabilityInventory(t *testing.T) {
 		t.Fatalf("capability count = %d, inventory has %d", len(supportedCapabilities), len(want))
 	}
 	for _, capability := range want {
-		if err := Validate(fmt.Sprintf("require %q;", capability)); err != nil {
+		if err := Validate(crlf(fmt.Sprintf("require %q;", capability))); err != nil {
 			t.Errorf("%s: %v", capability, err)
 		}
 	}
 	for _, capability := range []string{"enotify"} {
-		if err := Validate(fmt.Sprintf("require %q;", capability)); err == nil {
+		if err := Validate(crlf(fmt.Sprintf("require %q;", capability))); err == nil {
 			t.Errorf("advertised unsupported %s", capability)
 		}
 	}
@@ -43,7 +43,7 @@ func TestExtensionCapabilityInventory(t *testing.T) {
 		`set "name" "value";`,
 		`if string "a" "a" { discard; }`,
 	} {
-		if err := Validate(script); err == nil {
+		if err := Validate(crlf(script)); err == nil {
 			t.Errorf("accepted unsupported syntax: %s", script)
 		}
 	}
@@ -57,7 +57,7 @@ func TestVacationSeconds_Capability(t *testing.T) {
 		`require "vacation-seconds"; require "vacation";`,
 	} {
 		for _, action := range []string{`vacation "away";`, `vacation :days 2 "away";`, `vacation :seconds 30 "away";`} {
-			if err := Validate(declaration + action); err != nil {
+			if err := Validate(crlf(declaration + action)); err != nil {
 				t.Errorf("%s%s: %v", declaration, action, err)
 			}
 		}
@@ -73,7 +73,7 @@ func TestVacationSeconds_Capability(t *testing.T) {
 		`vacation :seconds 30 "away";`,
 		`require "vacation"; vacation :seconds 30 "away";`,
 	} {
-		if err := Validate(script); err == nil {
+		if err := Validate(crlf(script)); err == nil {
 			t.Errorf("accepted undeclared seconds: %s", script)
 		}
 	}
@@ -85,7 +85,7 @@ func TestVacationSeconds_ExclusiveTags(t *testing.T) {
 		`:days 1 :seconds 30`, `:seconds 30 :days 1`,
 		`:seconds 0 :seconds 1`, `:seconds "30"`, `:seconds -1`, `:seconds`,
 	} {
-		if err := Validate(`require "vacation-seconds"; vacation ` + args + ` "away";`); err == nil {
+		if err := Validate(crlf(`require "vacation-seconds"; vacation ` + args + ` "away";`)); err == nil {
 			t.Errorf("accepted invalid arguments: %s", args)
 		}
 	}
@@ -108,7 +108,7 @@ func TestVacationSeconds_Intervals(t *testing.T) {
 		{":seconds 9223372036854775807", 2147483647 * time.Second},
 	} {
 		t.Run(tc.args, func(t *testing.T) {
-			s, err := Parse(`require "vacation-seconds"; vacation ` + tc.args + ` "away";`)
+			s, err := Parse(crlf(`require "vacation-seconds"; vacation ` + tc.args + ` "away";`))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -127,10 +127,10 @@ func TestVacationSeconds_Intervals(t *testing.T) {
 // RFC 6131 section 3's meeting example, including the additional address.
 // checklist: SECONDS-08
 func TestVacationSeconds_RFCExample(t *testing.T) {
-	s, err := Parse(`require ["vacation-seconds"];
+	s, err := Parse(crlf(`require ["vacation-seconds"];
 vacation :addresses ["tjs@example.edu", "ts4z@landru.example.edu"]
          :seconds 1800
-         "I am in a meeting, and do not have access to email.";`)
+         "I am in a meeting, and do not have access to email.";`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestRegex_ExtensionContract(t *testing.T) {
 			if tc.comparator != "" {
 				comparator = fmt.Sprintf(":comparator %q", tc.comparator)
 			}
-			s, err := Parse(fmt.Sprintf(`require ["regex", "fileinto"]; if header :regex %s "Subject" "%s" { fileinto "matched"; } keep;`, comparator, pattern))
+			s, err := Parse(crlf(fmt.Sprintf(`require ["regex", "fileinto"]; if header :regex %s "Subject" "%s" { fileinto "matched"; } keep;`, comparator, pattern)))
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -107,6 +107,14 @@ func uniqueStrings(in []string) []string {
 	return out
 }
 
+// crlf gives a test script the CRLF line ends RFC 5228 requires (§2, §8.1).
+// Go raw string literals drop CR, so scripts are written with LF and turned
+// into conforming source here, as a host would normalise one on upload. A
+// CRLF already in the script is kept.
+func crlf(src string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(src, "\r\n", "\n"), "\n", "\r\n")
+}
+
 // sieveResult bundles the recorded actions and terminal outcome of a run.
 type sieveResult struct {
 	meta         map[string]string
@@ -117,7 +125,7 @@ type sieveResult struct {
 
 func runSieve(t *testing.T, script string, msg *sieve.Message) *sieveResult {
 	t.Helper()
-	s, err := sieve.Parse(script)
+	s, err := sieve.Parse(crlf(script))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}

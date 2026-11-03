@@ -38,10 +38,10 @@ func TestComparatorIdentifierASCII(t *testing.T) {
 		for _, test := range comparatorIdentifierTests {
 			t.Run(name+"/"+test, func(t *testing.T) {
 				src := comparatorIdentifierScript(name, test)
-				if _, err := Parse(src); err == nil {
+				if _, err := Parse(crlf(src)); err == nil {
 					t.Error("Parse accepted an unsupported comparator identifier in an unexecuted branch")
 				}
-				if err := Validate(src); err == nil {
+				if err := Validate(crlf(src)); err == nil {
 					t.Error("Validate accepted an unsupported comparator identifier")
 				}
 			})
@@ -60,18 +60,18 @@ func TestComparatorIdentifierOctets(t *testing.T) {
 		want := octet == 'i' || octet == 'I'
 		for _, test := range comparatorIdentifierTests {
 			src := comparatorIdentifierScript(name, test)
-			_, err := Parse(src)
+			_, err := Parse(crlf(src))
 			if (err == nil) != want {
 				t.Errorf("Parse first octet %02x, %s: err=%v, want accepted=%v", octet, test, err, want)
 			}
-			if err := Validate(src); (err == nil) != want {
+			if err := Validate(crlf(src)); (err == nil) != want {
 				t.Errorf("Validate first octet %02x, %s: err=%v, want accepted=%v", octet, test, err, want)
 			}
 		}
 	}
 	for _, name := range []string{"i;octet", "I;OCTET", "i;ascii-casemap", "I;AsCiI-CaSeMaP", "i;ascii-numeric", "I;AsCiI-NuMeRiC"} {
 		for _, test := range comparatorIdentifierTests {
-			if err := Validate(comparatorIdentifierScript(name, test)); err != nil {
+			if err := Validate(crlf(comparatorIdentifierScript(name, test))); err != nil {
 				t.Errorf("valid ASCII name %q, %s: %v", name, test, err)
 			}
 		}
@@ -104,11 +104,11 @@ func FuzzComparatorIdentifier(f *testing.F) {
 		}
 		for _, test := range comparatorIdentifierTests {
 			src := comparatorIdentifierScript(name, test)
-			_, err := Parse(src)
+			_, err := Parse(crlf(src))
 			if (err == nil) != want {
 				t.Fatalf("Parse name %q, %s: err=%v, want accepted=%v", name, test, err, want)
 			}
-			if err := Validate(src); (err == nil) != want {
+			if err := Validate(crlf(src)); (err == nil) != want {
 				t.Fatalf("Validate name %q, %s: err=%v, want accepted=%v", name, test, err, want)
 			}
 		}

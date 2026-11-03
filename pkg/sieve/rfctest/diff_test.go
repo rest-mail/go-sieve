@@ -83,7 +83,7 @@ func deliveries(actions []string) []string {
 // ours runs a script through this library and returns where the message is
 // delivered, the implicit keep included.
 func ours(script string) ([]string, error) {
-	s, err := sieve.Parse(script)
+	s, err := sieve.Parse(crlf(script))
 	if err != nil {
 		return nil, err
 	}

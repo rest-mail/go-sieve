@@ -15,9 +15,9 @@ const relationalNumeric = `require ["relational", "comparator-i;ascii-numeric"];
 // evalTest parses script and reports whether it filed the message into "Hit".
 func evalTest(t *testing.T, script string, msg *sieve.Message, opts ...sieve.Option) bool {
 	t.Helper()
-	s, err := sieve.Parse(script, opts...)
+	s, err := sieve.Parse(crlf(script), opts...)
 	if err != nil {
-		t.Fatalf("Parse(%q): %v", script, err)
+		t.Fatalf("Parse(crlf(%q)): %v", script, err)
 	}
 	ex := newRecExec()
 	if out := s.Evaluate(msg, ex); out.Error != nil {
@@ -52,7 +52,7 @@ func TestRelational_RequiresCapability(t *testing.T) {
 		relationalNumeric + `if address :count "ge" :comparator "i;ascii-numeric" "to" "1" { keep; }`,
 	}
 	for _, s := range good {
-		if err := sieve.Validate(s); err != nil {
+		if err := sieve.Validate(crlf(s)); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -65,7 +65,7 @@ func TestRelational_RequiresCapability(t *testing.T) {
 		`require "relational-ops"; if header :value "gt" "X-Priority" "3" { keep; }`,
 	}
 	for _, s := range bad {
-		if err := sieve.Validate(s); err == nil {
+		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted without require \"relational\", want an error", s)
 		}
 	}
@@ -104,7 +104,7 @@ func TestRelational_Syntax(t *testing.T) {
 	}
 	req := `require ["relational", "comparator-i;ascii-numeric", "envelope", "body"];` + "\n"
 	for _, test := range good {
-		if err := sieve.Validate(req + `if ` + test + ` { keep; }`); err != nil {
+		if err := sieve.Validate(crlf(req + `if ` + test + ` { keep; }`)); err != nil {
 			t.Errorf("%s: %v", test, err)
 		}
 	}
@@ -126,7 +126,7 @@ func TestRelational_Syntax(t *testing.T) {
 		`header :value "gt" :localpart "from" "a"`, // address parts are only for address/envelope
 	}
 	for _, test := range bad {
-		if err := sieve.Validate(req + `if ` + test + ` { keep; }`); err == nil {
+		if err := sieve.Validate(crlf(req + `if ` + test + ` { keep; }`)); err == nil {
 			t.Errorf("%s: accepted, want an error", test)
 		}
 	}
@@ -543,7 +543,7 @@ func TestRelational_RFCExamples(t *testing.T) {
       fileinto "Only me";
    }
 `
-	s, err := sieve.Parse(extended)
+	s, err := sieve.Parse(crlf(extended))
 	if err != nil {
 		t.Fatalf("Parse §7 example: %v", err)
 	}

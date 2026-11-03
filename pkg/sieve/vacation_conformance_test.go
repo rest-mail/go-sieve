@@ -16,7 +16,7 @@ func TestVacation_Syntax(t *testing.T) {
 		`VaCaTiOn :SUBJECT "away" :DAYS 2 "reason";`,
 	}
 	for _, s := range good {
-		if err := Validate(`require "vacation"; ` + s); err != nil {
+		if err := Validate(crlf(`require "vacation"; ` + s)); err != nil {
 			t.Errorf("%s: %v", s, err)
 		}
 	}
@@ -33,7 +33,7 @@ func TestVacation_Syntax(t *testing.T) {
 		bad = append(bad, "vacation "+tag+" "+tag+` "away";`)
 	}
 	for _, s := range bad {
-		if err := Validate(`require "vacation"; ` + s); err == nil {
+		if err := Validate(crlf(`require "vacation"; ` + s)); err == nil {
 			t.Errorf("accepted %s", s)
 		}
 	}
@@ -139,7 +139,7 @@ func TestVacation_Suppression(t *testing.T) {
 // checklist: VACATION-37 VACATION-38 VACATION-39
 func TestVacation_ActionInteraction(t *testing.T) {
 	for _, action := range []string{"", "keep;", "discard;", `fileinto "folder";`, `redirect "other@example.com";`} {
-		script, err := Parse(`require ["vacation", "fileinto"]; vacation "away"; ` + action)
+		script, err := Parse(crlf(`require ["vacation", "fileinto"]; vacation "away"; ` + action))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,7 +153,7 @@ func TestVacation_ActionInteraction(t *testing.T) {
 		}
 	}
 	for _, tail := range []string{`vacation "second";`, `if true { vacation "second"; }`} {
-		script, err := Parse(`require "vacation"; vacation "first"; ` + tail)
+		script, err := Parse(crlf(`require "vacation"; vacation "first"; ` + tail))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -210,7 +210,7 @@ func TestVacation_CallbackArguments(t *testing.T) {
 		{`:subject "" :from "Me <me@example.com>" :handle ""`, "away", Vacation{Interval: 7 * 24 * time.Hour, SubjectSet: true, From: "Me <me@example.com>", HandleSet: true, Body: "away", ReplyTo: "sender@example.com"}},
 		{`:subject "À bientôt" :handle "trip" :mime`, "Content-Type: text/plain; charset=utf-8\r\n\r\nÀ bientôt", Vacation{Interval: 7 * 24 * time.Hour, Subject: "À bientôt", SubjectSet: true, Handle: "trip", HandleSet: true, MIME: true, Body: "Content-Type: text/plain; charset=utf-8\r\n\r\nÀ bientôt", ReplyTo: "sender@example.com"}},
 	} {
-		script, err := Parse(`require "vacation"; vacation ` + tc.args + ` "` + tc.body + `";`)
+		script, err := Parse(crlf(`require "vacation"; vacation ` + tc.args + ` "` + tc.body + `";`))
 		if err != nil {
 			t.Fatal(err)
 		}

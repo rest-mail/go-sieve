@@ -133,7 +133,7 @@ func TestExtensionArguments_Parse(t *testing.T) {
 		`require "body"; if body :contains "x" { keep; }`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -162,7 +162,7 @@ func TestExtensionArguments_Parse(t *testing.T) {
 		`require "envelope"; if envelope { keep; }`,
 	}
 	for _, s := range bad {
-		if err := Validate(s); err == nil {
+		if err := Validate(crlf(s)); err == nil {
 			t.Errorf("%q was accepted", s)
 		}
 	}
@@ -219,7 +219,7 @@ func TestLexer_Errors(t *testing.T) {
 		"keep; /* ",
 		"\x00",
 	} {
-		if err := Validate(s); err == nil {
+		if err := Validate(crlf(s)); err == nil {
 			t.Errorf("%q was accepted", s)
 		}
 	}

@@ -32,6 +32,10 @@ redundant quoted-string NUL branches were removed.
 `tokenize`, including terminal CR and all following octets.
 `TestRFC5228SourceCRLFPreserved` checks CRLF and encoded CR values; the now
 redundant quoted-string bare-CR branch was removed.
+`TestRFC5228SourceBareLFRejected` and `TestRFC5228SourceLFDiagnostic` cover
+whole-source bare-LF rejection in `tokenize`; the now redundant quoted-string
+bare-LF branch and the LF-only line ending in `readMultiLineString` were
+removed.
 `TestRFC5228SourceNonNULOctets` preserves every legal non-linebreak octet in
 comments and multiline strings, and encoded NUL values.
 `TestQuotedString_EscapedOctets` covers the remaining escaped-octet rejection

@@ -25,7 +25,7 @@ if true { fileinto "X"; }`,
 		`require "enotify"; keep;`,
 	}
 	for _, s := range bad {
-		if err := Validate(s); err == nil {
+		if err := Validate(crlf(s)); err == nil {
 			t.Errorf("expected require of an unsupported extension to be rejected:\n%s", s)
 		}
 	}
@@ -60,7 +60,7 @@ if header :is :comparator "i;ascii-numeric" "X-Priority" "1" { fileinto "X"; }`}
 if body :contains "x" { keep; }`},
 	}
 	for _, tc := range bad {
-		if err := Validate(tc.script); err == nil {
+		if err := Validate(crlf(tc.script)); err == nil {
 			t.Errorf("%s: expected use of an undeclared extension to be rejected:\n%s", tc.name, tc.script)
 		}
 	}
@@ -84,7 +84,7 @@ require "fileinto";`},
 if true { require "envelope"; }`},
 	}
 	for _, tc := range bad {
-		if err := Validate(tc.script); err == nil {
+		if err := Validate(crlf(tc.script)); err == nil {
 			t.Errorf("%s: expected a misplaced require to be rejected:\n%s", tc.name, tc.script)
 		}
 	}
@@ -106,7 +106,7 @@ func TestRequire_RejectsUnknownCommandsAndTests(t *testing.T) {
 		{"unknown test in anyof", `if anyof (true, spamtest :value "gt" "5") { keep; }`},
 	}
 	for _, tc := range bad {
-		if err := Validate(tc.script); err == nil {
+		if err := Validate(crlf(tc.script)); err == nil {
 			t.Errorf("%s: expected an unknown command/test to be rejected:\n%s", tc.name, tc.script)
 		}
 	}
@@ -146,7 +146,7 @@ if true { keep; }
 discard;`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("Validate rejected a properly-declared script: %v\n%s", err, s)
 		}
 	}
