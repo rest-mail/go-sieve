@@ -188,3 +188,100 @@ func wildcardMatch(value, pattern string) bool {
 	}
 	return pi == len(pattern)
 }
+
+// Captures matches value against key like [One] for the :matches and :regex
+// match types and, on success, returns the match variables of RFC 5229 §3.2:
+// index 0 is the matched part of value, then one string per wildcard ("*" or
+// "?") of a :matches pattern, or per capture group of a :regex. At most
+// limit+1 strings are returned. Wildcards match as little as possible.
+func Captures(value, key, matchType, comparator string, limit int) ([]string, bool) {
+	var groups []string
+	if matchType == ":regex" {
+		prefix := "(?i)"
+		if comparator == "i;octet" {
+			prefix = ""
+		}
+		re, err := regexp.Compile(prefix + key)
+		if err != nil {
+			return nil, false
+		}
+		loc := re.FindStringSubmatchIndex(value)
+		if loc == nil {
+			return nil, false
+		}
+		for i := 0; i+1 < len(loc); i += 2 {
+			if loc[i] < 0 {
+				groups = append(groups, "")
+				continue
+			}
+			groups = append(groups, value[loc[i]:loc[i+1]])
+		}
+	} else {
+		var ok bool
+		groups, ok = wildcardCaptures(value, key, comparator)
+		if !ok {
+			return nil, false
+		}
+	}
+	if len(groups) > limit+1 {
+		groups = groups[:limit+1]
+	}
+	return groups, true
+}
+
+// wildcardCaptures is wildcardMatch that also records what each wildcard
+// matched. The comparator folds only case, never length, so the folded value
+// and the original share octet offsets and each capture is cut from the
+// original value. Shorter matches are tried first for "*" (non-greedy), and a
+// failed (value, pattern) position is remembered so the search stays
+// polynomial.
+func wildcardCaptures(value, pattern, comparator string) ([]string, bool) {
+	fv, fp := foldForComparator(value, comparator), foldForComparator(pattern, comparator)
+	failed := map[[2]int]bool{}
+	var caps []string
+	var try func(vi, pi int) bool
+	try = func(vi, pi int) bool {
+		if failed[[2]int{vi, pi}] {
+			return false
+		}
+		n := len(caps)
+		ok := func() bool {
+			if pi == len(fp) {
+				return vi == len(fv)
+			}
+			switch fp[pi] {
+			case '*':
+				for end := vi; end <= len(fv); end++ {
+					caps = append(caps[:n], value[vi:end])
+					if try(end, pi+1) {
+						return true
+					}
+				}
+				return false
+			case '?':
+				if vi >= len(fv) {
+					return false
+				}
+				caps = append(caps[:n], value[vi:vi+1])
+				return try(vi+1, pi+1)
+			case '\\':
+				lit, adv := byte('\\'), 1
+				if pi+1 < len(fp) {
+					lit, adv = fp[pi+1], 2
+				}
+				return vi < len(fv) && fv[vi] == lit && try(vi+1, pi+adv)
+			default:
+				return vi < len(fv) && fv[vi] == fp[pi] && try(vi+1, pi+1)
+			}
+		}()
+		if !ok {
+			caps = caps[:n]
+			failed[[2]int{vi, pi}] = true
+		}
+		return ok
+	}
+	if !try(0, 0) {
+		return nil, false
+	}
+	return append([]string{value}, caps...), true
+}

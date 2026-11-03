@@ -15,7 +15,7 @@ func TestExtensionCapabilityInventory(t *testing.T) {
 	want := []string{
 		"fileinto", "reject", "ereject", "envelope", "body", "imap4flags",
 		"vacation", "vacation-seconds", "notify", "mailbox", "copy",
-		"encoded-character", "regex", "relational", "subaddress",
+		"encoded-character", "regex", "relational", "subaddress", "variables",
 		"comparator-i;ascii-numeric",
 		"comparator-i;octet", "comparator-i;ascii-casemap",
 	}
@@ -27,7 +27,7 @@ func TestExtensionCapabilityInventory(t *testing.T) {
 			t.Errorf("%s: %v", capability, err)
 		}
 	}
-	for _, capability := range []string{"variables", "enotify"} {
+	for _, capability := range []string{"enotify"} {
 		if err := Validate(fmt.Sprintf("require %q;", capability)); err == nil {
 			t.Errorf("advertised unsupported %s", capability)
 		}

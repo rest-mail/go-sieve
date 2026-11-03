@@ -21,7 +21,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   empty detail exists, or no subaddressing. A repeated separator splits at the
   first occurrence; an address without a detail matches no `:detail` key, and
   `:user` is then the whole local part. Closes #96.
-- Checklist sections for RFC 5231 and RFC 5233 with the RFCs' own examples.
+- The variables extension (RFC 5229, `require "variables"`): `set` with its
+  modifiers applied in the RFC's precedence order, `${name}` interpolation in
+  string arguments, the match variables `${0}` to `${9}` set by a successful
+  `:matches` or `:regex` (never by a body test), and the `string` test. A
+  reference to a namespace or to a match variable above `${9}` is a syntax
+  error. `MaxVariables` and `MaxVariableValue` give the limits; a longer value
+  built at run time is truncated. Vacation arguments are expanded before they
+  reach the host, and setflag, addflag and removeflag accept a variable name.
+  Closes #97.
+- Checklist sections for RFC 5231, RFC 5233 and RFC 5229 with the RFCs' own examples.
 
 ## [0.7.0] - 2026-10-26
 
