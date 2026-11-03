@@ -14,8 +14,9 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 [README](README.md#the-rfc-checklist).
 
 RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`),
-RFC 5232 (`imap4flags`), RFC 5173 (`body`), RFC 5490 (`mailbox`) and
-RFC 6131 (`vacation-seconds`) are checked clause by clause in their own sections. The `Received` and loop requirements of
+RFC 5232 (`imap4flags`), RFC 5173 (`body`), RFC 5490 (`mailbox`),
+RFC 6131 (`vacation-seconds`), RFC 5231 (`relational`) and RFC 5233
+(`subaddress`) are checked clause by clause in their own sections. The `Received` and loop requirements of
 `redirect` belong to the host, as recorded below.
 
 `TestDifferentialEvaluate` and `TestDifferentialParse` check the RFC 5228 items
@@ -184,8 +185,8 @@ record that gap. Planned flag state, raw-body matching and mailbox queries are t
 [go-sieve#89](https://github.com/rest-mail/go-sieve/issues/89),
 [#90](https://github.com/rest-mail/go-sieve/issues/90) and
 [#91](https://github.com/rest-mail/go-sieve/issues/91).
-Relational, subaddress and variables are not implemented; numeric equality,
-ordinary address parts and literal strings do not provide those capabilities.
+Relational and subaddress have their own sections below. Variables are not
+implemented; literal strings do not provide that capability.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
@@ -409,6 +410,43 @@ test and cannot yet be evaluated.
 | MAILBOX-12 | 4–5 | Normative | `servermetadata` provides server annotation matching and existence tests; annotation access uses the script user's context, handles temporary failures and preserves script-level confidentiality. | n/a: unsupported separate capability; no annotations are retrieved and the parser rejects `require "servermetadata"`. |
 
 
+## RFC 5231 relational extension
+
+`:value` orders the message's values against the keys with the test's
+comparator; `:count` compares the number of addresses, envelope addresses or
+header fields. The comparators order as RFC 4790 §9 defines: `i;ascii-numeric`
+compares digit runs of any length, `i;ascii-casemap` folds ASCII case only, and
+`i;octet` compares unsigned octets.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| RELATIONAL-01 | 1, 9; RFC 5228 §3.2 | Normative | The capability string is `relational`; `:value` and `:count` are errors unless the script declares it. | `TestRelational_RequiresCapability` |
+| RELATIONAL-02 | 4, 4.2 | Normative | `:value` and `:count` are match types followed by one of the string operators `gt`, `ge`, `lt`, `le`, `eq`, `ne` (an ABNF literal, so ASCII case-insensitive); a test takes one match type, and `:count` applies to the address, envelope and header tests. | `TestRelational_Syntax` |
+| RELATIONAL-03 | 4, 4.1 | Normative | Each operator is the C relation it names, with the message value on the left and the key on the right. | `TestRelational_Operators` |
+| RELATIONAL-04 | 3, 4.1, 5 | Normative | `:value` uses the ordering of the test's comparator: numeric with non-numbers as positive infinity for `i;ascii-numeric`, case-folded octets for `i;ascii-casemap`, octets for `i;octet`. | `TestRelational_ValueComparators` |
+| RELATIONAL-05 | 3 | MUST | `i;ascii-numeric` is supported and orders at least 32-bit unsigned integers; larger ones MAY be supported (this package has no bound). | `TestRelational_NumericRange` |
+| RELATIONAL-06 | 4.1 | Normative | With several values or keys, the test is true if any pair satisfies the relation. | `TestRelational_ValueAnyPair` |
+| RELATIONAL-07 | 4.2 | Normative | The address test counts mailboxes in the named fields, ignoring group names but counting their mailboxes, summed over the fields. | `TestRelational_CountAddress` |
+| RELATIONAL-08 | 4.2 | Normative | The envelope test counts addresses in the named parts: `from` is 0 for an empty MAIL FROM and 1 otherwise. | `TestRelational_CountEnvelope` |
+| RELATIONAL-09 | 4.2 | Normative | The header test counts instances of the named fields, not addresses within them, summed over the names. | `TestRelational_CountHeader` |
+| RELATIONAL-10 | 6, 7 | Normative | The examples of §6 and the extended example of §7 give the results the RFC states. | `TestRelational_RFCExamples` |
+| RELATIONAL-11 | 10 | MUST | The envelope `to` test reflects only delivery to the current user. | n/a: host's job: `Envelope.To` must hold only the evaluated user's recipients, as for RFC 5230. |
+
+## RFC 5233 subaddress extension
+
+The host supplies the mail system's detail encoding with `WithSubaddress`
+(default: the detail follows the first `+` and may be empty). A repeated
+separator splits at its first occurrence.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| SUBADDRESS-01 | 3; RFC 5228 §3.2 | Normative | The capability string is `subaddress`; `:user` and `:detail` are errors unless the script declares it. | `TestSubaddress_RequiresCapability` |
+| SUBADDRESS-02 | 4; RFC 5228 §2.7.4 | Normative | `:user` and `:detail` are address parts: only on the address and envelope tests, and at most one address part per test. | `TestSubaddress_Syntax` |
+| SUBADDRESS-03 | 4 | Normative | `:user` is the user sub-part of the local part, or the whole local part when the address encodes no detail. | `TestSubaddress_User` |
+| SUBADDRESS-04 | 4 | Normative | `:detail` is the detail sub-part; an address without a detail matches no key under any match type, and a zero-length detail is the empty value. | `TestSubaddress_Detail` |
+| SUBADDRESS-05 | 4 | MUST | The detail encoding matches the encompassing mail system: the host sets the separator, whether the detail precedes it, whether a detail may be empty, or no subaddressing; repeated separators split at the first. | `TestSubaddress_HostEncoding` |
+| SUBADDRESS-06 | 4 | Normative | The example script of §4 files and redirects as it describes. | `TestSubaddress_RFCExample` |
+
 ## Capability boundary and unimplemented extensions
 
 These rows distinguish implemented behavior from unsupported, independently
@@ -419,8 +457,6 @@ this library does not implement.
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
 | EXT-CAP-01 | RFC 5228 §3.2 | MUST | Accept exactly the inventoried capabilities; reject unsupported capability declarations and syntax rather than execute a partial script. | `TestExtensionCapabilityInventory` |
-| RELATIONAL-01 | RFC 5231 §1, §4.1–4.2 | Normative | `relational` adds ordered value comparisons and entity counts. | n/a: not implemented; `require "relational"`, `:value` and `:count` are rejected; `i;ascii-numeric` supports equality only. Planned: rest-mail/go-sieve#95. |
-| SUBADDRESS-01 | RFC 5233 §3–4 | Normative | `subaddress` adds user/detail address parts using the encompassing mail system's encoding. | n/a: not implemented; declaration and `:user`/`:detail` are rejected; there is no host subaddress policy API. Planned: rest-mail/go-sieve#96. |
 | VARIABLES-01 | RFC 5229 §2–5 | Normative | `variables` enables interpolation, assignment and string-value tests. | n/a: not implemented; declaration, `set` and `string` are rejected; `${name}` stays literal without the extension. Planned: rest-mail/go-sieve#97. |
 | ENOTIFY-01 | RFC 5435 §2 | Normative | The standardized notification capability is `enotify`. | n/a: not implemented; `enotify` is rejected; the local `notify` action only forwards method/message and does not implement RFC 5435 validation, options, tests or transport policy. |
 

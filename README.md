@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Checklist: 164/249 mapped](https://img.shields.io/badge/checklist-164%2F249%20mapped-blue)](CHECKLIST.md)
+[![Checklist: 180/264 mapped](https://img.shields.io/badge/checklist-180%2F264%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve/pkg/sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -118,7 +118,9 @@ Check a script's syntax without evaluating it with `sieve.Validate(src)`.
 | Core tests | `address`, `header`, `exists`, `size :over/:under`, `allof`, `anyof`, `not`, `true`, `false`. |
 | Core actions | `keep`, `discard`, `redirect`; `fileinto` after `require "fileinto"`. |
 | Matching | `:is`, `:contains`, byte-level `:matches` (`*`, `?`, backslash escapes); `:all`, `:localpart`, `:domain` address parts. |
-| Comparators | `i;ascii-casemap` (default), `i;octet`, `i;ascii-numeric` equality on arbitrarily long digit runs. A non-digit first octet, including leading whitespace, is positive infinity. |
+| Relational | `:value` and `:count` with `gt`, `ge`, `lt`, `le`, `eq`, `ne` (RFC 5231) on the header, address and envelope tests (`:value` also on `body`). `:count` counts header fields, mailboxes (group members included) or envelope addresses. |
+| Subaddress | `:user` and `:detail` address parts (RFC 5233). The host passes its detail encoding with `WithSubaddress`: separator (default `+`), detail before or after it, whether an empty detail exists, or none. A repeated separator splits at its first occurrence; an address without a detail matches no `:detail` key. |
+| Comparators | `i;ascii-casemap` (default), `i;octet`, `i;ascii-numeric` equality and ordering on arbitrarily long digit runs. A non-digit first octet, including leading whitespace, is positive infinity. |
 | Envelope and body | `envelope` (RFC 5228), `body` (RFC 5173): extracted `:text` and MIME-type-selected `:content`. `:raw` currently uses extracted text; see the planned gap below. |
 | Rejection | `reject` and `ereject` (RFC 5429); `Outcome.ExtendedReject` distinguishes them. |
 | Copies and folders | `:copy` on fileinto/redirect (RFC 3894); `fileinto :create` (RFC 5490). The host creates folders. |
@@ -306,8 +308,6 @@ reason. That records a boundary or a gap, rather than claiming full conformance.
 | Add a user-scoped host query for `mailboxexists` (MAILBOX-08/09/10). | [#91](https://github.com/rest-mail/go-sieve/issues/91) |
 | Reject bare LF throughout script source (SIEVE-CORE-44). | [#92](https://github.com/rest-mail/go-sieve/issues/92) |
 | Report a host policy skip from Redirect without cancelling the implicit keep (SIEVE-CORE-20). | [#93](https://github.com/rest-mail/go-sieve/issues/93) |
-| Relational comparisons (RFC 5231): `:value` with ordered operators and `:count`, beyond today's numeric equality (RELATIONAL-01). | [#95](https://github.com/rest-mail/go-sieve/issues/95) |
-| Subaddresses (RFC 5233): `:user` and `:detail`, with the separator supplied by the host (SUBADDRESS-01). | [#96](https://github.com/rest-mail/go-sieve/issues/96) |
 | Variables (RFC 5229): `set`, interpolation, match variables and the `string` test; `${name}` stays literal until then (VARIABLES-01). | [#97](https://github.com/rest-mail/go-sieve/issues/97) |
 
 ### Badges and coverage
@@ -319,8 +319,8 @@ tests count toward the implementation they exercise. CI runs the race detector,
 checklist, workflow fixtures and all seven fuzz targets, bounded by 500000
 executions per target.
 
-The checklist badge counts 164 mapped requirements out of 249 rows, including
-85 `n/a` rows. `TestReadmeChecklistBadge` validates the actual mappings and exact
+The checklist badge counts 180 mapped requirements out of 264 rows, including
+84 `n/a` rows. `TestReadmeChecklistBadge` validates the actual mappings and exact
 badge text; the workflow fixtures check the coverage badge against the gate.
 The CI badge reports whether verification passed.
 
