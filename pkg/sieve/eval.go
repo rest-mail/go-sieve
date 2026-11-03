@@ -1,6 +1,7 @@
 package sieve
 
 import (
+	"errors"
 	"fmt"
 	"net/mail"
 	"strconv"
@@ -124,6 +125,11 @@ type Outcome struct {
 	// keep (see Error). When a keep, discard, or non-:copy fileinto or redirect
 	// ran, ImplicitKeep is false.
 	ImplicitKeep bool
+	// ImplicitKeepFlags is the RFC 5232 internal flag variable when the
+	// evaluation ended (or, on a runtime error, when it stopped): the IMAP
+	// flags the implicit keep stores the message with (RFC 5232 §3). It is set
+	// only when ImplicitKeep is true; an empty list means no flags.
+	ImplicitKeepFlags []string
 	// Error is non-nil when evaluation was aborted by a runtime error — for
 	// example an Executor callback panicked. Per RFC 5228 §2.10.6 the message is
 	// then kept rather than lost (ImplicitKeep is true and Disposition is
@@ -181,7 +187,8 @@ type Executor interface {
 	// Redirect forwards the message to addr. copy reports that the action was
 	// tagged :copy (RFC 3894): it forwards a copy without cancelling the implicit
 	// keep. Whether the message is also kept is decided by Outcome.ImplicitKeep
-	// and any explicit Keep, never by copy alone.
+	// and any explicit Keep, never by copy alone. A host that can decline a
+	// redirect implements [RedirectReporter] instead.
 	Redirect(addr string, copy bool)
 	// Flag applies an imap4flags operation ("setflag", "addflag", "removeflag").
 	// flags is already cleaned up as RFC 5232 §2 requires: one valid, settable
@@ -191,6 +198,53 @@ type Executor interface {
 	Vacation(v Vacation)
 	// Notify records a notification request.
 	Notify(method, message string)
+}
+
+// FlagDeliverer is an optional extension of [Executor] for hosts that store
+// RFC 5232 flags with each delivery. When the Executor passed to
+// [Script.Evaluate] also implements it, every explicit keep and fileinto is
+// delivered through these methods instead of Keep and FileInto, with flags set
+// to the effective list: the :flags argument when the action has one,
+// otherwise the internal flag variable at the time the action ran (RFC 5232
+// §3, §5). The message is stored with only these flags. The implicit keep's
+// flags are reported in [Outcome.ImplicitKeepFlags].
+//
+// RFC 5232 §3 requires the last flag list to win when repeated deliveries to
+// one destination are merged (RFC 5228 §2.10.3). To honour that, these calls
+// are made once the script has finished, one per destination, in the order
+// each destination was first named, after the other callbacks. The other
+// arguments of a merged delivery are those of its first occurrence. A reject
+// makes none of these calls. Flag is still called for each setflag, addflag
+// and removeflag.
+type FlagDeliverer interface {
+	// KeepWithFlags delivers to the default mailbox with flags.
+	KeepWithFlags(flags []string)
+	// FileIntoWithFlags delivers into folder with flags; create is as for
+	// [Executor.FileInto].
+	FileIntoWithFlags(folder string, create bool, flags []string)
+}
+
+// ErrRedirectSkipped is returned by [RedirectReporter.TryRedirect] when host
+// policy silently declined a redirect, for example because the script reached
+// the host's redirect limit (RFC 5228 §4.2, §10).
+var ErrRedirectSkipped = errors.New("sieve: redirect skipped by host policy")
+
+// RedirectReporter is an optional extension of [Executor] for hosts that
+// can decline a redirect. When the Executor passed to [Script.Evaluate] also
+// implements it, each redirect calls TryRedirect instead of Redirect, and the
+// result decides what the redirect did:
+//
+//   - nil: the message was forwarded. A redirect without :copy cancels the
+//     implicit keep.
+//   - an error matching ErrRedirectSkipped (errors.Is): policy silently
+//     ignored the redirect. It does not cancel the implicit keep (RFC 5228
+//     §4.2) and does not count as a delivery, so a discard is not overridden
+//     by it. A repeated redirect to the same destination is skipped again
+//     without a second call.
+//   - any other error: a runtime failure. Evaluation stops and fails safe to
+//     the implicit keep, reported through [Outcome.Error] (RFC 5228 §2.10.6).
+type RedirectReporter interface {
+	TryRedirect(addr string, copy bool) error
 }
 
 // Validate reports whether a Sieve script is syntactically valid and its
@@ -225,16 +279,19 @@ func (s *Script) Evaluate(msg *Message, exec Executor) (out Outcome) {
 		msg:          msg,
 		exec:         exec,
 		implicitKeep: true,
-		filedInto:    map[fileintoDest]struct{}{},
-		redirected:   map[redirectDest]struct{}{},
+		filedInto:    map[fileintoDest]int{},
+		redirected:   map[redirectDest]bool{},
+		flags:        []string{},
 	}
+	st.flagDeliverer, _ = exec.(FlagDeliverer)
+	st.redirectReporter, _ = exec.(RedirectReporter)
 	// RFC 5228 §2.10.6: an execution error must not lose the message. If any
 	// action panics — typically a host Executor callback failing — recover and
 	// fall back to the implicit keep, reporting the error so the host can notify
 	// the user.
 	defer func() {
 		if r := recover(); r != nil {
-			out = Outcome{Disposition: Continue, ImplicitKeep: true, Error: errFromRecover(r)}
+			out = Outcome{Disposition: Continue, ImplicitKeep: true, ImplicitKeepFlags: st.flagList(), Error: errFromRecover(r)}
 		}
 	}()
 	st.runBlock(s.commands)
@@ -286,12 +343,35 @@ type evalState struct {
 	// The first occurrence executes (preserving script order and interleaving
 	// with other actions); later duplicates are suppressed. A :copy action is a
 	// distinct destination from a consuming one, so :copy is part of each key.
+	// With a FlagDeliverer the keep and fileinto calls wait for finalize instead
+	// (see pending), so the last flag list can win. redirected maps each
+	// destination to whether host policy skipped it (RedirectReporter).
 	kept       bool
-	filedInto  map[fileintoDest]struct{}
-	redirected map[redirectDest]struct{}
+	filedInto  map[fileintoDest]int // index into pending, or -1 once dispatched
+	redirected map[redirectDest]bool
+
+	// flags is the RFC 5232 internal variable: the flag set setflag, addflag
+	// and removeflag change, hasflag tests, and deliveries without :flags use.
+	flags []string
+
+	// Optional Executor extensions, nil when the host does not implement them.
+	flagDeliverer    FlagDeliverer
+	redirectReporter RedirectReporter
+	// pending holds the keep and fileinto deliveries a FlagDeliverer receives
+	// at finalize, one per destination, in first-occurrence order.
+	pending []pendingDelivery
 
 	// Even a suppressed vacation counts as an execution (RFC 5230 §4.7).
 	vacationExecuted bool
+}
+
+// pendingDelivery is a keep (keep true) or fileinto waiting for finalize, with
+// the flag list of its last occurrence.
+type pendingDelivery struct {
+	keep   bool
+	folder string
+	create bool
+	flags  []string
 }
 
 // fileintoDest keys a fileinto delivery for de-duplication: same folder and
@@ -327,7 +407,7 @@ func (st *evalState) runCmd(c sieveCmd) (halt bool) {
 	switch cmd := c.(type) {
 	case *ifCmd:
 		for _, br := range cmd.branches {
-			if br.test == nil || evalTest(br.test, st.msg) {
+			if br.test == nil || evalTest(br.test, st.msg, st.flags) {
 				return st.runBlock(br.block)
 			}
 		}
@@ -339,7 +419,7 @@ func (st *evalState) runCmd(c sieveCmd) (halt bool) {
 		return true
 
 	case *keepCmd:
-		st.deliverKeep()
+		st.deliverKeep(cmd)
 
 	case *discardCmd:
 		// RFC 5228 §4.4: discard cancels the implicit keep and is compatible with
@@ -365,6 +445,7 @@ func (st *evalState) runCmd(c sieveCmd) (halt bool) {
 		st.deliverRedirect(cmd)
 
 	case *flagCmd:
+		st.applyFlag(cmd.op, cmd.flags)
 		st.exec.Flag(cmd.op, cmd.flags)
 
 	case *vacationCmd:
@@ -393,12 +474,70 @@ func (st *evalState) runCmd(c sieveCmd) (halt bool) {
 	return false
 }
 
+// applyFlag applies setflag, addflag or removeflag to the internal variable
+// (RFC 5232 §3.1–3.3). flags is already normalised; flag names compare
+// case-insensitively, so the set never holds the same flag twice.
+func (st *evalState) applyFlag(op string, flags []string) {
+	switch op {
+	case "setflag":
+		st.flags = append([]string{}, flags...)
+	case "addflag":
+		for _, f := range flags {
+			if !containsFold(st.flags, f) {
+				st.flags = append(st.flags, f)
+			}
+		}
+	case "removeflag":
+		kept := []string{}
+		for _, f := range st.flags {
+			if !containsFold(flags, f) {
+				kept = append(kept, f)
+			}
+		}
+		st.flags = kept
+	}
+}
+
+// containsFold reports whether list holds f, compared ASCII case-insensitively
+// as IMAP flag names are.
+func containsFold(list []string, f string) bool {
+	for _, g := range list {
+		if strings.EqualFold(g, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// flagList returns a copy of the internal variable.
+func (st *evalState) flagList() []string { return append([]string{}, st.flags...) }
+
+// deliveryFlags is the effective flag list of a keep or fileinto: its :flags
+// argument when given, otherwise the internal variable (RFC 5232 §5).
+func (st *evalState) deliveryFlags(flags []string, set bool) []string {
+	if set {
+		return append([]string{}, flags...)
+	}
+	return st.flagList()
+}
+
 // deliverKeep records an explicit keep: it cancels the implicit keep and
 // delivers to the default mailbox. RFC 5228 §2.10.3: multiple keeps collapse to
-// a single delivery.
-func (st *evalState) deliverKeep() {
+// a single delivery; with a FlagDeliverer the last one's flags win.
+func (st *evalState) deliverKeep(cmd *keepCmd) {
 	st.implicitKeep = false
 	st.delivered = true
+	if st.flagDeliverer != nil {
+		flags := st.deliveryFlags(cmd.flags, cmd.flagsSet)
+		for i := range st.pending {
+			if st.pending[i].keep {
+				st.pending[i].flags = flags
+				return
+			}
+		}
+		st.pending = append(st.pending, pendingDelivery{keep: true, flags: flags})
+		return
+	}
 	if !st.kept {
 		st.kept = true
 		st.exec.Keep()
@@ -414,37 +553,82 @@ func (st *evalState) deliverFileInto(cmd *fileintoCmd) {
 	}
 	st.delivered = true
 	dest := fileintoDest{folder: cmd.folder, copy: cmd.copy}
-	if _, done := st.filedInto[dest]; !done {
-		st.filedInto[dest] = struct{}{}
+	i, done := st.filedInto[dest]
+	if st.flagDeliverer != nil {
+		flags := st.deliveryFlags(cmd.flags, cmd.flagsSet)
+		if done {
+			st.pending[i].flags = flags
+			return
+		}
+		st.filedInto[dest] = len(st.pending)
+		st.pending = append(st.pending, pendingDelivery{folder: cmd.folder, create: cmd.create, flags: flags})
+		return
+	}
+	if !done {
+		st.filedInto[dest] = -1
 		st.exec.FileInto(cmd.folder, cmd.create)
 	}
 }
 
 // deliverRedirect records a redirect: it forwards the message and, unless tagged
 // :copy (RFC 3894 §3), cancels the implicit keep. RFC 5228 §2.10.3: redirecting
-// to the same address twice is one delivery.
+// to the same address twice is one delivery. A redirect host policy skipped
+// (RedirectReporter) has no effect at all: RFC 5228 §4.2 says it must not
+// cancel the implicit keep, and nothing was delivered.
 func (st *evalState) deliverRedirect(cmd *redirectCmd) {
+	dest := redirectDest{addr: cmd.addr, copy: cmd.copy}
+	skipped, done := st.redirected[dest]
+	if !done {
+		skipped = st.redirect(cmd.addr, cmd.copy)
+		st.redirected[dest] = skipped
+	}
+	if skipped {
+		return
+	}
 	if !cmd.copy {
 		st.implicitKeep = false
 	}
 	st.delivered = true
-	dest := redirectDest{addr: cmd.addr, copy: cmd.copy}
-	if _, done := st.redirected[dest]; !done {
-		st.redirected[dest] = struct{}{}
-		st.exec.Redirect(cmd.addr, cmd.copy)
+}
+
+// redirect hands one redirect to the host and reports whether policy skipped
+// it. Any other error from TryRedirect is a runtime failure: it panics into the
+// fail-safe keep of Evaluate (RFC 5228 §2.10.6).
+func (st *evalState) redirect(addr string, copy bool) (skipped bool) {
+	if st.redirectReporter == nil {
+		st.exec.Redirect(addr, copy)
+		return false
 	}
+	err := st.redirectReporter.TryRedirect(addr, copy)
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, ErrRedirectSkipped) {
+		return true
+	}
+	panic(err)
 }
 
 // finalize resolves the accumulated state into the terminal Outcome, applied
 // once the whole script has run or a stop/reject halted it.
 func (st *evalState) finalize() Outcome {
+	if !st.rejected {
+		for _, d := range st.pending {
+			if d.keep {
+				st.flagDeliverer.KeepWithFlags(d.flags)
+			} else {
+				st.flagDeliverer.FileIntoWithFlags(d.folder, d.create, d.flags)
+			}
+		}
+	}
 	switch {
 	case st.rejected:
 		return Outcome{Disposition: Reject, RejectReason: st.rejectReason, ExtendedReject: st.extendedReject}
 	case st.implicitKeep:
 		// Nothing cancelled the implicit keep: deliver to the default mailbox, in
-		// addition to any :copy fileinto or redirect the Executor recorded.
-		return Outcome{Disposition: Continue, ImplicitKeep: true}
+		// addition to any :copy fileinto or redirect the Executor recorded, with
+		// the internal flag variable (RFC 5232 §3).
+		return Outcome{Disposition: Continue, ImplicitKeep: true, ImplicitKeepFlags: st.flagList()}
 	case st.delivered:
 		// A keep, fileinto, or redirect ran: deliver per the recorded actions. If
 		// a discard also ran it is overridden (RFC 5228 §4.4).
@@ -467,24 +651,26 @@ func (st *evalState) vacationReplyTo() (addr string, ok bool) {
 
 // ── Test evaluation ──────────────────────────────────────────────────
 
-func evalTest(t sieveTest, msg *Message) bool {
+// evalTest evaluates t against msg; flags is the RFC 5232 internal variable
+// the hasflag test reads.
+func evalTest(t sieveTest, msg *Message, flags []string) bool {
 	switch tt := t.(type) {
 	case *allofTest:
 		for _, sub := range tt.tests {
-			if !evalTest(sub, msg) {
+			if !evalTest(sub, msg, flags) {
 				return false
 			}
 		}
 		return true
 	case *anyofTest:
 		for _, sub := range tt.tests {
-			if evalTest(sub, msg) {
+			if evalTest(sub, msg, flags) {
 				return true
 			}
 		}
 		return false
 	case *notTest:
-		return !evalTest(tt.inner, msg)
+		return !evalTest(tt.inner, msg, flags)
 	case *boolTest:
 		return tt.val
 	case *existsTest:
@@ -527,8 +713,26 @@ func evalTest(t sieveTest, msg *Message) bool {
 			return false
 		}
 		return matchValues(bodyValues(msg, tt), tt.matchType, tt.relation, tt.comparator, tt.keys)
+	case *hasflagTest:
+		return hasflag(flags, tt)
 	}
 	return false
+}
+
+// hasflag implements the RFC 5232 §4 test on the internal variable. Each flag
+// of the variable is a value and each space-separated name in a key is a key,
+// so "b A" is the same key list as ["b", "A"]. The test is true if any flag
+// matches any key. :count compares the number of distinct flags, which the
+// variable holds once each.
+func hasflag(flags []string, tt *hasflagTest) bool {
+	if tt.matchType == ":count" {
+		return countMatches(len(flags), tt.relation, tt.comparator, tt.keys)
+	}
+	var keys []string
+	for _, k := range tt.keys {
+		keys = append(keys, strings.Fields(k)...)
+	}
+	return matchValues(flags, tt.matchType, tt.relation, tt.comparator, keys)
 }
 
 // matchValues applies a test's match type to the values taken from the

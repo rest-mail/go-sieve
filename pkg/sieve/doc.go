@@ -47,10 +47,12 @@
 // Control commands: if / elsif / else, require, stop.
 //
 // Tests: address, header, envelope, exists, size (:over / :under), body, allof,
-// anyof, not, true / false.
+// anyof, not, true / false, and the imap4flags hasflag.
 //
 // Actions: keep, discard, fileinto (with :create), redirect, reject, imap4flags
-// (setflag / addflag / removeflag), vacation, notify.
+// (setflag / addflag / removeflag, and :flags on keep and fileinto), vacation,
+// notify. Optional Executor extensions: [FlagDeliverer] receives each delivery
+// with its flags, and [RedirectReporter] lets host policy skip a redirect.
 //
 // Match types: :is, :contains, :matches (glob with * and ?), the relational
 // :value and :count (RFC 5231), and a non-standard :regex extension.
