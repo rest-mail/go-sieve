@@ -60,13 +60,24 @@ type sieveBranch struct {
 }
 
 type stopCmd struct{}
-type keepCmd struct{}
+
+// keepCmd is keep. flagsSet reports a :flags argument (RFC 5232 §5): the
+// message is then stored with only flags, instead of the internal variable.
+type keepCmd struct {
+	flags    []string
+	flagsSet bool
+	rawFlags []string // the :flags list as written; expanded at run time with variables
+}
+
 type discardCmd struct{}
 
 type fileintoCmd struct {
-	folder string
-	create bool
-	copy   bool // RFC 3894 :copy — targets a destination distinct from a consuming fileinto
+	folder   string
+	create   bool
+	copy     bool // RFC 3894 :copy — targets a destination distinct from a consuming fileinto
+	flags    []string
+	flagsSet bool     // RFC 5232 §5 :flags was given; flags replaces the internal variable
+	rawFlags []string // the :flags list as written; expanded at run time with variables
 }
 
 type redirectCmd struct {
@@ -129,6 +140,16 @@ type notTest struct{ inner sieveTest }
 type boolTest struct{ val bool }
 type existsTest struct{ headers []string }
 
+// hasflagTest is the RFC 5232 §4 hasflag test. variables names the variables
+// it reads (needs require "variables"); when nil it reads the internal one.
+type hasflagTest struct {
+	comparator string
+	matchType  string
+	relation   string
+	variables  []string
+	keys       []string
+}
+
 type sizeTest struct {
 	over  bool
 	limit int64
@@ -183,6 +204,7 @@ func (*headerTest) isTest()   {}
 func (*addressTest) isTest()  {}
 func (*envelopeTest) isTest() {}
 func (*bodyTest) isTest()     {}
+func (*hasflagTest) isTest()  {}
 
 // Defaults per RFC 5228, and RFC 5173 §5 for the body transform.
 const (
@@ -663,6 +685,7 @@ func (p *parser) finishStatement() error {
 // accepted is the :flags tagged argument of RFC 5232 §5, once "imap4flags" is
 // declared. Anything else, such as keep "x";, is refused.
 func (p *parser) parseKeep() (sieveCmd, error) {
+	cmd := &keepCmd{}
 	for p.peek().Kind == grammar.Tag {
 		tag := p.next().Str
 		if tag != ":flags" {
@@ -671,11 +694,16 @@ func (p *parser) parseKeep() (sieveCmd, error) {
 		if err := p.requireCapability("imap4flags", "keep :flags"); err != nil {
 			return nil, err
 		}
-		if _, err := p.parseStringList(); err != nil {
+		if cmd.flagsSet {
+			return nil, p.errf("duplicate keep argument %q", tag)
+		}
+		flags, err := p.parseStringList()
+		if err != nil {
 			return nil, err
 		}
+		cmd.rawFlags, cmd.flags, cmd.flagsSet = flags, normalizeFlags(flags), true
 	}
-	return &keepCmd{}, p.finishStatement()
+	return cmd, p.finishStatement()
 }
 
 func (p *parser) parseFileinto() (sieveCmd, error) {
@@ -699,9 +727,11 @@ func (p *parser) parseFileinto() (sieveCmd, error) {
 			if err := p.requireCapability("imap4flags", "fileinto :flags"); err != nil {
 				return nil, err
 			}
-			if _, err := p.parseStringList(); err != nil {
+			flags, err := p.parseStringList()
+			if err != nil {
 				return nil, err
 			}
+			cmd.rawFlags, cmd.flags, cmd.flagsSet = flags, normalizeFlags(flags), true
 		case ":copy":
 			// RFC 3894: the :copy tagged argument requires the "copy" extension.
 			if err := p.requireCapability("copy", "fileinto :copy"); err != nil {
@@ -1161,6 +1191,11 @@ func (p *parser) parseTest() (sieveTest, error) {
 			return nil, err
 		}
 		return p.parseStringTest()
+	case "hasflag":
+		if err := p.requireCapability("imap4flags", "the hasflag test"); err != nil {
+			return nil, err
+		}
+		return p.parseHasflagTest()
 	default:
 		// RFC 5228 §2.10.5: a test from an extension that was not declared with
 		// require (or that this package does not implement) is unavailable, so
@@ -1549,6 +1584,45 @@ func (p *parser) parseStringList() ([]string, error) {
 		return nil, fmt.Errorf("sieve: line %d: empty string list []: a string list must contain at least one string", open.Line)
 	}
 	return list, nil
+}
+
+// parseHasflagTest parses hasflag [MATCH-TYPE] [COMPARATOR]
+// [<variable-list: string-list>] <list-of-flags: string-list> (RFC 5232 §4).
+// The variable-list needs the variables extension (§1); without it a second
+// string list is an error, as a variable name is for the actions (§3). Each
+// name in it is a constant identifier, as a flag action's variable name is.
+func (p *parser) parseHasflagTest() (sieveTest, error) {
+	opts, err := p.parseMatchOptions(false, false)
+	if err != nil {
+		return nil, err
+	}
+	line := p.peek().Line
+	keys, err := p.parseStringList()
+	if err != nil {
+		return nil, err
+	}
+	test := &hasflagTest{
+		comparator: opts.comparator,
+		matchType:  opts.matchType,
+		relation:   opts.relation,
+		keys:       keys,
+	}
+	if k := p.peek().Kind; k != grammar.String && k != grammar.LBracket {
+		return test, nil
+	}
+	if !p.required["variables"] {
+		return nil, p.errf("hasflag with a variable list requires the \"variables\" extension")
+	}
+	test.variables = make([]string, len(keys))
+	for i, name := range keys {
+		if test.variables[i], err = p.declareVariable(grammar.Token{Kind: grammar.String, Str: name, Line: line}); err != nil {
+			return nil, err
+		}
+	}
+	if test.keys, err = p.parseStringList(); err != nil {
+		return nil, err
+	}
+	return test, nil
 }
 
 // ── encoded-character (RFC 5228 §2.4.2.4) ────────────────────────────

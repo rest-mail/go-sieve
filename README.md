@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Checklist: 203/283 mapped](https://img.shields.io/badge/checklist-203%2F283%20mapped-blue)](CHECKLIST.md)
+[![Checklist: 210/285 mapped](https://img.shields.io/badge/checklist-210%2F285%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve/pkg/sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -129,7 +129,7 @@ Check a script's syntax without evaluating it with `sieve.Validate(src)`.
 | Envelope and body | `envelope` (RFC 5228), `body` (RFC 5173): extracted `:text` and MIME-type-selected `:content`. `:raw` currently uses extracted text; see the planned gap below. |
 | Rejection | `reject` and `ereject` (RFC 5429); `Outcome.ExtendedReject` distinguishes them. |
 | Copies and folders | `:copy` on fileinto/redirect (RFC 3894); `fileinto :create` (RFC 5490). The host creates folders. |
-| Flags | `setflag`, `addflag`, `removeflag` callbacks with normalized lists (RFC 5232); with `variables`, a variable name before the list changes that variable instead. `hasflag` and delivery `:flags` remain gaps. |
+| Flags | `setflag`, `addflag`, `removeflag` on the internal variable, with callbacks carrying normalized lists; `hasflag`; each delivery's effective flags through the optional `FlagDeliverer` and `Outcome.ImplicitKeepFlags` (RFC 5232). With `variables`, a variable name before the list changes that variable instead, `hasflag` may read named variables, and `:flags` lists are expanded when the action runs. |
 | Variables | RFC 5229: `set` with `:lower`, `:upper`, `:lowerfirst`, `:upperfirst`, `:quotewildcard` and `:length`; the `string` test; `${name}` interpolation in every action and test argument; match variables `${0}` to `${9}` from `:matches`. Up to 128 variables, 400-character names and 4000-character values; longer values set at run time are truncated. Variables last for one `Evaluate`. A relational operator or `:comparator` name built from variables is checked when its test runs. |
 | Vacation | RFC 5230 argument validation and suppression rules; RFC 6131 `vacation-seconds`. Persistent suppression and reply transport belong to the host. |
 | Encoded strings | `encoded-character`: `${hex:...}` and `${unicode:...}` (RFC 5228). |
@@ -156,6 +156,22 @@ must be treated as a runtime error: the callback can panic with an error, which
 `Evaluate` returns as `Outcome.Error` with `Outcome.ImplicitKeep` set. The
 callback has no error return, so a failure recorded only in host state is not
 visible to the evaluator.
+
+Flags (RFC 5232): the evaluator holds the internal flag variable, which
+`hasflag` tests. To store each message with its flags, also implement
+`FlagDeliverer` on your Executor: every `keep` and `fileinto` then arrives
+through `KeepWithFlags(flags)` or `FileIntoWithFlags(folder, create, flags)`
+with the effective list (the `:flags` argument, or the internal variable when
+the action ran), once per destination with the last list winning, after the
+script has finished. Store the implicit keep with `Outcome.ImplicitKeepFlags`.
+An Executor without it keeps receiving `Keep` and `FileInto` as before.
+
+Redirect policy (RFC 5228 §4.2): to decline a redirect, for example over a
+per-script limit, also implement `RedirectReporter`. `TryRedirect` then
+replaces `Redirect`: return nil when the message was forwarded,
+`sieve.ErrRedirectSkipped` (or an error wrapping it) when policy silently
+ignored it, which leaves the implicit keep in effect, or any other error for a
+runtime failure, which fails safe to the implicit keep through `Outcome.Error`.
 
 `Executor` is the seam between the language and your mailbox. Its methods
 (`Keep`, `FileInto`, `Redirect`, `Flag`, `Vacation`, `Notify`) are invoked in
@@ -313,10 +329,8 @@ reason. That records a boundary or a gap, rather than claiming full conformance.
 
 | Gap | Issue |
 |-----|-------|
-| Track flags, implement `hasflag`, and preserve delivery `:flags`, including duplicate-delivery rules (FLAGS-17/18/19). | [#89](https://github.com/rest-mail/go-sieve/issues/89) |
 | Supply an undecoded body for `body :raw` (BODY-07). | [#90](https://github.com/rest-mail/go-sieve/issues/90) |
 | Add a user-scoped host query for `mailboxexists` (MAILBOX-08/09/10). | [#91](https://github.com/rest-mail/go-sieve/issues/91) |
-| Report a host policy skip from Redirect without cancelling the implicit keep (SIEVE-CORE-20). | [#93](https://github.com/rest-mail/go-sieve/issues/93) |
 | Let the host choose which extensions a script may use; today every supported extension, `variables` included, is available to any script that declares it. | [#107](https://github.com/rest-mail/go-sieve/issues/107) |
 
 ### Badges and coverage

@@ -80,7 +80,8 @@ removeflag "a";`)
 }
 
 // TestFlags_VariableNameRefused checks that without the "variables" extension
-// a variable name before the list of flags is an error (RFC 5232 §1).
+// a variable name before the list of flags, or a variable-list in hasflag, is
+// an error (RFC 5232 §1, §4).
 //
 // checklist: FLAGS-03
 func TestFlags_VariableNameRefused(t *testing.T) {
@@ -88,6 +89,7 @@ func TestFlags_VariableNameRefused(t *testing.T) {
 		`require "imap4flags"; setflag "flagvar" "\\Flagged";`,
 		`require "imap4flags"; addflag "flagvar" ["\\Deleted", "\\Answered"];`,
 		`require "imap4flags"; removeflag "flagvar" "$MDNRequired";`,
+		`require "imap4flags"; if hasflag :contains "MyVar" "Junk" { keep; }`,
 	} {
 		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
@@ -112,6 +114,7 @@ func TestFlags_FlagsTagSyntax(t *testing.T) {
 	bad := []string{
 		`require "imap4flags"; keep :flags;`,
 		`require ["imap4flags", "fileinto"]; fileinto :flags "a" :flags "b" "Archive";`,
+		`require "imap4flags"; keep :flags "a" :flags "b";`,
 		`require "imap4flags"; redirect :flags "a" "a@example.com";`,
 		`require "imap4flags"; discard :flags "a";`,
 	}
