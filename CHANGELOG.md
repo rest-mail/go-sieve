@@ -11,6 +11,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - The variables extension (RFC 5229, #97): `set` with its six modifiers, the `string` test, `${name}` interpolation in every action and test argument, and the match variables `${0}` to `${9}` filled by `:matches` (never by `body`, RFC 5173 §6). Strings are expanded when their statement runs; variables last for one `Evaluate`. Limits: 128 variables, 400-character names, 4000-character values (longer run-time values are truncated). A redirect address, vacation `:from` or envelope part built from variables is checked once expanded, and an invalid one is a runtime error with the fail-safe keep. With `Headers.Lists`, an `address :matches` test still sets the match variables while holding one address at a time.
 - With `variables`, `setflag`, `addflag` and `removeflag` accept a variable name before the list of flags and then change that variable (RFC 5232 §3).
 - `Vacation.Tracking` carries `:subject`, `:from` and the reason as written, before variable expansion, for response tracking (RFC 5230 §4.2). `Handle` is never expanded.
+- The relational extension (RFC 5231, `require "relational"`): the `:value` and
+  `:count` match types with the operators `gt`, `ge`, `lt`, `le`, `eq` and `ne`.
+  Every comparator now orders as RFC 4790 §9 defines, `i;ascii-numeric` on digit
+  runs of any length. `:count` counts header fields for `header`, mailboxes
+  (group members included) for `address`, and addresses for `envelope`, where a
+  null reverse-path counts 0. With `variables`, `string :count` counts the
+  non-empty sources (RFC 5229 §5), the operator may be built from a variable
+  and is checked when it runs, and `:value` and `:count` set no match
+  variables. With `Headers.Lists`, `address :count` and `:value` read the
+  host's lists like every other address test. Closes #95.
+- The subaddress extension (RFC 5233, `require "subaddress"`): the `:user` and
+  `:detail` address parts on the address and envelope tests. `WithSubaddress`
+  and `Subaddress` let the host give its mail system's encoding: the separator
+  (`DefaultSubaddress` uses `+`), whether the detail comes before it, whether an
+  empty detail exists, or no subaddressing. A repeated separator splits at the
+  first occurrence; an address without a detail matches no `:detail` key, and
+  `:user` is then the whole local part. With `Headers.Lists` the address
+  test splits each address as it reads it. Closes #96.
+- Checklist sections for RFC 5231 and RFC 5233 with the RFCs' own examples.
 
 ### Known gaps
 

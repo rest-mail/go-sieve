@@ -21,6 +21,12 @@ parser, expansion, modifiers, truncation and run-time checks. The one statement
 left in `parseBlock` (the closing-brace error after `parseCommands(true)`) was
 uncovered before this change and cannot fire.
 
+Every statement of the relational and subaddress extensions is covered: the
+`TestRelational_*` and `TestSubaddress_*` suites in `pkg/sieve/rfctest` drive
+`match.Compare`, the `:count` helpers and `splitSubaddress`, and
+`TestAddressLists_RelationalAndSubaddress` the `Headers.Lists` path
+(`eachListedAddress`, `addressCount`).
+
 No known gaps remain in the lexer (`tokenize` through `readMultiLineString`).
 `TestMultiLineString_HashCommentAfterMarker` covers the hash comment that may
 end the `text:` line of a multi-line string (RFC 5228 §8.1), including malformed

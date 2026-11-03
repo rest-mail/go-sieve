@@ -15,7 +15,8 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 
 RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`),
 RFC 5232 (`imap4flags`), RFC 5173 (`body`), RFC 5490 (`mailbox`),
-RFC 6131 (`vacation-seconds`) and RFC 5229 (`variables`) are checked clause by clause in their own sections. The `Received` and loop requirements of
+RFC 6131 (`vacation-seconds`), RFC 5229 (`variables`), RFC 5231 (`relational`)
+and RFC 5233 (`subaddress`) are checked clause by clause in their own sections. The `Received` and loop requirements of
 `redirect` belong to the host, as recorded below.
 
 `TestDifferentialEvaluate` and `TestDifferentialParse` check the RFC 5228 items
@@ -184,8 +185,7 @@ record that gap. Planned flag state, raw-body matching and mailbox queries are t
 [go-sieve#89](https://github.com/rest-mail/go-sieve/issues/89),
 [#90](https://github.com/rest-mail/go-sieve/issues/90) and
 [#91](https://github.com/rest-mail/go-sieve/issues/91).
-Relational and subaddress are not implemented; numeric equality and ordinary
-address parts do not provide those capabilities.
+Relational, subaddress and variables have their own sections below.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
@@ -410,6 +410,48 @@ test and cannot yet be evaluated.
 | MAILBOX-12 | 4–5 | Normative | `servermetadata` provides server annotation matching and existence tests; annotation access uses the script user's context, handles temporary failures and preserves script-level confidentiality. | n/a: unsupported separate capability; no annotations are retrieved and the parser rejects `require "servermetadata"`. |
 
 
+## RFC 5231 relational extension
+
+`:value` orders the message's values against the keys with the test's
+comparator; `:count` compares the number of addresses, envelope addresses or
+header fields. The comparators order as RFC 4790 §9 defines: `i;ascii-numeric`
+compares digit runs of any length, `i;ascii-casemap` folds ASCII case only, and
+`i;octet` compares unsigned octets. With `variables`, `string :count` counts
+the non-empty sources (VARIABLES-18), the operator may be built from a variable
+and is checked when the test runs (VARIABLES-11), and neither match type sets
+match variables (VARIABLES-19). `TestDifferentialRelationalSubaddress` compares
+both extensions with foxcpp/go-sieve; `TestDifferentialRelationalDepartures`
+pins three places where foxcpp departs from the RFCs.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| RELATIONAL-01 | 1, 9; RFC 5228 §3.2 | Normative | The capability string is `relational`; `:value` and `:count` are errors unless the script declares it. | `TestRelational_RequiresCapability` |
+| RELATIONAL-02 | 4, 4.2 | Normative | `:value` and `:count` are match types followed by one of the string operators `gt`, `ge`, `lt`, `le`, `eq`, `ne` (an ABNF literal, so ASCII case-insensitive); a test takes one match type, and `:count` applies to the address, envelope and header tests. | `TestRelational_Syntax`, `TestDifferentialRelationalDepartures` |
+| RELATIONAL-03 | 4, 4.1 | Normative | Each operator is the C relation it names, with the message value on the left and the key on the right. | `TestRelational_Operators`, `TestDifferentialRelationalSubaddress` |
+| RELATIONAL-04 | 3, 4.1, 5 | Normative | `:value` uses the ordering of the test's comparator: numeric with non-numbers as positive infinity for `i;ascii-numeric`, case-folded octets for `i;ascii-casemap`, octets for `i;octet`. | `TestRelational_ValueComparators`, `TestDifferentialRelationalSubaddress`, `TestDifferentialRelationalDepartures` |
+| RELATIONAL-05 | 3 | MUST | `i;ascii-numeric` is supported and orders at least 32-bit unsigned integers; larger ones MAY be supported (this package has no bound). | `TestRelational_NumericRange` |
+| RELATIONAL-06 | 4.1 | Normative | With several values or keys, the test is true if any pair satisfies the relation. | `TestRelational_ValueAnyPair`, `TestDifferentialRelationalSubaddress` |
+| RELATIONAL-07 | 4.2 | Normative | The address test counts mailboxes in the named fields, ignoring group names but counting their mailboxes, summed over the fields. | `TestRelational_CountAddress`, `TestAddressLists_RelationalAndSubaddress`, `TestDifferentialRelationalSubaddress` |
+| RELATIONAL-08 | 4.2 | Normative | The envelope test counts addresses in the named parts: `from` is 0 for an empty MAIL FROM and 1 otherwise. | `TestRelational_CountEnvelope`, `TestDifferentialRelationalSubaddress` |
+| RELATIONAL-09 | 4.2 | Normative | The header test counts instances of the named fields, not addresses within them, summed over the names. | `TestRelational_CountHeader`, `TestAddressLists_RelationalAndSubaddress`, `TestDifferentialRelationalSubaddress` |
+| RELATIONAL-10 | 6, 7 | Normative | The examples of §6 and the extended example of §7 give the results the RFC states. | `TestRelational_RFCExamples` |
+| RELATIONAL-11 | 10 | MUST | The envelope `to` test reflects only delivery to the current user. | n/a: host's job: `Envelope.To` must hold only the evaluated user's recipients, as for RFC 5230. |
+
+## RFC 5233 subaddress extension
+
+The host supplies the mail system's detail encoding with `WithSubaddress`
+(default: the detail follows the first `+` and may be empty). A repeated
+separator splits at its first occurrence.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| SUBADDRESS-01 | 3; RFC 5228 §3.2 | Normative | The capability string is `subaddress`; `:user` and `:detail` are errors unless the script declares it. | `TestSubaddress_RequiresCapability` |
+| SUBADDRESS-02 | 4; RFC 5228 §2.7.4 | Normative | `:user` and `:detail` are address parts: only on the address and envelope tests, and at most one address part per test. | `TestSubaddress_Syntax` |
+| SUBADDRESS-03 | 4 | Normative | `:user` is the user sub-part of the local part, or the whole local part when the address encodes no detail. | `TestSubaddress_User`, `TestAddressLists_RelationalAndSubaddress`, `TestDifferentialRelationalSubaddress` |
+| SUBADDRESS-04 | 4 | Normative | `:detail` is the detail sub-part; an address without a detail matches no key under any match type, and a zero-length detail is the empty value. | `TestSubaddress_Detail`, `TestAddressLists_RelationalAndSubaddress`, `TestDifferentialRelationalSubaddress` |
+| SUBADDRESS-05 | 4 | MUST | The detail encoding matches the encompassing mail system: the host sets the separator, whether the detail precedes it, whether a detail may be empty, or no subaddressing; repeated separators split at the first. | `TestSubaddress_HostEncoding` |
+| SUBADDRESS-06 | 4 | Normative | The example script of §4 files and redirects as it describes. | `TestSubaddress_RFCExample` |
+
 ## Capability boundary and unimplemented extensions
 
 These rows distinguish implemented behavior from unsupported, independently
@@ -420,8 +462,6 @@ this library does not implement.
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
 | EXT-CAP-01 | RFC 5228 §3.2 | MUST | Accept exactly the inventoried capabilities; reject unsupported capability declarations and syntax rather than execute a partial script. | `TestExtensionCapabilityInventory` |
-| RELATIONAL-01 | RFC 5231 §1, §4.1–4.2 | Normative | `relational` adds ordered value comparisons and entity counts. | n/a: not implemented; `require "relational"`, `:value` and `:count` are rejected; `i;ascii-numeric` supports equality only. Planned: rest-mail/go-sieve#95. |
-| SUBADDRESS-01 | RFC 5233 §3–4 | Normative | `subaddress` adds user/detail address parts using the encompassing mail system's encoding. | n/a: not implemented; declaration and `:user`/`:detail` are rejected; there is no host subaddress policy API. Planned: rest-mail/go-sieve#96. |
 | ENOTIFY-01 | RFC 5435 §2 | Normative | The standardized notification capability is `enotify`. | n/a: not implemented; `enotify` is rejected; the local `notify` action only forwards method/message and does not implement RFC 5435 validation, options, tests or transport policy. |
 
 
@@ -467,7 +507,8 @@ test, `${name}` interpolation and match variables. Strings keep their decoded
 text in the parsed script and are expanded when the statement using them runs.
 Constant strings are still checked at parse time; a redirect address, vacation
 `:from` or envelope part built from variables is checked once expanded, and an
-invalid one is a runtime error with the fail-safe keep. A comparator name is
+invalid one is a runtime error with the fail-safe keep; so is a relational
+operator built from variables. A comparator name is
 not expanded (VARIABLES-11, [#100](https://github.com/rest-mail/go-sieve/issues/100)).
 `TestDifferentialVariables` compares the extension with foxcpp/go-sieve;
 `TestDifferentialVariablesDepartures` pins three places where foxcpp departs from
@@ -486,12 +527,12 @@ up to 4000 characters, match variables `${0}` to `${9}`.
 | VARIABLES-08 | 3.2 | MUST | Tests are short-circuited and evaluated left to right, so a test not evaluated sets no match variables. | `TestVariables_MatchVariablesShortCircuit`, `TestDifferentialVariables` |
 | VARIABLES-09 | 4 | MUST | The name given to `set` is a constant identifier; a match variable, a namespace or any other invalid name is a syntax error. | `TestVariables_SetName` |
 | VARIABLES-10 | 4 | Normative | `set` stores the value for the running evaluation only, does not affect the implicit keep and combines with every other action. | `TestVariables_SetScope` |
-| VARIABLES-11 | 3 | Normative | Every action and test argument is expanded when it runs, with values only then known checked then; the `:comparator` name is checked at parse time and so cannot be built from a variable (gap: [#100](https://github.com/rest-mail/go-sieve/issues/100)). | `TestVariables_Actions`, `TestAddressLists_Variables` |
+| VARIABLES-11 | 3 | Normative | Every action and test argument is expanded when it runs, with values only then known checked then, the relational operator of `:value` and `:count` included; the `:comparator` name is checked at parse time and so cannot be built from a variable (gap: [#100](https://github.com/rest-mail/go-sieve/issues/100)). | `TestVariables_Actions`, `TestAddressLists_Variables`, `TestDifferentialRelationalDepartures` |
 | VARIABLES-12 | 4.1 | MUST | Modifier names are case-insensitive; an unknown modifier, or two of one precedence, is a syntax error; modifiers apply in precedence order, largest first. | `TestVariables_Modifiers`, `TestDifferentialVariables` |
 | VARIABLES-13 | 4.1.1–4.1.3 | Normative | `:length` gives the number of characters, `:quotewildcard` quotes `*`, `?` and `\`, and the case modifiers change only US-ASCII letters. | `TestVariables_ModifierValues`, `TestDifferentialVariables` |
 | VARIABLES-14 | 5 | MUST NOT | `string` is true if any source matches any key, with `:is` by default, and strips no whitespace. | `TestVariables_StringTest`, `TestDifferentialVariables` |
 | VARIABLES-15 | 6 | MUST | At least 128 distinct variables, names of 32 characters and values of 4000 characters are supported. | `TestVariables_Limits`, `TestDifferentialVariablesDepartures` |
 | VARIABLES-16 | 6 | SHOULD | A constant value over the limit is a parse error; a longer value found at run time is truncated on a character boundary, never an error. | `TestVariables_ValueTruncation` |
 | VARIABLES-17 | 6 | MUST | Match variables `${1}` to `${9}` are supported, and a reference to a higher index is a syntax error found at parse time. | `TestVariables_MatchVariableLimit` |
-| VARIABLES-18 | 5 | Normative | With `relational`, `string :count` counts the non-empty sources. | n/a: not supported yet: `relational` is not implemented, see https://github.com/rest-mail/go-sieve/issues/95. |
-| VARIABLES-19 | 3.2 | MAY | An extension defining a match type may set match variables; the local `:regex` match type sets none, so only `:matches` does. | `TestVariables_MatchVariables` |
+| VARIABLES-18 | 5 | Normative | With `relational`, `string :count` counts the non-empty sources. | `TestVariables_StringCount`, `TestDifferentialRelationalSubaddress` |
+| VARIABLES-19 | 3.2 | MAY | An extension defining a match type may set match variables; the local `:regex` match type sets none, so only `:matches` does. | `TestVariables_MatchVariables`, `TestAddressLists_Variables` |

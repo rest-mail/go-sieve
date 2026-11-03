@@ -57,9 +57,12 @@
 // match variables ${0} to ${9} filled by :matches. Strings are expanded when
 // the statement using them runs, and variables last for one [Script.Evaluate].
 //
-// Match types: :is, :contains, :matches (glob with * and ?), and a non-standard
-// :regex extension. Comparators: i;ascii-casemap (the default), i;octet, and
-// i;ascii-numeric. Address parts: :all, :localpart, :domain.
+// Match types: :is, :contains, :matches (glob with * and ?), the relational
+// :value and :count (RFC 5231), and a non-standard :regex extension.
+// Comparators: i;ascii-casemap (the default), i;octet, and i;ascii-numeric, each
+// with equality and ordering. Address parts: :all, :localpart, :domain, and the
+// subaddress :user and :detail (RFC 5233), split by the host's detail encoding
+// given with [WithSubaddress].
 //
 // # require and extensions
 //

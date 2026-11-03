@@ -10,7 +10,7 @@ import (
 // lists would, while still holding one address at a time and stopping at the
 // first match.
 //
-// checklist: VARIABLES-07 VARIABLES-11
+// checklist: VARIABLES-07 VARIABLES-11 VARIABLES-19
 func TestAddressLists_Variables(t *testing.T) {
 	fields := map[string]string{
 		"from": "Ann <ann@one.example>",
@@ -43,10 +43,67 @@ func TestAddressLists_Variables(t *testing.T) {
 		}
 	}
 
+	// With relational and subaddress too: an operator built from a variable,
+	// :detail and :user feeding the match variables, and :value and :count
+	// leaving the match variables of the last :matches as they were.
+	subFields := map[string]string{"from": "ann+news@one.example", "to": "bob@two.example, carol+x+y@three.example"}
+	const subReq = `require ["fileinto", "variables", "relational", "subaddress", "comparator-i;ascii-numeric"]; set "h" "to"; set "op" "GT"; `
+	for _, test := range []string{
+		`address :detail :matches ["from", "${h}"] "*"`,
+		`address :user :matches "${h}" "c*"`,
+		`address :detail :matches "${h}" "*+*"`,
+		`address :value "${op}" :localpart "${h}" "bob"`,
+		`allof (address :matches "from" "*+*", address :value "${op}" :domain "${h}" "a")`,
+		`allof (address :matches "from" "*+*", address :count "eq" :comparator "i;ascii-numeric" ["from", "${h}"] "3")`,
+	} {
+		script, err := Parse(subReq + `if ` + test + ` { fileinto "hit=${0}|${1}|${2}"; } else { fileinto "miss=${1}"; }`)
+		if err != nil {
+			t.Fatalf("%s: %v", test, err)
+		}
+		built, lazy := builtAndLazy(subFields, nil)
+		want, got := newRecExec(), newRecExec()
+		script.Evaluate(built, want)
+		script.Evaluate(lazy, got)
+		if got.meta["deliver_to_folder"] != want.meta["deliver_to_folder"] {
+			t.Errorf("%s: lists give %q, built lists %q", test, got.meta["deliver_to_folder"], want.meta["deliver_to_folder"])
+		}
+		if !strings.HasPrefix(want.meta["deliver_to_folder"], "hit=") {
+			t.Errorf("%s: did not match: %q", test, want.meta["deliver_to_folder"])
+		}
+	}
+	for test, folder := range map[string]string{
+		`address :detail :matches ["from", "${h}"] "*"`:                                    "hit=news|news|",
+		`address :user :matches "${h}" "c*"`:                                               "hit=carol|arol|",
+		`address :detail :matches "${h}" "*+*"`:                                            "hit=x+y|x|y",
+		`address :value "${op}" :localpart "${h}" "bob"`:                                   "hit=||",
+		`allof (address :matches "from" "*+*", address :value "${op}" :domain "${h}" "a")`: "hit=ann+news@one.example|ann|news@one.example",
+	} {
+		script, err := Parse(subReq + `if ` + test + ` { fileinto "hit=${0}|${1}|${2}"; }`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, lazy := builtAndLazy(subFields, nil)
+		ex := newRecExec()
+		script.Evaluate(lazy, ex)
+		if ex.meta["deliver_to_folder"] != folder {
+			t.Errorf("%s: folder %q, want %q", test, ex.meta["deliver_to_folder"], folder)
+		}
+	}
+	// An operator that expands to no operator is a runtime error with the
+	// fail-safe keep, on the lists as on built ones.
+	script, err := Parse(subReq + `set "op" "bogus"; if address :value "${op}" "${h}" "x" { fileinto "hit"; }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, lazy := builtAndLazy(subFields, nil)
+	if out := script.Evaluate(lazy, newRecExec()); out.Error == nil || !out.ImplicitKeep {
+		t.Errorf("bogus operator: %+v, want a runtime error and the implicit keep", out)
+	}
+
 	// Still one address at a time, stopping at the first match.
 	long := strings.TrimSuffix(strings.Repeat("a@b.example,", 1000), ",")
 	lists := &parsedLists{fields: map[string]string{"from": "first@example.com," + long}}
-	script, err := Parse(`require ["fileinto", "variables"]; set "f" "From";
+	script, err = Parse(`require ["fileinto", "variables"]; set "f" "From";
 if address :matches "${f}" "*@*" { fileinto "${1}"; }`)
 	if err != nil {
 		t.Fatal(err)

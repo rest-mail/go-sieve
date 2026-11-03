@@ -3,6 +3,7 @@ package sieve
 import (
 	"fmt"
 	"net/mail"
+	"strconv"
 	"strings"
 	"time"
 
@@ -577,15 +578,22 @@ func (st *evalState) evalTest(t sieveTest) bool {
 		}
 		return size < tt.limit
 	case *headerTest:
-		values := gatherHeaderValues(msg, st.expandList(tt.headers))
-		return st.matchValues(values, tt.matchType, tt.comparator, tt.keys)
+		headers := st.expandList(tt.headers)
+		if tt.matchType == ":count" {
+			return st.countMatches(headerFieldCount(msg, headers), tt.relation, tt.comparator, tt.keys)
+		}
+		values := gatherHeaderValues(msg, headers)
+		return st.matchValues(values, tt.matchType, tt.relation, tt.comparator, tt.keys)
 	case *addressTest:
 		headers := st.expandList(tt.headers)
+		if tt.matchType == ":count" {
+			return st.countMatches(addressCount(msg, headers), tt.relation, tt.comparator, tt.keys)
+		}
 		if msg.Headers.Lists != nil {
 			return st.anyAddress(headers, tt)
 		}
-		values := gatherAddressValues(msg, headers, tt.addressPart)
-		return st.matchValues(values, tt.matchType, tt.comparator, tt.keys)
+		values := gatherAddressValues(msg, headers, tt.addressPart, tt.subaddress)
+		return st.matchValues(values, tt.matchType, tt.relation, tt.comparator, tt.keys)
 	case *envelopeTest:
 		parts := st.expandList(tt.parts)
 		if st.vars != nil {
@@ -595,20 +603,119 @@ func (st *evalState) evalTest(t sieveTest) bool {
 				}
 			}
 		}
-		values := gatherEnvelopeValues(msg, parts, tt.addressPart)
-		return st.matchValues(values, tt.matchType, tt.comparator, tt.keys)
+		if tt.matchType == ":count" {
+			return st.countMatches(envelopeCount(msg, parts), tt.relation, tt.comparator, tt.keys)
+		}
+		values := gatherEnvelopeValues(msg, parts, tt.addressPart, tt.subaddress)
+		return st.matchValues(values, tt.matchType, tt.relation, tt.comparator, tt.keys)
 	case *bodyTest:
 		if msg.NoBody {
 			return false
 		}
 		// RFC 5173 §6: wildcards in a body test do not set match variables,
 		// so the keys are expanded but compared without capturing.
-		return match.Any(bodyValues(msg, tt.transform, st.expandList(tt.contentTypes)), tt.matchType, tt.comparator, st.expandList(tt.keys))
+		return matchPlain(bodyValues(msg, tt.transform, st.expandList(tt.contentTypes)), tt.matchType, st.expandRelation(tt.matchType, tt.relation), tt.comparator, st.expandList(tt.keys))
 	case *stringTest:
 		// RFC 5229 §5: the sources come from the script, unstripped.
-		return st.matchValues(st.expandList(tt.sources), tt.matchType, tt.comparator, tt.keys)
+		sources := st.expandList(tt.sources)
+		if tt.matchType == ":count" {
+			return st.countMatches(stringCount(sources), tt.relation, tt.comparator, tt.keys)
+		}
+		return st.matchValues(sources, tt.matchType, tt.relation, tt.comparator, tt.keys)
 	}
 	return false
+}
+
+// matchPlain applies a match type to values without setting match variables:
+// the relational :value (RFC 5231 §4.1) or one of the others.
+func matchPlain(values []string, matchType, relation, comparator string, keys []string) bool {
+	if matchType == ":value" {
+		return match.AnyValue(values, relation, comparator, keys)
+	}
+	return match.Any(values, matchType, comparator, keys)
+}
+
+// countMatches implements the :count match type (RFC 5231 §4.2): the number
+// of entities, written in decimal, is the left side of the relation and each
+// expanded key a right side; the test is true if any key satisfies it. A count
+// sets no match variables (RFC 5229 §3.2).
+func (st *evalState) countMatches(n int, relation, comparator string, keys []string) bool {
+	return match.AnyValue([]string{strconv.Itoa(n)}, st.expandRelation(":count", relation), comparator, st.expandList(keys))
+}
+
+// stringCount is the string test's :count (RFC 5229 §5): an empty source counts
+// 0 and any other 1, summed over the list.
+func stringCount(sources []string) int {
+	n := 0
+	for _, s := range sources {
+		if s != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// headerFieldCount is the header test's :count (RFC 5231 §4.2): the total
+// number of instances of the named fields, summed over the names. A field
+// holding several addresses is one instance. A structured field is one
+// instance when set; each Raw value is one more.
+func headerFieldCount(msg *Message, names []string) int {
+	n := 0
+	for _, name := range names {
+		if !validHeaderName(name) {
+			continue
+		}
+		lower := strings.ToLower(name)
+		h := msg.Headers
+		var set bool
+		switch lower {
+		case "subject":
+			set = h.Subject != ""
+		case "from":
+			set = len(formatAddresses(h.list("from", h.From))) > 0
+		case "to":
+			set = len(formatAddresses(h.list("to", h.To))) > 0
+		case "cc":
+			set = len(formatAddresses(h.list("cc", h.Cc))) > 0
+		case "bcc":
+			set = len(formatAddresses(h.list("bcc", h.Bcc))) > 0
+		case "message-id":
+			set = h.MessageID != ""
+		case "in-reply-to":
+			set = h.InReplyTo != ""
+		case "date":
+			set = h.Date != ""
+		case "references":
+			set = len(h.References) > 0
+		}
+		if set {
+			n++
+		}
+		for k, vals := range h.Raw {
+			if match.ASCIIFold(k) == lower {
+				n += len(vals)
+			}
+		}
+	}
+	return n
+}
+
+// envelopeCount is the envelope test's :count (RFC 5231 §4.2): the number of
+// addresses in the named parts. A null reverse-path counts as 0 and any other
+// MAIL FROM as 1.
+func envelopeCount(msg *Message, parts []string) int {
+	n := 0
+	for _, name := range parts {
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "from":
+			if msg.Envelope.From != "" {
+				n++
+			}
+		case "to":
+			n += len(msg.Envelope.To)
+		}
+	}
+	return n
 }
 
 // messageSize returns the octet count the size test (RFC 5228 §5.9) compares
@@ -819,55 +926,90 @@ func formatAddresses(addrs []Address) []string {
 // whether some value matches some key, so neither order nor repeats can change its answer. With
 // variables, headers are the expanded field names; the keys are expanded once here, and a :matches
 // sets the match variables from the first address that matches. It visits addresses in the order
-// gatherAddressValues lists them, so that is the same address either way.
+// gatherAddressValues lists them, so that is the same address either way. An address with no
+// :detail (RFC 5233 §4) gives no value, as in gatherAddressValues.
 func (st *evalState) anyAddress(headers []string, tt *addressTest) bool {
-	msg := st.msg
 	keys := st.expandList(tt.keys)
+	relation := st.expandRelation(tt.matchType, tt.relation)
 	matched := false
 	one := make([]string, 1)
-	visit := func(spec string) bool {
+	eachListedAddress(st.msg, headers, func(spec string) bool {
+		v, ok := addressPartOf(spec, tt.addressPart, tt.subaddress)
+		if !ok {
+			return true
+		}
+		one[0] = v
+		matched = st.matchExpanded(one, tt.matchType, relation, tt.comparator, keys)
+		return !matched
+	})
+	return matched
+}
+
+// eachListedAddress visits, through msg.Headers.Lists, the addr-spec of every address that
+// addressList gives for each of names, in the same order. It stops when visit answers false.
+func eachListedAddress(msg *Message, names []string, visit func(spec string) bool) {
+	stopped := false
+	each := func(spec string) bool {
 		if spec == "" {
 			return true
 		}
-		one[0] = addressPartOf(spec, tt.addressPart)
-		matched = st.matchExpanded(one, tt.matchType, tt.comparator, keys)
-		return !matched
+		stopped = !visit(spec)
+		return !stopped
 	}
-	for _, name := range headers {
+	for _, name := range names {
 		if !validHeaderName(name) {
 			continue
 		}
 		lower := strings.ToLower(name)
 		switch lower {
 		case "from", "to", "cc", "bcc":
-			msg.Headers.Lists.Specs(lower, visit)
+			msg.Headers.Lists.Specs(lower, each)
 		case "sender", "reply-to",
 			"resent-from", "resent-to", "resent-cc", "resent-bcc", "resent-sender":
 		default:
 			continue
 		}
 		for k, vals := range msg.Headers.Raw {
-			if matched || match.ASCIIFold(k) != lower {
+			if stopped || match.ASCIIFold(k) != lower {
 				continue
 			}
 			for _, v := range vals {
-				if !matched {
-					msg.Headers.Lists.RawSpecs(v, visit)
+				if !stopped {
+					msg.Headers.Lists.RawSpecs(v, each)
 				}
 			}
 		}
-		if matched {
-			return true
+		if stopped {
+			return
 		}
 	}
-	return matched
 }
 
-func gatherAddressValues(msg *Message, names []string, part string) []string {
+// addressCount is the address test's :count (RFC 5231 §4.2): the number of
+// addresses in the named fields, summed over the names. A group counts its
+// mailboxes, not its name.
+func addressCount(msg *Message, names []string) int {
+	n := 0
+	if msg.Headers.Lists != nil {
+		eachListedAddress(msg, names, func(string) bool {
+			n++
+			return true
+		})
+		return n
+	}
+	for _, name := range names {
+		n += len(addressList(msg, name))
+	}
+	return n
+}
+
+func gatherAddressValues(msg *Message, names []string, part string, sub Subaddress) []string {
 	var out []string
 	for _, n := range names {
 		for _, addr := range addressList(msg, n) {
-			out = append(out, addressPartOf(addr, part))
+			if v, ok := addressPartOf(addr, part, sub); ok {
+				out = append(out, v)
+			}
 		}
 	}
 	return out
@@ -940,11 +1082,13 @@ func addressSpecs(addrs []Address) []string {
 	return out
 }
 
-func gatherEnvelopeValues(msg *Message, parts []string, part string) []string {
+func gatherEnvelopeValues(msg *Message, parts []string, part string, sub Subaddress) []string {
 	var out []string
 	for _, name := range parts {
 		for _, v := range envelopeValues(msg, name) {
-			out = append(out, addressPartOf(dropSourceRoute(v), part))
+			if p, ok := addressPartOf(dropSourceRoute(v), part, sub); ok {
+				out = append(out, p)
+			}
 		}
 	}
 	return out
@@ -993,10 +1137,12 @@ func dropSourceRoute(addr string) string {
 	return addr
 }
 
-// addressPartOf extracts the requested part (:all/:localpart/:domain) from an
-// address. For an address without an "@", the whole string is the local part
-// and the domain is empty.
-func addressPartOf(addr, part string) string {
+// addressPartOf extracts the requested part (:all/:localpart/:domain, or the
+// subaddress :user/:detail under sub) from an address. For an address without
+// an "@", the whole string is the local part and the domain is empty. ok is
+// false only for :detail of an address that encodes no detail, which then
+// matches no key at all (RFC 5233 §4).
+func addressPartOf(addr, part string, sub Subaddress) (value string, ok bool) {
 	// The last @ may be dtext inside a bracketed domain literal (RFC
 	// 2822 §3.4.1). Locate the separator before that literal, while still
 	// allowing @ inside a quoted local-part. Structured addresses and
@@ -1007,20 +1153,53 @@ func addressPartOf(addr, part string) string {
 			i = literal
 		}
 	}
+	local := addr
+	if i >= 0 {
+		local = addr[:i]
+	}
 	switch part {
 	case ":localpart":
-		if i >= 0 {
-			return addr[:i]
-		}
-		return addr
+		return local, true
 	case ":domain":
 		if i >= 0 {
-			return addr[i+1:]
+			return addr[i+1:], true
 		}
-		return ""
+		return "", true
+	case ":user":
+		if user, _, has := splitSubaddress(local, sub); has {
+			return user, true
+		}
+		// No detail encoded: :user is the whole local part (RFC 5233 §4).
+		return local, true
+	case ":detail":
+		_, detail, has := splitSubaddress(local, sub)
+		return detail, has
 	default: // :all
-		return addr
+		return addr, true
 	}
+}
+
+// splitSubaddress splits a local part into user and detail at the first
+// occurrence of the separator (RFC 5233 §4 leaves repeated separators to the
+// implementation). has is false when the local part encodes no detail: there
+// is no separator, subaddressing is off, or the detail would be empty and the
+// mail system does not allow that.
+func splitSubaddress(local string, sub Subaddress) (user, detail string, has bool) {
+	if sub.Separator == "" {
+		return "", "", false
+	}
+	before, after, found := strings.Cut(local, sub.Separator)
+	if !found {
+		return "", "", false
+	}
+	user, detail = before, after
+	if sub.DetailFirst {
+		user, detail = after, before
+	}
+	if detail == "" && sub.NoEmptyDetail {
+		return "", "", false
+	}
+	return user, detail, true
 }
 
 // ── Matching ─────────────────────────────────────────────────────────
