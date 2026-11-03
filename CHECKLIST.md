@@ -65,7 +65,7 @@ The extension audits and the owner decisions on hasflag, delivered flags,
 | SIEVE-CORE-17 | 4.2 | MUST | Preserve existing Received fields and increase their count before a redirected message leaves the implementation. | n/a: the host owns wire serialization and trace fields; a Received added before filtering can satisfy the increase. No message header is added by this evaluator. |
 | SIEVE-CORE-18 | 4.2 | MUST | A redirected message with a null incoming envelope sender must retain a null outgoing envelope sender. | n/a: Executor.Redirect receives the destination and copy flag; the host retains the original envelope and selects the outgoing reverse-path. This cannot be certified by a destination callback test. |
 | SIEVE-CORE-19 | 4.2, 10 | MUST | Provide administrator controls to limit redirect abuse, specifically the number of redirects per script. | n/a: host policy duty; there is no built-in redirect count option. A host Executor must enforce the limit and signal a runtime error when exceeded. |
-| SIEVE-CORE-20 | 4.2 | MUST NOT | A redirect silently ignored for policy reasons must not cancel the implicit keep. | n/a: planned (https://github.com/rest-mail/go-sieve/issues/93): Redirect has no return value for a policy skip and the evaluator cancels keep before the callback. A host must not silently skip and rely on Outcome.ImplicitKeep; it must preserve delivery itself or signal an error for the fail-safe keep. |
+| SIEVE-CORE-20 | 4.2 | MUST NOT | A redirect silently ignored for policy reasons must not cancel the implicit keep. | `TestRFC5228RedirectPolicySkip` |
 | SIEVE-CORE-21 | 4.4 | MUST | Discard is silent and does not generate a DSN, MDN or other non-delivery notification. | `TestRFC5228DiscardIsSilent` |
 | SIEVE-CORE-22 | 5.1 | MUST | Restrict address tests to address-bearing fields and include From, To, Cc, Bcc, Sender, Resent-From and Resent-To. | `TestRFC5228AddressHeaderRestriction` |
 | SIEVE-CORE-23 | 5.4 | MUST | Drop source routes before every envelope comparison, including all, localpart and domain. | `TestRFC5228EnvelopeDropsSourceRoutes` |
@@ -180,10 +180,9 @@ and `mailbox` have separate sections below. `regex` and `notify` are local
 extensions; their names do not establish conformance to an RFC or draft.
 
 The broad overview rows below retain their existing test mappings. In
-particular, SIEVE-EXT-02 proves flag callbacks, not delivery of flags: FLAGS-18/19
-record that gap. Planned flag state, raw-body matching and mailbox queries are tracked in
-[go-sieve#89](https://github.com/rest-mail/go-sieve/issues/89),
-[#90](https://github.com/rest-mail/go-sieve/issues/90) and
+particular, SIEVE-EXT-02 proves flag callbacks; delivery of flags is FLAGS-16
+to FLAGS-19. Planned raw-body matching and mailbox queries are tracked in
+[go-sieve#90](https://github.com/rest-mail/go-sieve/issues/90) and
 [#91](https://github.com/rest-mail/go-sieve/issues/91).
 Relational and subaddress have their own sections below. Variables are not
 implemented; literal strings do not provide that capability.
@@ -191,7 +190,7 @@ implemented; literal strings do not provide that capability.
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
 | SIEVE-EXT-01 | RFC 5230, 6131 | Normative | `vacation` (with `:days`, `:seconds`, `:subject`, a reason) asks the host to send an auto-reply to the envelope sender; it is suppressed for the null reverse-path. | `TestSieve_Vacation_Basic`, `TestSieve_Vacation_DefaultDays`, `TestSieve_Vacation_Conditional`, `TestSieve_Vacation_UsesEnvelopeSender`, `TestSieve_Vacation_MultiLine`, `TestSieve_Vacation_SecondsGranularity`, `TestSieve_Vacation_NullReversePathSuppressed`, `TestVacation_ReplyTo`, `TestExtensionArguments_Parse` |
-| SIEVE-EXT-02 | RFC 5232 | Normative | `setflag`, `addflag` and `removeflag` report flag changes through the host callback; the unimplemented delivery semantics are recorded in FLAGS-18/19. | `TestSieve_SetAndAddFlag`, `TestSieve_RemoveFlag`, `TestSieve_SetFlagEscaped`, `TestExtensionArguments_Parse` |
+| SIEVE-EXT-02 | RFC 5232 | Normative | `setflag`, `addflag` and `removeflag` report flag changes through the host callback; delivery of flags is FLAGS-16 to FLAGS-19. | `TestSieve_SetAndAddFlag`, `TestSieve_RemoveFlag`, `TestSieve_SetFlagEscaped`, `TestExtensionArguments_Parse` |
 | SIEVE-EXT-03 | RFC 5173 | Normative | `body` tests the text of the message body (HTML tags stripped, the plain part of a multipart preferred) with a match type and comparator. | `TestSieve_BodyContains`, `TestSieve_BodyContains_NoMatch`, `TestSieve_BodyContains_HTMLStripped`, `TestSieve_BodyContains_MultipartPlainPreferred`, `TestSieve_BodyIs`, `TestExtractBodyText_PlainText`, `TestExtractBodyText_HTML`, `TestExtractBodyText_Multipart`, `TestExtractBodyText_MultipartHTMLOnly`, `TestStripHTMLTags`, `TestEvaluate_BodyTest_DepthBounded`, `TestEvaluate_BodyTest_ContentDepthBounded`, `TestEvaluate_BodyTest_DepthWithinCapStillMatches`, `TestEvaluate_BodyTest_PartCountBounded` |
 | SIEVE-EXT-04 | RFC 3894 | Normative | `:copy` on `fileinto` and `redirect` leaves the implicit keep in effect. | `TestSieve_RedirectCopyTag`, `TestSieve_CopyImplicitKeep`, `TestSieve_FileintoCopyDistinctFromConsuming`, `TestExtensionArguments_Parse`, `TestDifferentialEvaluate` |
 | SIEVE-EXT-05 | RFC 5429, 5490 | Normative | `reject` refuses the message with a reason (each clause of RFC 5429 is in the next section); `fileinto :create` asks the host to create the mailbox. | `TestSieve_Reject`, `TestSieve_FileintoCreate`, `TestExtensionArguments_Parse` |
@@ -320,11 +319,13 @@ side of RFC 5228.
 
 [RFC 5232](https://www.rfc-editor.org/rfc/rfc5232) requirements, clause by
 clause. Section numbers in this table refer to RFC 5232. The SIEVE-EXT-02 row
-above remains the overview. The library passes each `setflag`, `addflag` and
+above remains the overview. The library holds the internal variable for each
+evaluation, tests it with `hasflag`, and passes each `setflag`, `addflag` and
 `removeflag` to `Executor.Flag` with its list of flags cleaned up as §2
-requires; the host holds the flag set (the "internal variable") and applies it
-to the message it stores. The `variables` extension is not supported, so the
-rows about variable names cover only the error they must cause.
+requires. A host that implements `FlagDeliverer` receives every keep and
+fileinto with its effective flags; `Outcome.ImplicitKeepFlags` carries the
+implicit keep's. The `variables` extension is not supported, so the rows about
+variable names cover only the error they must cause.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
@@ -343,10 +344,10 @@ rows about variable names cover only the error they must cause.
 | FLAGS-13 | 3.3 | MUST | Without automatic duplicate removal, `removeflag` removes every occurrence of a flag; removing a flag that is not set is not an error. | `TestFlags_DuplicatesRemoved`, `TestSieve_RemoveFlag` |
 | FLAGS-14 | 6 | Normative | The extension does not change the implicit keep. | `TestFlags_ImplicitKeepUnchanged` |
 | FLAGS-15 | 3 | MUST NOT | Scripts do not assume the order or the case of flags in a list. | n/a: a requirement on scripts, not on the implementation. |
-| FLAGS-16 | 3 | Normative | Without a variable name the actions work on the internal variable, empty when the script starts; `addflag` adds, `removeflag` removes and `setflag` replaces. | n/a: host's job: the host holds the set and applies each operation `Executor.Flag` reports. |
-| FLAGS-17 | 1, 4 | MUST | The `hasflag` test (match type defaulting to `:is`, comparator defaulting to `i;ascii-casemap`, `:count` counting distinct flags). | n/a: not supported yet, see https://github.com/rest-mail/go-sieve/issues/89: the library does not hold the flag set, so it cannot test it. |
-| FLAGS-18 | 3, 5 | MUST | `keep` and `fileinto` (and the implicit keep) deliver with the internal variable's flags, or with only the `:flags` list when it is given. | n/a: not supported yet, see https://github.com/rest-mail/go-sieve/issues/89: `:flags` is parsed and then dropped, as `Executor.Keep` and `Executor.FileInto` carry no flags. |
-| FLAGS-19 | 3; RFC 5228 §2.10.3 | MUST | When repeated `keep` or `fileinto` deliveries are merged, the last list of flags wins. | n/a: not supported yet, follows FLAGS-18. |
+| FLAGS-16 | 3 | Normative | Without a variable name the actions work on the internal variable, empty when the script starts; `addflag` adds, `removeflag` removes and `setflag` replaces. | `TestFlags_InternalVariable` |
+| FLAGS-17 | 1, 4 | MUST | The `hasflag` test (match type defaulting to `:is`, comparator defaulting to `i;ascii-casemap`, `:count` counting distinct flags). | `TestFlags_Hasflag` |
+| FLAGS-18 | 3, 5 | MUST | `keep` and `fileinto` (and the implicit keep) deliver with the internal variable's flags, or with only the `:flags` list when it is given. | `TestFlags_DeliveryFlags` |
+| FLAGS-19 | 3; RFC 5228 §2.10.3 | MUST | When repeated `keep` or `fileinto` deliveries are merged, the last list of flags wins. | `TestFlags_MergedDeliveryLastFlagsWin` |
 | FLAGS-20 | 5 | MUST | Flags the mailbox cannot store are ignored, and failing to store one is not a runtime error. | n/a: host's job: the library stores nothing, and `Executor.Flag` returns no error. |
 | FLAGS-21 | 7 | Normative | The extension sets flags only on the message being processed, never on other messages in the store. | n/a: host's job: `Executor.Flag` is called for the current message only. |
 

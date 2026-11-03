@@ -22,6 +22,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   first occurrence; an address without a detail matches no `:detail` key, and
   `:user` is then the whole local part. Closes #96.
 - Checklist sections for RFC 5231 and RFC 5233 with the RFCs' own examples.
+- imap4flags flag state (RFC 5232). The evaluator holds the internal flag
+  variable for each evaluation and implements the `hasflag` test (`:is` and
+  `i;ascii-casemap` by default, `:count` counting distinct flags). Hosts that
+  also implement the optional `FlagDeliverer` interface receive every `keep`
+  and `fileinto` with its effective flags: the `:flags` list when given,
+  otherwise the internal variable when the action ran. Merged duplicate
+  deliveries keep the last flag list, so these calls come once per
+  destination after the script finishes. `Outcome.ImplicitKeepFlags` carries
+  the implicit keep's flags. Closes #89.
+- `RedirectReporter`, an optional Executor interface whose `TryRedirect`
+  tells a forwarded redirect (nil) from one host policy silently skipped
+  (`ErrRedirectSkipped`), which no longer cancels the implicit keep, and from a
+  runtime failure (any other error), which fails safe to the implicit keep.
+  Closes #93.
+
+### Migrating host executors
+
+Nothing breaks: an Executor that implements neither new interface behaves as
+before, but it still stores no delivery flags and cannot skip a redirect.
+
+- To store flags, add `KeepWithFlags(flags []string)` and
+  `FileIntoWithFlags(folder string, create bool, flags []string)`; they replace
+  `Keep` and `FileInto`, which are then not called. Deliver the implicit keep
+  with `Outcome.ImplicitKeepFlags` instead of a flag set rebuilt from `Flag`
+  calls. `Flag` is still called for each flag action.
+- To skip a redirect for policy, add `TryRedirect(addr string, copy bool) error`
+  and return `sieve.ErrRedirectSkipped`; it replaces `Redirect`. Return other
+  errors instead of panicking for a runtime failure.
+- `keep :flags "a" :flags "b";` is now refused, like a repeated `fileinto` tag.
 
 ## [0.7.0] - 2026-10-26
 

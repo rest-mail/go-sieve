@@ -112,6 +112,7 @@ func TestFlags_FlagsTagSyntax(t *testing.T) {
 	bad := []string{
 		`require "imap4flags"; keep :flags;`,
 		`require ["imap4flags", "fileinto"]; fileinto :flags "a" :flags "b" "Archive";`,
+		`require "imap4flags"; keep :flags "a" :flags "b";`,
 		`require "imap4flags"; redirect :flags "a" "a@example.com";`,
 		`require "imap4flags"; discard :flags "a";`,
 	}
