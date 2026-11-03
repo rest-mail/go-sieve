@@ -60,12 +60,12 @@ func checkSieveNumberReference(t *testing.T, literal string) {
 	}
 	for _, relation := range []string{"over", "under"} {
 		src := fmt.Sprintf("if size :%s %s { discard; }", relation, literal)
-		script, parseErr := Parse(src)
+		script, parseErr := Parse(crlf(src))
 		if (parseErr == nil) != representable {
-			t.Fatalf("Parse(%q): error=%v; representable=%v", src, parseErr, representable)
+			t.Fatalf("Parse(crlf(%q)): error=%v; representable=%v", src, parseErr, representable)
 		}
-		if (Validate(src) == nil) != representable {
-			t.Fatalf("Validate(%q) disagrees with reference", src)
+		if (Validate(crlf(src)) == nil) != representable {
+			t.Fatalf("Validate(crlf(%q)) disagrees with reference", src)
 		}
 		if !representable {
 			continue

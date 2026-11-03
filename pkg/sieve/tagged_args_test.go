@@ -57,7 +57,7 @@ if body :domain "y" { keep; }`},
 		{"redirect with unsupported :list", `redirect :list "a@b.com";`},
 	}
 	for _, tc := range bad {
-		if err := Validate(tc.script); err == nil {
+		if err := Validate(crlf(tc.script)); err == nil {
 			t.Errorf("%s: expected Validate to reject the script, but it parsed:\n%s", tc.name, tc.script)
 		}
 	}
@@ -83,7 +83,7 @@ if body :regex "urgent.*" { keep; }`,
 		`if size :under 500 { keep; }`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("Validate rejected a valid single-tag script: %v\n%s", err, s)
 		}
 	}

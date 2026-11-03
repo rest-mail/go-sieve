@@ -165,8 +165,8 @@ if true { fileinto "Unreached"; }`
 //
 // checklist: SIEVE-ACT-07
 func TestSieve_RuntimeErrorKeepsMessage(t *testing.T) {
-	s, err := Parse(`require "fileinto";
-if true { fileinto "Boom"; }`)
+	s, err := Parse(crlf(`require "fileinto";
+if true { fileinto "Boom"; }`))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}

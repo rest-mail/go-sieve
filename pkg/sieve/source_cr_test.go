@@ -50,7 +50,7 @@ func TestRFC5228SourceCRFollowingOctets(t *testing.T) {
 
 // checklist: SIEVE-CORE-49
 func TestRFC5228SourceCRDiagnostic(t *testing.T) {
-	for _, prefix := range []string{"", "\r\n", "keep;\r\n/* a\r\nb */\r\n", "# legacy LF\n"} {
+	for _, prefix := range []string{"", "\r\n", "keep;\r\n/* a\r\nb */\r\n"} {
 		for _, suffix := range []string{"", "\r", "x\r\nkeep;"} {
 			src := prefix + "# before\r" + suffix
 			want := fmt.Sprintf("sieve: line %d: bare CR in script", 1+strings.Count(prefix, "\n"))

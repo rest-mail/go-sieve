@@ -21,10 +21,10 @@ func TestEncodedCharacterUnicodeMalformedRangeLiteral(t *testing.T) {
 				// Sieve quoted strings escape only quotes and backslashes here.
 				quoted := `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(in) + `"`
 				src := `require ["encoded-character", "reject"]; reject ` + quoted + `;`
-				if err := Validate(src); err != nil {
+				if err := Validate(crlf(src)); err != nil {
 					t.Fatalf("Validate malformed encoding: %v", err)
 				}
-				script, err := Parse(src)
+				script, err := Parse(crlf(src))
 				if err != nil {
 					t.Fatal(err)
 				}

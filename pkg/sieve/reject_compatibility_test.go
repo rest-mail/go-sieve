@@ -25,10 +25,10 @@ func TestReject_VacationIncompatible(t *testing.T) {
 		} {
 			src := `require ["reject", "ereject", "vacation"]; ` + fmt.Sprintf(body, action)
 			t.Run(action+"/"+body, func(t *testing.T) {
-				if err := Validate(src); err == nil || !strings.Contains(err.Error(), "incompatible") {
+				if err := Validate(crlf(src)); err == nil || !strings.Contains(err.Error(), "incompatible") {
 					t.Errorf("Validate = %v, want incompatible actions error", err)
 				}
-				if script, err := Parse(src); err == nil || script != nil {
+				if script, err := Parse(crlf(src)); err == nil || script != nil {
 					t.Errorf("Parse = %v, %v; want nil script and error before evaluation", script, err)
 				}
 			})
@@ -51,10 +51,10 @@ func TestReject_VacationExclusiveBranches(t *testing.T) {
 			{`if header :is "Subject" "spam" { %s "no"; } else { keep; }`, "reject", "keep"},
 		} {
 			src := `require ["reject", "ereject", "vacation"]; ` + fmt.Sprintf(tc.body, action)
-			if err := Validate(src); err != nil {
-				t.Fatalf("Validate(%s): %v", src, err)
+			if err := Validate(crlf(src)); err != nil {
+				t.Fatalf("Validate(crlf(%s)): %v", src, err)
 			}
-			script, err := Parse(src)
+			script, err := Parse(crlf(src))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -94,7 +94,7 @@ func TestReject_OutcomeDistinguishesExtendedRefusal(t *testing.T) {
 		{`if false { ereject "skipped"; } reject "first";`, false},
 		{`if false { reject "skipped"; } ereject "first";`, true},
 	} {
-		script, err := Parse(`require ["reject", "ereject"]; ` + tc.body)
+		script, err := Parse(crlf(`require ["reject", "ereject"]; ` + tc.body))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -104,7 +104,7 @@ func TestReject_OutcomeDistinguishesExtendedRefusal(t *testing.T) {
 		}
 	}
 	for _, body := range []string{`keep;`, `discard;`, `if false { ereject "skipped"; }`} {
-		script, err := Parse(`require "ereject"; ` + body)
+		script, err := Parse(crlf(`require "ereject"; ` + body))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -32,6 +32,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   Closes #97.
 - Checklist sections for RFC 5231, RFC 5233 and RFC 5229 with the RFCs' own examples.
 
+### Changed (breaking)
+
+- Script source must end every line in CRLF (RFC 5228 §2 and the §8.1
+  grammar). A bare LF is now refused wherever it occurs, in whitespace, hash
+  and bracket comments, quoted strings and multiline strings, with the error
+  `sieve: line N: bare LF in script`, as NUL and bare CR already were. A
+  `text:` string's value therefore always ends its lines in CRLF. An
+  encoded-character value such as `${hex:0A}` may still produce LF. Scripts
+  saved with Unix line endings no longer parse: a host that accepts scripts
+  from users, for example over ManageSieve or a web form, should turn each
+  bare LF into CRLF when the script is uploaded and store the result, and
+  convert scripts it already stores before upgrading. Closes #92.
+
 ## [0.7.0] - 2026-10-26
 
 ### Changed (breaking)

@@ -16,9 +16,9 @@ import (
 // the Executor, in order, as "op:flag flag".
 func flagOps(t *testing.T, script string) []string {
 	t.Helper()
-	s, err := sieve.Parse(script)
+	s, err := sieve.Parse(crlf(script))
 	if err != nil {
-		t.Fatalf("Parse(%q): %v", script, err)
+		t.Fatalf("Parse(crlf(%q)): %v", script, err)
 	}
 	ex := newRecExec()
 	s.Evaluate(sieveEmail(), ex)
@@ -45,7 +45,7 @@ func TestFlags_RequiresCapability(t *testing.T) {
 		`require ["imap4flags", "fileinto"]; fileinto :flags "a" "Archive";`,
 	}
 	for _, s := range good {
-		if err := sieve.Validate(s); err != nil {
+		if err := sieve.Validate(crlf(s)); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -57,7 +57,7 @@ func TestFlags_RequiresCapability(t *testing.T) {
 		`require "fileinto"; fileinto :flags "a" "Archive";`,
 	}
 	for _, s := range bad {
-		if err := sieve.Validate(s); err == nil {
+		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted without require \"imap4flags\", want an error", s)
 		}
 	}
@@ -89,7 +89,7 @@ func TestFlags_VariableNameRefused(t *testing.T) {
 		`require "imap4flags"; addflag "flagvar" ["\\Deleted", "\\Answered"];`,
 		`require "imap4flags"; removeflag "flagvar" "$MDNRequired";`,
 	} {
-		if err := sieve.Validate(s); err == nil {
+		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -105,7 +105,7 @@ func TestFlags_FlagsTagSyntax(t *testing.T) {
 		`require ["imap4flags", "fileinto"]; fileinto :flags "\\Seen" "Archive";`,
 	}
 	for _, s := range good {
-		if err := sieve.Validate(s); err != nil {
+		if err := sieve.Validate(crlf(s)); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -116,7 +116,7 @@ func TestFlags_FlagsTagSyntax(t *testing.T) {
 		`require "imap4flags"; discard :flags "a";`,
 	}
 	for _, s := range bad {
-		if err := sieve.Validate(s); err == nil {
+		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}

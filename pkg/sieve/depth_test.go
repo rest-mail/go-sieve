@@ -60,7 +60,7 @@ func TestParse_RejectsDeeplyNestedTests(t *testing.T) {
 		{"anyof chain", nestedAnyofScript(DefaultMaxDepth + 50)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Parse(tc.src)
+			_, err := Parse(crlf(tc.src))
 			if err == nil {
 				t.Fatalf("expected a depth-limit error, got nil")
 			}
@@ -75,7 +75,7 @@ func TestParse_RejectsDeeplyNestedTests(t *testing.T) {
 //
 // checklist: SIEVE-CMD-05
 func TestParse_RejectsDeeplyNestedBlocks(t *testing.T) {
-	_, err := Parse(nestedBlockScript(DefaultMaxDepth + 50))
+	_, err := Parse(crlf(nestedBlockScript(DefaultMaxDepth + 50)))
 	if err == nil {
 		t.Fatalf("expected a depth-limit error, got nil")
 	}
@@ -91,10 +91,10 @@ func TestParse_RejectsDeeplyNestedBlocks(t *testing.T) {
 func TestParse_AcceptsNestingUpToLimit(t *testing.T) {
 	// DefaultMaxDepth-1 "not" wrappers plus the inner "true" == DefaultMaxDepth
 	// test-parse levels, which is exactly at the limit.
-	if _, err := Parse(nestedNotScript(DefaultMaxDepth - 1)); err != nil {
+	if _, err := Parse(crlf(nestedNotScript(DefaultMaxDepth - 1))); err != nil {
 		t.Fatalf("script at the depth limit was rejected: %v", err)
 	}
-	if _, err := Parse(nestedBlockScript(DefaultMaxDepth)); err != nil {
+	if _, err := Parse(crlf(nestedBlockScript(DefaultMaxDepth))); err != nil {
 		t.Fatalf("blocks at the depth limit were rejected: %v", err)
 	}
 }
@@ -104,14 +104,14 @@ func TestParse_AcceptsNestingUpToLimit(t *testing.T) {
 // checklist: SIEVE-CMD-05
 func TestParse_WithMaxDepth(t *testing.T) {
 	src := nestedNotScript(20)
-	if _, err := Parse(src, WithMaxDepth(5)); err == nil {
+	if _, err := Parse(crlf(src), WithMaxDepth(5)); err == nil {
 		t.Fatalf("expected rejection with a tight limit, got nil")
 	}
-	if _, err := Parse(src, WithMaxDepth(100)); err != nil {
+	if _, err := Parse(crlf(src), WithMaxDepth(100)); err != nil {
 		t.Fatalf("expected acceptance with a generous limit, got: %v", err)
 	}
 	// A non-positive value falls back to the default.
-	if _, err := Parse(nestedNotScript(DefaultMaxDepth-1), WithMaxDepth(0)); err != nil {
+	if _, err := Parse(crlf(nestedNotScript(DefaultMaxDepth-1)), WithMaxDepth(0)); err != nil {
 		t.Fatalf("WithMaxDepth(0) should fall back to the default: %v", err)
 	}
 }
@@ -124,10 +124,10 @@ func TestParse_WithMaxDepth(t *testing.T) {
 // checklist: SIEVE-CMD-05
 func TestParse_DeeplyNestedDoesNotCrash(t *testing.T) {
 	const huge = 2_000_000
-	if _, err := Parse(nestedNotScript(huge)); err == nil {
+	if _, err := Parse(crlf(nestedNotScript(huge))); err == nil {
 		t.Fatalf("expected a depth-limit error for a %d-deep script, got nil", huge)
 	}
-	if _, err := Parse(nestedBlockScript(huge)); err == nil {
+	if _, err := Parse(crlf(nestedBlockScript(huge))); err == nil {
 		t.Fatalf("expected a depth-limit error for %d-deep blocks, got nil", huge)
 	}
 }

@@ -20,16 +20,16 @@ func TestMultiLineString_HashCommentAfterMarker(t *testing.T) {
 	valid := []struct {
 		name, src, want string
 	}{
-		{"space then comment", "text: # note\nbody\n.\n", "body\n"},
-		{"tab then comment, CRLF", "text:\t# note\r\nbody\r\n.\r\n", "body\r\n"},
-		{"comment right after the colon", "text:# note\n.\n", ""},
-		{"empty comment", "text: #\nbody\n.\n", "body\n"},
-		{"upper-case marker", "TEXT: # note\nbody\n.\n", "body\n"},
+		{"space then comment", "text: # note\r\nbody\r\n.\r\n", "body\r\n"},
+		{"tab then comment", "text:\t# note\r\nbody\r\n.\r\n", "body\r\n"},
+		{"comment right after the colon", "text:# note\r\n.\r\n", ""},
+		{"empty comment", "text: #\r\nbody\r\n.\r\n", "body\r\n"},
+		{"upper-case marker", "TEXT: # note\r\nbody\r\n.\r\n", "body\r\n"},
 		// The comment runs to the end of the line, so tokens and quotes in it
 		// are not lexed.
-		{"comment holding tokens", "text: # \"x\" ; { /* \nbody\n.\n", "body\n"},
+		{"comment holding tokens", "text: # \"x\" ; { /* \r\nbody\r\n.\r\n", "body\r\n"},
 		// A body line that looks like a comment is string content.
-		{"body line starting with #", "text: # note\n# not a comment\n.\n", "# not a comment\n"},
+		{"body line starting with #", "text: # note\r\n# not a comment\r\n.\r\n", "# not a comment\r\n"},
 	}
 	for _, tc := range valid {
 		t.Run(tc.name, func(t *testing.T) {
@@ -62,7 +62,7 @@ func TestMultiLineString_HashCommentAfterMarker(t *testing.T) {
 	}
 	for name, src := range malformed {
 		t.Run(name, func(t *testing.T) {
-			if err := Validate(src); err == nil {
+			if err := Validate(crlf(src)); err == nil {
 				t.Errorf("%q was accepted", src)
 			}
 		})
@@ -75,7 +75,7 @@ func TestMultiLineString_HashCommentAfterMarker(t *testing.T) {
 		".\n" +
 		";"
 	r := runSieve(t, script, sieveEmail())
-	if body := r.meta["vacation_reply_body"]; body != "I am away.\n" {
-		t.Errorf("vacation body = %q, want %q", body, "I am away.\n")
+	if body := r.meta["vacation_reply_body"]; body != "I am away.\r\n" {
+		t.Errorf("vacation body = %q, want %q", body, "I am away.\r\n")
 	}
 }

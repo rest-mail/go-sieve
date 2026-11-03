@@ -21,9 +21,9 @@ func expanded(t *testing.T, script string, msg *sieve.Message) string {
 	if msg == nil {
 		msg = sieveEmail()
 	}
-	s, err := sieve.Parse(script)
+	s, err := sieve.Parse(crlf(script))
 	if err != nil {
-		t.Fatalf("Parse(%q): %v", script, err)
+		t.Fatalf("Parse(crlf(%q)): %v", script, err)
 	}
 	ex := newRecExec()
 	if out := s.Evaluate(msg, ex); out.Error != nil {
@@ -53,7 +53,7 @@ func TestVariables_RequiresCapability(t *testing.T) {
 		`require "variables"; set "a" "b";`,
 		`require "variables"; if string "a" "a" { keep; }`,
 	} {
-		if err := sieve.Validate(s); err != nil {
+		if err := sieve.Validate(crlf(s)); err != nil {
 			t.Errorf("%q: %v", s, err)
 		}
 	}
@@ -63,7 +63,7 @@ func TestVariables_RequiresCapability(t *testing.T) {
 		`if false { set "a" "b"; }`,
 		`require "variable"; set "a" "b";`,
 	} {
-		if err := sieve.Validate(s); err == nil {
+		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted without require \"variables\", want an error", s)
 		}
 	}
@@ -171,7 +171,7 @@ func TestVariables_Namespaces(t *testing.T) {
 		varsReq + `if header :is "${ns.x}" "v" { keep; }`,
 		varsReq + `if false { set "x" "${ns.x}"; }`,
 	} {
-		if err := sieve.Validate(s); err == nil {
+		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -263,11 +263,11 @@ func TestVariables_MatchVariables(t *testing.T) {
 
 	// Only ${0}..${9} are supported: a higher index is a syntax error.
 	for _, ref := range []string{`${10}`, `${010}`, `${99999999999999999999}`} {
-		if err := sieve.Validate(varsReq + `fileinto "` + ref + `";`); err == nil {
+		if err := sieve.Validate(crlf(varsReq + `fileinto "` + ref + `";`)); err == nil {
 			t.Errorf("%s: accepted, want an error", ref)
 		}
 	}
-	if err := sieve.Validate(varsReq + `fileinto "${0009}";`); err != nil {
+	if err := sieve.Validate(crlf(varsReq + `fileinto "${0009}";`)); err != nil {
 		t.Errorf("${0009}: %v", err)
 	}
 
@@ -307,7 +307,7 @@ func TestVariables_Set(t *testing.T) {
 		".\n" +
 		";\n" +
 		"fileinto \"${vacation}\";\n"
-	want := "Dear Mr Coyote,\nI'm out, please leave a message after the meep.\n"
+	want := "Dear Mr Coyote,\r\nI'm out, please leave a message after the meep.\r\n"
 	if got := expanded(t, script, nil); got != want {
 		t.Errorf("set example: got %q, want %q", got, want)
 	}
@@ -327,12 +327,12 @@ func TestVariables_Set(t *testing.T) {
 // checklist: VARIABLES-07
 func TestVariables_SetName(t *testing.T) {
 	for _, name := range []string{"a", "_", "_x9", "A_B_C", strings.Repeat("n", 200)} {
-		if err := sieve.Validate(varsReq + `set "` + name + `" "v";`); err != nil {
+		if err := sieve.Validate(crlf(varsReq + `set "` + name + `" "v";`)); err != nil {
 			t.Errorf("set %q: %v", name, err)
 		}
 	}
 	for _, name := range []string{"", "1", "0", "01", "a.b", "ns.x", "${a}", "a-b", "a b", "9a", "é"} {
-		if err := sieve.Validate(varsReq + `set "` + name + `" "v";`); err == nil {
+		if err := sieve.Validate(crlf(varsReq + `set "` + name + `" "v";`)); err == nil {
 			t.Errorf("set %q: accepted, want an error", name)
 		}
 	}
@@ -343,7 +343,7 @@ func TestVariables_SetName(t *testing.T) {
 		varsReq + `set "a" ["b"];`,
 		varsReq + `set 1 "b";`,
 	} {
-		if err := sieve.Validate(s); err == nil {
+		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -391,7 +391,7 @@ func TestVariables_Modifiers(t *testing.T) {
 		`set :reverse "b" "x";`,
 		`set :lower "b" :upper "x";`,
 	} {
-		if err := sieve.Validate(varsReq + s); err == nil {
+		if err := sieve.Validate(crlf(varsReq + s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -439,7 +439,7 @@ func TestVariables_StringTest(t *testing.T) {
 		`if string :is :is "a" "a" { keep; }`,
 		`if string :is { keep; }`,
 	} {
-		if err := sieve.Validate(req + s); err == nil {
+		if err := sieve.Validate(crlf(req + s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -458,13 +458,13 @@ func TestVariables_Limits(t *testing.T) {
 		fmt.Fprintf(&b, "set \"v%d\" \"%d\";\n", i, i)
 	}
 	b.WriteString(`set "V0" "again";`)
-	if err := sieve.Validate(b.String()); err != nil {
+	if err := sieve.Validate(crlf(b.String())); err != nil {
 		t.Fatalf("%d variables: %v", sieve.MaxVariables, err)
 	}
 	if sieve.MaxVariables < 128 {
 		t.Errorf("MaxVariables = %d, RFC 5229 requires at least 128", sieve.MaxVariables)
 	}
-	if err := sieve.Validate(b.String() + `set "one_too_many" "x";`); err == nil {
+	if err := sieve.Validate(crlf(b.String() + `set "one_too_many" "x";`)); err == nil {
 		t.Errorf("%d distinct variables accepted", sieve.MaxVariables+1)
 	}
 
@@ -478,10 +478,10 @@ func TestVariables_Limits(t *testing.T) {
 		t.Errorf("4000-character value not held: %d octets", len(got))
 	}
 	tooLong := strings.Repeat("x", sieve.MaxVariableValue+1)
-	if err := sieve.Validate(varsReq + `set "v" "` + tooLong + `";`); err == nil {
+	if err := sieve.Validate(crlf(varsReq + `set "v" "` + tooLong + `";`)); err == nil {
 		t.Error("constant value longer than MaxVariableValue accepted")
 	}
-	if err := sieve.Validate(varsReq + `set :length "v" "` + tooLong + `";`); err != nil {
+	if err := sieve.Validate(crlf(varsReq + `set :length "v" "` + tooLong + `";`)); err != nil {
 		t.Errorf(":length of a long constant is short: %v", err)
 	}
 
@@ -520,7 +520,7 @@ vacation :handle "away-${who}" :subject "Re: ${1}" :from "${who} <c@example.com>
 	msg := headerMessage("Subject", "Meeting tomorrow")
 	msg.Headers.To = []sieve.Address{{Address: "Coyote@example.org"}}
 	msg.Envelope.To = []string{"other@example.org"}
-	s, err := sieve.Parse(script)
+	s, err := sieve.Parse(crlf(script))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -537,7 +537,7 @@ vacation :handle "away-${who}" :subject "Re: ${1}" :from "${who} <c@example.com>
 	}
 
 	bad := `require ["vacation", "variables"]; set "f" "not a mailbox <"; vacation :from "${f}" "away";`
-	s, err = sieve.Parse(bad)
+	s, err = sieve.Parse(crlf(bad))
 	if err != nil {
 		t.Fatalf("Parse: %v (a :from from variables is checked when expanded)", err)
 	}
@@ -604,7 +604,7 @@ if allof (exists "${hdr}", header :contains "${hdr}" "sieve", envelope :domain :
 		`require ["variables"]; set "c" "i;octet"; if header :comparator "${c}" "Subject" "x" { keep; }`,
 		`require ["variables", "relational"]; set "o" "gt"; if header :value "${o}" "Subject" "x" { keep; }`,
 	} {
-		if err := sieve.Validate(s); err == nil {
+		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
@@ -639,7 +639,7 @@ fileinto "${fv}";`
 		`require ["imap4flags", "variables"]; setflag "fv" "\\Seen" "x";`,
 		`require ["imap4flags", "variables"]; setflag "${10}" "\\Seen";`,
 	} {
-		if err := sieve.Validate(s); err == nil {
+		if err := sieve.Validate(crlf(s)); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}
