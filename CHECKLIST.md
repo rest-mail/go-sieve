@@ -181,9 +181,8 @@ extensions; their names do not establish conformance to an RFC or draft.
 
 The broad overview rows below retain their existing test mappings. In
 particular, SIEVE-EXT-02 proves flag callbacks; delivery of flags is FLAGS-16
-to FLAGS-19. Planned raw-body matching and mailbox queries are tracked in
-[go-sieve#90](https://github.com/rest-mail/go-sieve/issues/90) and
-[#91](https://github.com/rest-mail/go-sieve/issues/91).
+to FLAGS-19. Raw-body matching is BODY-07 and the mailbox query MAILBOX-08 to
+MAILBOX-10.
 Relational and subaddress have their own sections below. Variables are not
 implemented; literal strings do not provide that capability.
 
@@ -370,7 +369,7 @@ names and matches them. `:text` (the default) matches one string: the first
 | BODY-04 | 5 | Normative | The default body transform is `:text`. | `TestBody_DefaultTransformIsText` |
 | BODY-05 | 4 | Normative | A message that is a header with no empty line after it has no body: every body test is false, even one for the empty string. | `TestBody_NoBodyIsFalse` |
 | BODY-06 | 4 | Normative | The body is matched as a whole, not line by line, so the strings matched hold CRLFs. | `TestBody_NotLineByLine` |
-| BODY-07 | 5.1 | MUST | `:raw` matches the whole undecoded body as one string: transfer encodings stay, and boundaries and the MIME headers of nested parts are part of the content. | n/a: not supported yet, see https://github.com/rest-mail/go-sieve/issues/90: `Message` holds no undecoded body, so `:raw` matches the same text as `:text`. |
+| BODY-07 | 5.1 | MUST | `:raw` matches the whole undecoded body as one string: transfer encodings stay, and boundaries and the MIME headers of nested parts are part of the content. | `TestBody_RawUndecoded`, `TestBody_RawIndependentOfOtherTransforms`, `TestBody_RawUnavailable` |
 | BODY-08 | 5.1 | MUST NOT | A message with syntax errors is still filtered with `:raw`. | n/a: host's job: the host parses the message into `Message`; evaluation never refuses one. |
 | BODY-09 | 5.2 | Normative | A `:content` type of `""` matches every type, a bare type each of its subtypes, and `type/subtype` only itself; one that begins or ends with a slash or has two slashes matches none. | `TestBody_ContentTypeRules`, `FuzzBodyContentTypeSelection` |
 | BODY-10 | 5.2 | Normative | The search for `:content` parts descends into multipart and `message/rfc822` parts; every part of a matching type is searched, and the test is true if any part matches any key. | `TestBody_ContentRecursive`, `TestBody_RFCExample` |
@@ -381,7 +380,7 @@ names and matches them. `:text` (the default) matches one string: the first
 | BODY-15 | 5.3 | MUST | All the text taken from one non-container part is in the same string. | `TestBody_TextKeepsPartTogether` |
 | BODY-16 | 5.3 | MAY | `:text` may strip mark-up; the library strips HTML tags. | `TestBody_DefaultTransformIsText`, `TestSieve_BodyContains_HTMLStripped` |
 | BODY-17 | 6 | MUST NOT | With the `variables` extension, wildcards in a body test do not set match variables. | n/a: the `variables` extension is not supported. |
-| BODY-18 | 5.1–5.3 | Normative | The example message and scripts of §5 give the results the RFC describes. | `TestBody_RFCExample` |
+| BODY-18 | 5.1–5.3 | Normative | The example message and scripts of §5 give the results the RFC describes. | `TestBody_RFCExample`, `TestBody_RawUndecoded` |
 | BODY-19 | 5.2; RFC 2045 §§2, 5.1 | Normative | MIME type selection is ASCII case-insensitive; Unicode case look-alikes do not select an ASCII type, independently of the body comparator. | `TestBody_ContentTypeASCIICase`, `FuzzBodyContentTypeSelection` |
 
 
@@ -404,9 +403,9 @@ test and cannot yet be evaluated.
 | MAILBOX-05 | 3.2 | Normative | Create a missing mailbox before delivering into it. | n/a: host's job: `Executor.FileInto` receives the folder and creation request; the library has no storage access. |
 | MAILBOX-06 | 3.2 | Normative | If the mailbox already exists, ignore the creation request. | n/a: host's job: only the host can determine whether the mailbox exists. |
 | MAILBOX-07 | 3.2; RFC 5228 §2.10.6 | Normative | A creation failure is an execution error, with fail-safe keep rather than message loss. | `TestMailbox_CreationFailure` |
-| MAILBOX-08 | 3.1 | Normative | `mailboxexists` accepts a string list and is true only when every mailbox exists and permits delivery by the script user. | n/a: not supported yet, see https://github.com/rest-mail/go-sieve/issues/91: the evaluator has no mailstore query API; this also prevents running the RFC's example. |
-| MAILBOX-09 | 3.1 | Normative | For IMAP storage, delivery eligibility means READ-WRITE without ACL, or the user's p or i ACL right. | n/a: follows MAILBOX-08; the host must check the evaluated user's rights, not just existence. |
-| MAILBOX-10 | 3.1 | Normative | An existence/permission check does not guarantee a subsequent delivery will succeed, such as when over quota. | n/a: follows MAILBOX-08; delivery and quota enforcement are the host's responsibility. |
+| MAILBOX-08 | 3.1 | Normative | `mailboxexists` accepts a string list and is true only when every mailbox exists and permits delivery by the script user. | `TestMailboxExists_Syntax`, `TestMailboxExists_RFCExample`, `TestMailboxExists_StringList`, `TestMailboxExists_QueryFailure`, `TestMailboxExists_NoQuery` |
+| MAILBOX-09 | 3.1 | Normative | For IMAP storage, delivery eligibility means READ-WRITE without ACL, or the user's p or i ACL right. | `TestMailboxExists_RFCExample`, `TestMailboxExists_StringList` |
+| MAILBOX-10 | 3.1 | Normative | An existence/permission check does not guarantee a subsequent delivery will succeed, such as when over quota. | `TestMailboxExists_NoDeliveryPromise` |
 | MAILBOX-11 | 3.3–3.4 | Normative | `mboxmetadata` provides mailbox annotation matching and existence tests, using the script user's permissions and private annotations. | n/a: unsupported separate capability; the parser rejects `require "mboxmetadata"`. |
 | MAILBOX-12 | 4–5 | Normative | `servermetadata` provides server annotation matching and existence tests; annotation access uses the script user's context, handles temporary failures and preserves script-level confidentiality. | n/a: unsupported separate capability; no annotations are retrieved and the parser rejects `require "servermetadata"`. |
 

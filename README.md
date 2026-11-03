@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Checklist: 180/264 mapped](https://img.shields.io/badge/checklist-180%2F264%20mapped-blue)](CHECKLIST.md)
+[![Checklist: 189/264 mapped](https://img.shields.io/badge/checklist-189%2F264%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve/pkg/sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -121,9 +121,9 @@ Check a script's syntax without evaluating it with `sieve.Validate(src)`.
 | Relational | `:value` and `:count` with `gt`, `ge`, `lt`, `le`, `eq`, `ne` (RFC 5231) on the header, address and envelope tests (`:value` also on `body`). `:count` counts header fields, mailboxes (group members included) or envelope addresses. |
 | Subaddress | `:user` and `:detail` address parts (RFC 5233). The host passes its detail encoding with `WithSubaddress`: separator (default `+`), detail before or after it, whether an empty detail exists, or none. A repeated separator splits at its first occurrence; an address without a detail matches no `:detail` key. |
 | Comparators | `i;ascii-casemap` (default), `i;octet`, `i;ascii-numeric` equality and ordering on arbitrarily long digit runs. A non-digit first octet, including leading whitespace, is positive infinity. |
-| Envelope and body | `envelope` (RFC 5228), `body` (RFC 5173): extracted `:text` and MIME-type-selected `:content`. `:raw` currently uses extracted text; see the planned gap below. |
+| Envelope and body | `envelope` (RFC 5228), `body` (RFC 5173): extracted `:text`, MIME-type-selected `:content`, and `:raw` on the host's undecoded `Message.RawBody`. |
 | Rejection | `reject` and `ereject` (RFC 5429); `Outcome.ExtendedReject` distinguishes them. |
-| Copies and folders | `:copy` on fileinto/redirect (RFC 3894); `fileinto :create` (RFC 5490). The host creates folders. |
+| Copies and folders | `:copy` on fileinto/redirect (RFC 3894); `fileinto :create` and `mailboxexists` (RFC 5490). The host creates folders and answers `mailboxexists` through the optional `MailboxChecker`. |
 | Flags | `setflag`, `addflag`, `removeflag` on the internal variable, with callbacks carrying normalized lists; `hasflag`; each delivery's effective flags through the optional `FlagDeliverer` and `Outcome.ImplicitKeepFlags` (RFC 5232). |
 | Vacation | RFC 5230 argument validation and suppression rules; RFC 6131 `vacation-seconds`. Persistent suppression and reply transport belong to the host. |
 | Encoded strings | `encoded-character`: `${hex:...}` and `${unicode:...}` (RFC 5228). |
@@ -150,6 +150,20 @@ must be treated as a runtime error: the callback can panic with an error, which
 `Evaluate` returns as `Outcome.Error` with `Outcome.ImplicitKeep` set. The
 callback has no error return, so a failure recorded only in host state is not
 visible to the evaluator.
+
+`mailboxexists` (RFC 5490 §3.1) asks the host: also implement
+`MailboxChecker` on the Executor you build for the script's user.
+`MailboxExists(name)` returns true when the mailbox exists and that user may
+deliver into it (IMAP: READ-WRITE without ACL, or the `p` or `i` right), false
+when it is missing or not writable, and an error when the mailstore cannot
+answer, which fails safe to the implicit keep through `Outcome.Error`. The test
+is true only if every named mailbox is. Without `MailboxChecker`,
+`mailboxexists` fails the same way with `sieve.ErrMailboxQueryUnavailable`.
+
+`body :raw` (RFC 5173 §5.1) matches `Message.RawBody`: everything after the
+header's empty line, undecoded, boundaries and nested MIME headers included.
+Set `RawBodySet` with it; without it, `body :raw` fails safe to the implicit
+keep with `sieve.ErrRawBodyUnavailable` rather than matching decoded text.
 
 Flags (RFC 5232): the evaluator holds the internal flag variable, which
 `hasflag` tests. To store each message with its flags, also implement
@@ -319,8 +333,6 @@ reason. That records a boundary or a gap, rather than claiming full conformance.
 
 | Gap | Issue |
 |-----|-------|
-| Supply an undecoded body for `body :raw` (BODY-07). | [#90](https://github.com/rest-mail/go-sieve/issues/90) |
-| Add a user-scoped host query for `mailboxexists` (MAILBOX-08/09/10). | [#91](https://github.com/rest-mail/go-sieve/issues/91) |
 | Reject bare LF throughout script source (SIEVE-CORE-44). | [#92](https://github.com/rest-mail/go-sieve/issues/92) |
 | Variables (RFC 5229): `set`, interpolation, match variables and the `string` test; `${name}` stays literal until then (VARIABLES-01). | [#97](https://github.com/rest-mail/go-sieve/issues/97) |
 

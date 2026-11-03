@@ -156,7 +156,7 @@ func TestBody_NoBodyIsFalse(t *testing.T) {
 		`require "body"; if not body :contains "x" { discard; }`,
 	}
 	headerOnly := &Message{Headers: Headers{Subject: "hi"}, NoBody: true}
-	emptyBody := &Message{Headers: Headers{Subject: "hi"}}
+	emptyBody := &Message{Headers: Headers{Subject: "hi"}, RawBodySet: true}
 	for i, s := range scripts {
 		last := i == len(scripts)-1
 		if got := bodyMatches(t, s, headerOnly); got != last {
