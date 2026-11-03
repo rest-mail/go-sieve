@@ -22,7 +22,7 @@ func TestRequire_RejectsUnsupportedExtension(t *testing.T) {
 		`require ["fileinto", "boguscap"];
 if true { fileinto "X"; }`,
 		`require "editheader"; keep;`,
-		`require "variables"; keep;`,
+		`require "enotify"; keep;`,
 	}
 	for _, s := range bad {
 		if err := Validate(s); err == nil {

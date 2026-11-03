@@ -47,10 +47,15 @@
 // Control commands: if / elsif / else, require, stop.
 //
 // Tests: address, header, envelope, exists, size (:over / :under), body, allof,
-// anyof, not, true / false.
+// anyof, not, true / false, and string (RFC 5229).
 //
 // Actions: keep, discard, fileinto (with :create), redirect, reject, imap4flags
-// (setflag / addflag / removeflag), vacation, notify.
+// (setflag / addflag / removeflag), vacation, notify, and set (RFC 5229).
+//
+// Variables (RFC 5229): with require "variables", ${name} in a string argument
+// is replaced by the variable's value when the test or action runs, and a
+// successful :matches or :regex sets the match variables ${0} to ${9}. See
+// [MaxVariables] and [MaxVariableValue] for the limits.
 //
 // Match types: :is, :contains, :matches (glob with * and ?), the relational
 // :value and :count (RFC 5231), and a non-standard :regex extension.

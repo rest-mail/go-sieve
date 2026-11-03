@@ -15,8 +15,8 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 
 RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`),
 RFC 5232 (`imap4flags`), RFC 5173 (`body`), RFC 5490 (`mailbox`),
-RFC 6131 (`vacation-seconds`), RFC 5231 (`relational`) and RFC 5233
-(`subaddress`) are checked clause by clause in their own sections. The `Received` and loop requirements of
+RFC 6131 (`vacation-seconds`), RFC 5231 (`relational`), RFC 5233
+(`subaddress`) and RFC 5229 (`variables`) are checked clause by clause in their own sections. The `Received` and loop requirements of
 `redirect` belong to the host, as recorded below.
 
 `TestDifferentialEvaluate` and `TestDifferentialParse` check the RFC 5228 items
@@ -185,8 +185,7 @@ record that gap. Planned flag state, raw-body matching and mailbox queries are t
 [go-sieve#89](https://github.com/rest-mail/go-sieve/issues/89),
 [#90](https://github.com/rest-mail/go-sieve/issues/90) and
 [#91](https://github.com/rest-mail/go-sieve/issues/91).
-Relational and subaddress have their own sections below. Variables are not
-implemented; literal strings do not provide that capability.
+Relational, subaddress and variables have their own sections below.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
@@ -265,7 +264,7 @@ headers. Host responsibilities are not claims of implementation conformance.
 | VACATION-18 | 4.2 | Normative | For tracking, identical explicit handles identify the same response even when other arguments differ. | n/a: host's job: the library reports Handle and HandleSet without discarding an empty handle (proved by VACATION-08); Executor performs tracking. |
 | VACATION-19 | 4.2 | Normative | Without a handle, synthesize response identity from the original :subject, :from, :mime and reason arguments. | n/a: host's job: the unchanged arguments, including SubjectSet, are reported (VACATION-04, VACATION-07, VACATION-26); Executor constructs its storage key. |
 | VACATION-20 | 4.2 | REQUIRED | Different response identities can elicit separate replies even within the interval for the same sender. | n/a: host's job: persistent de-duplication is outside this evaluator; it reports each selected action. |
-| VACATION-21 | 4.2 | MUST NOT | Expand variables before deriving the response-tracking identity. | n/a: the variables extension (RFC 5229) is unsupported; no variable expansion occurs. |
+| VACATION-21 | 4.2 | MUST | Expand variables before deriving the response-tracking identity: `:handle`, `:subject`, `:from`, `:addresses` and the reason reach the host expanded. | `TestVariables_Vacation` |
 | VACATION-22 | 4.2 | MAY | Reset previous-response records when a script changes. | n/a: host's job: script lifecycle and persistent tracking records are host-owned. |
 | VACATION-23 | 4.2 | MUST NOT | Limit remembered responses to fewer than 1000. | n/a: host's job: the library has no persistent response store or storage limit. |
 | VACATION-24 | 4.2 | SHOULD | When response tracking is bounded, discard the oldest records first. | n/a: host's job: eviction policy belongs to the persistent response store. |
@@ -323,8 +322,9 @@ clause. Section numbers in this table refer to RFC 5232. The SIEVE-EXT-02 row
 above remains the overview. The library passes each `setflag`, `addflag` and
 `removeflag` to `Executor.Flag` with its list of flags cleaned up as §2
 requires; the host holds the flag set (the "internal variable") and applies it
-to the message it stores. The `variables` extension is not supported, so the
-rows about variable names cover only the error they must cause.
+to the message it stores. With the `variables` extension an action given a
+variable name works on that variable instead (FLAGS-22); without it the name is
+an error (FLAGS-03).
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
@@ -349,6 +349,7 @@ rows about variable names cover only the error they must cause.
 | FLAGS-19 | 3; RFC 5228 §2.10.3 | MUST | When repeated `keep` or `fileinto` deliveries are merged, the last list of flags wins. | n/a: not supported yet, follows FLAGS-18. |
 | FLAGS-20 | 5 | MUST | Flags the mailbox cannot store are ignored, and failing to store one is not a runtime error. | n/a: host's job: the library stores nothing, and `Executor.Flag` returns no error. |
 | FLAGS-21 | 7 | Normative | The extension sets flags only on the message being processed, never on other messages in the store. | n/a: host's job: `Executor.Flag` is called for the current message only. |
+| FLAGS-22 | 3; RFC 5229 | Normative | With `variables`, `setflag`, `addflag` and `removeflag` take a variable name before the list of flags and change that variable instead of the internal one; the host is not called. Flag lists are expanded before they are cleaned up. | `TestVariables_FlagVariables` |
 
 
 ## RFC 5173 body extension
@@ -379,7 +380,7 @@ names and matches them. `:text` (the default) matches one string: the first
 | BODY-14 | 5.2 | SHOULD NOT | A NUL octet does not end the content being compared. | `TestBody_NULDoesNotTerminate` |
 | BODY-15 | 5.3 | MUST | All the text taken from one non-container part is in the same string. | `TestBody_TextKeepsPartTogether` |
 | BODY-16 | 5.3 | MAY | `:text` may strip mark-up; the library strips HTML tags. | `TestBody_DefaultTransformIsText`, `TestSieve_BodyContains_HTMLStripped` |
-| BODY-17 | 6 | MUST NOT | With the `variables` extension, wildcards in a body test do not set match variables. | n/a: the `variables` extension is not supported. |
+| BODY-17 | 6 | MUST NOT | With the `variables` extension, wildcards in a body test do not set match variables. | `TestVariables_BodyWildcards` |
 | BODY-18 | 5.1–5.3 | Normative | The example message and scripts of §5 give the results the RFC describes. | `TestBody_RFCExample` |
 | BODY-19 | 5.2; RFC 2045 §§2, 5.1 | Normative | MIME type selection is ASCII case-insensitive; Unicode case look-alikes do not select an ASCII type, independently of the body comparator. | `TestBody_ContentTypeASCIICase`, `FuzzBodyContentTypeSelection` |
 
@@ -447,6 +448,30 @@ separator splits at its first occurrence.
 | SUBADDRESS-05 | 4 | MUST | The detail encoding matches the encompassing mail system: the host sets the separator, whether the detail precedes it, whether a detail may be empty, or no subaddressing; repeated separators split at the first. | `TestSubaddress_HostEncoding` |
 | SUBADDRESS-06 | 4 | Normative | The example script of §4 files and redirects as it describes. | `TestSubaddress_RFCExample` |
 
+## RFC 5229 variables extension
+
+[RFC 5229](https://www.rfc-editor.org/rfc/rfc5229) requirements, clause by
+clause. Section numbers in this table refer to RFC 5229. Strings keep their
+written form (after quoting and encoded-character) and are expanded when control
+reaches the test or action they belong to. Comparator names and relational
+operators select behaviour at parse time and are not expanded. Redirect
+addresses, vacation `:from` and envelope parts built from variables are checked
+once expanded; a constant one is still checked by `Parse`.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| VARIABLES-01 | 2; RFC 5228 §3.2 | Normative | The capability string is `variables`; `set` and `string` are errors without it, and without it `${name}` is ordinary text. | `TestVariables_RequiresCapability` |
+| VARIABLES-02 | 3 | SHALL | Each variable-ref is replaced by the variable's value in one pass; names are case-insensitive, unknown variables are empty, malformed references stay verbatim, and the values current when control reaches the statement are used. The §3 examples give the RFC's results. | `TestVariables_Interpolation` |
+| VARIABLES-03 | 3.1 | Normative | Backslash quoting and encoded-character are resolved before substitution; the §3.1 examples give the RFC's results. | `TestVariables_QuotingAndEncoding` |
+| VARIABLES-04 | 3 | MUST | A reference to a namespace without a require of the extension that defines it is an error; no implemented extension defines one. | `TestVariables_Namespaces` |
+| VARIABLES-05 | 3.2, 6 | MUST | A successful `:matches` (and `:regex`) sets `${0}` to the matched value and `${1}`..`${9}` to the non-greedy wildcard matches; leading zeros are ignored, an out-of-range index is empty, a failed or non-wildcard match leaves them unchanged, tests short-circuit left to right, and a reference above `${9}` is a syntax error. The §3.2 examples give the RFC's results. | `TestVariables_MatchVariables` |
+| VARIABLES-06 | 4 | Normative | `set` stores the value under a case-insensitive name and does not affect the implicit keep; the §4 example gives the RFC's result. | `TestVariables_Set` |
+| VARIABLES-07 | 4 | MUST | The name is a constant variable-name; a match variable, a namespace or any other invalid name is a syntax error. | `TestVariables_SetName` |
+| VARIABLES-08 | 4.1 | MUST | Modifiers are case-insensitive and apply in precedence order; two of the same precedence or an unknown modifier is an error; case changes touch only US-ASCII letters and `:length` counts characters. The §4.1 examples give the RFC's results. | `TestVariables_Modifiers` |
+| VARIABLES-09 | 5 | MUST NOT | The `string` test matches script strings without stripping whitespace, defaults to `:is`, and its `:count` counts the non-empty strings. The §5 example gives the RFC's result. | `TestVariables_StringTest` |
+| VARIABLES-10 | 6 | MUST | At least 128 variables, 32-character names and 4000-character values are supported; a constant that is too long is a compile-time error, and a longer value built at run time is truncated at a character boundary, not an error. | `TestVariables_Limits` |
+| VARIABLES-11 | 3 | Normative | Every other string argument of a test or action is expanded when it runs: header and envelope names, keys, folders, redirect addresses (checked once expanded) and reject reasons. | `TestVariables_Actions` |
+
 ## Capability boundary and unimplemented extensions
 
 These rows distinguish implemented behavior from unsupported, independently
@@ -457,7 +482,6 @@ this library does not implement.
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
 | EXT-CAP-01 | RFC 5228 §3.2 | MUST | Accept exactly the inventoried capabilities; reject unsupported capability declarations and syntax rather than execute a partial script. | `TestExtensionCapabilityInventory` |
-| VARIABLES-01 | RFC 5229 §2–5 | Normative | `variables` enables interpolation, assignment and string-value tests. | n/a: not implemented; declaration, `set` and `string` are rejected; `${name}` stays literal without the extension. Planned: rest-mail/go-sieve#97. |
 | ENOTIFY-01 | RFC 5435 §2 | Normative | The standardized notification capability is `enotify`. | n/a: not implemented; `enotify` is rejected; the local `notify` action only forwards method/message and does not implement RFC 5435 validation, options, tests or transport policy. |
 
 
