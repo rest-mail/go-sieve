@@ -1280,12 +1280,17 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 			if err != nil {
 				return opts, err
 			}
+			matchTypeSet = true
+			opts.matchType = tag
+			if p.required["variables"] && hasVariableRef(s.Str) {
+				// RFC 5229 §3: expanded, then checked, when the test runs.
+				opts.relation = s.Str
+				break
+			}
 			op, ok := match.Relation(s.Str)
 			if !ok {
 				return opts, p.errf("unknown relational operator %q after %s: expected one of \"gt\", \"ge\", \"lt\", \"le\", \"eq\", \"ne\" (RFC 5231 §4)", s.Str, tag)
 			}
-			matchTypeSet = true
-			opts.matchType = tag
 			opts.relation = op
 		case ":comparator":
 			if comparatorSet {
@@ -1296,6 +1301,11 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 				return opts, err
 			}
 			comparatorSet = true
+			if p.required["variables"] && hasVariableRef(s.Str) {
+				// RFC 5229 §3: expanded, then checked, when the test runs.
+				opts.comparator = s.Str
+				break
+			}
 			// RFC 4790 §3.1 restricts collation identifiers to US-ASCII.
 			// Unicode lowercasing would accept dotted I as an ASCII i.
 			opts.comparator = match.ASCIIFold(s.Str)

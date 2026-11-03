@@ -599,12 +599,100 @@ if allof (exists "${hdr}", header :contains "${hdr}" "sieve", envelope :domain :
 	if err := sieve.Validate(`require ["variables", "envelope"]; if envelope "bogus" "" { keep; }`); err == nil {
 		t.Error("unknown constant envelope part accepted")
 	}
-	// Comparator names and relational operators are not expanded.
-	for _, s := range []string{
-		`require ["variables"]; set "c" "i;octet"; if header :comparator "${c}" "Subject" "x" { keep; }`,
-		`require ["variables", "relational"]; set "o" "gt"; if header :value "${o}" "Subject" "x" { keep; }`,
+}
+
+// TestVariables_ComparatorAndRelation checks that a comparator name and the
+// relational operator of :value and :count are expanded like every other
+// string (RFC 5229 §3). A constant one is still checked by Parse; one built
+// from variables is checked once expanded, when its test runs, and a bad one
+// is a run-time error that keeps the message (RFC 5228 §2.10.6).
+//
+// checklist: VARIABLES-12
+func TestVariables_ComparatorAndRelation(t *testing.T) {
+	const req = `require ["fileinto", "variables", "relational", "envelope", "body", "comparator-i;ascii-numeric"];` + "\n"
+	run := func(t *testing.T, script string) (sieve.Outcome, string) {
+		t.Helper()
+		s, err := sieve.Parse(crlf(script))
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", script, err)
+		}
+		ex := newRecExec()
+		return s.Evaluate(headerMessage("X-Priority", "3"), ex), ex.meta["deliver_to_folder"]
+	}
+	for _, tc := range []struct {
+		name, script string
+		hit          bool
+	}{
+		{"comparator", `set "c" "i;octet"; if header :is :comparator "${c}" "X-Priority" "3" { fileinto "Hit"; }`, true},
+		{"comparator in ASCII case", `set "c" "I;Octet"; if header :is :comparator "${c}" "X-Priority" "3" { fileinto "Hit"; }`, true},
+		{"comparator built from parts", `set "n" "numeric"; if header :value "gt" :comparator "i;ascii-${n}" "X-Priority" "20" { fileinto "Hit"; }`, false},
+		{"expanded comparator orders numerically", `set "c" "i;ascii-numeric"; if header :value "lt" :comparator "${c}" "X-Priority" "20" { fileinto "Hit"; }`, true},
+		{"expanded default comparator", `set "c" "i;ascii-casemap"; if header :value "lt" :comparator "${c}" "X-Priority" "20" { fileinto "Hit"; }`, false},
+		{"operator", `set "o" "gt"; if header :value "${o}" :comparator "i;ascii-numeric" "X-Priority" "2" { fileinto "Hit"; }`, true},
+		{"operator in ASCII case", `set "o" "LT"; if header :value "${o}" :comparator "i;ascii-numeric" "X-Priority" "2" { fileinto "Hit"; }`, false},
+		{"operator built from parts", `set "o" "e"; if header :value "${o}q" "X-Priority" "3" { fileinto "Hit"; }`, true},
+		{"operator from a match variable", `if string :matches "NE" "*" { } if string :value "${0}" :comparator "i;ascii-numeric" "5" "4" { fileinto "Hit"; }`, true},
+		{"header :count", `set "o" "eq"; if header :count "${o}" :comparator "i;ascii-numeric" "X-Priority" "1" { fileinto "Hit"; }`, true},
+		{"address :count", `set "o" "eq"; if address :count "${o}" :comparator "i;ascii-numeric" "from" "1" { fileinto "Hit"; }`, true},
+		{"envelope :count", `set "o" "ge"; if envelope :count "${o}" :comparator "i;ascii-numeric" "to" "1" { fileinto "Hit"; }`, true},
+		{"body :value", `set "o" "ge"; set "c" "i;octet"; if body :value "${o}" :comparator "${c}" :text "H" { fileinto "Hit"; }`, true},
+		{"string :value", `set "o" "ge"; if string :value "${o}" :comparator "i;ascii-numeric" "5" "3" { fileinto "Hit"; }`, true},
+		{"string :count", `set "o" "eq"; if string :count "${o}" :comparator "i;ascii-numeric" ["a", ""] "1" { fileinto "Hit"; }`, true},
+		// Only a test that runs checks its arguments.
+		{"bad value in a test that does not run", `if false { if header :value "${o}" :comparator "${c}" "X-Priority" "3" { keep; } } fileinto "Hit";`, true},
 	} {
-		if err := sieve.Validate(crlf(s)); err == nil {
+		t.Run(tc.name, func(t *testing.T) {
+			out, folder := run(t, req+tc.script)
+			if out.Error != nil {
+				t.Fatalf("Evaluate: %v", out.Error)
+			}
+			if got := folder == "Hit"; got != tc.hit {
+				t.Errorf("hit = %v, want %v", got, tc.hit)
+			}
+		})
+	}
+
+	// A bad expanded value stops the script with an error and keeps the
+	// message, discarding nothing that has not already run.
+	for _, tc := range []struct{ name, script, want string }{
+		{"unknown comparator", `set "c" "i;bogus"; if header :comparator "${c}" "X-Priority" "3" { fileinto "Hit"; }`, `comparator "i;bogus"`},
+		{"empty comparator", `if header :comparator "${unset}" "X-Priority" "3" { fileinto "Hit"; }`, `comparator ""`},
+		{"comparator without a match type", `set "c" "i;ascii-numeric"; if header :contains :comparator "${c}" "X-Priority" "3" { fileinto "Hit"; }`, "does not support the :contains match type"},
+		{"unknown operator", `set "o" "gte"; if header :value "${o}" "X-Priority" "3" { fileinto "Hit"; }`, `unknown relational operator "gte" after :value`},
+		{"empty operator", `if string :count "${unset}" "a" "1" { fileinto "Hit"; }`, `unknown relational operator "" after :count`},
+		{"operator with spaces", `set "o" " eq"; if header :value "${o}" "X-Priority" "3" { fileinto "Hit"; }`, `unknown relational operator " eq"`},
+		{"in a test that runs late", `set "o" "nope"; if anyof (false, body :value "${o}" "x") { fileinto "Hit"; }`, `unknown relational operator "nope"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out, folder := run(t, req+tc.script)
+			if out.Error == nil || !strings.Contains(out.Error.Error(), tc.want) {
+				t.Errorf("error = %v, want one containing %q", out.Error, tc.want)
+			}
+			if !out.ImplicitKeep || out.Disposition != sieve.Continue || folder != "" {
+				t.Errorf("outcome = %+v, folder %q; want the implicit keep only", out, folder)
+			}
+		})
+	}
+	// An undeclared comparator is refused at run time as Parse refuses a
+	// constant one.
+	out, _ := run(t, `require ["fileinto", "variables"]; set "c" "i;ascii-numeric"; if header :comparator "${c}" "X-Priority" "3" { fileinto "Hit"; }`)
+	if out.Error == nil || !strings.Contains(out.Error.Error(), "neither built in nor declared") {
+		t.Errorf("undeclared expanded comparator: %+v", out)
+	}
+
+	// Constant names keep the parse-time check, and so does a string without
+	// variables or with a reference RFC 5229 makes an error.
+	for _, s := range []string{
+		`require ["variables"]; if header :comparator "i;bogus" "Subject" "x" { keep; }`,
+		`require ["variables"]; if header :comparator "i;ascii-numeric" "Subject" "x" { keep; }`,
+		`require ["variables", "relational"]; if header :value "gte" "Subject" "x" { keep; }`,
+		`require ["variables", "relational"]; if header :value "${" "Subject" "x" { keep; }`,
+		`require ["variables", "relational"]; if header :value "${env.o}" "Subject" "x" { keep; }`,
+		`require ["variables"]; if header :comparator "${10}" "Subject" "x" { keep; }`,
+		`require "relational"; if header :value "${o}" "Subject" "x" { keep; }`,
+		`if header :comparator "${c}" "Subject" "x" { keep; }`,
+	} {
+		if err := sieve.Validate(s); err == nil {
 			t.Errorf("%q: accepted, want an error", s)
 		}
 	}

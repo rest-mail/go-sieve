@@ -229,7 +229,10 @@ func (s *Script) Evaluate(msg *Message, exec Executor) (out Outcome) {
 		redirected:   map[redirectDest]struct{}{},
 	}
 	if s.variables {
-		st.vs = &varState{vars: map[string]string{}}
+		st.vs = &varState{vars: map[string]string{}, declared: map[string]bool{}}
+		for _, name := range s.requires {
+			st.vs.declared[name] = true
+		}
 	}
 	// RFC 5228 §2.10.6: an execution error must not lose the message. If any
 	// action panics — typically a host Executor callback failing — recover and
@@ -533,43 +536,48 @@ func (st *evalState) evalTest(t sieveTest) bool {
 		}
 		return size < tt.limit
 	case *headerTest:
+		comparator, relation := st.matchArgs(tt.comparator, tt.matchType, tt.relation)
 		headers := st.expandList(tt.headers)
 		if tt.matchType == ":count" {
-			return countMatches(headerFieldCount(msg, headers), tt.relation, tt.comparator, st.expandList(tt.keys))
+			return countMatches(headerFieldCount(msg, headers), relation, comparator, st.expandList(tt.keys))
 		}
 		values := gatherHeaderValues(msg, headers)
-		return st.matchValues(values, tt.matchType, tt.relation, tt.comparator, tt.keys, true)
+		return st.matchValues(values, tt.matchType, relation, comparator, tt.keys, true)
 	case *addressTest:
+		comparator, relation := st.matchArgs(tt.comparator, tt.matchType, tt.relation)
 		headers := st.expandList(tt.headers)
 		if tt.matchType == ":count" {
 			n := 0
 			for _, h := range headers {
 				n += len(addressList(msg, h))
 			}
-			return countMatches(n, tt.relation, tt.comparator, st.expandList(tt.keys))
+			return countMatches(n, relation, comparator, st.expandList(tt.keys))
 		}
 		values := gatherAddressValues(msg, headers, tt.addressPart, tt.subaddress)
-		return st.matchValues(values, tt.matchType, tt.relation, tt.comparator, tt.keys, true)
+		return st.matchValues(values, tt.matchType, relation, comparator, tt.keys, true)
 	case *envelopeTest:
+		comparator, relation := st.matchArgs(tt.comparator, tt.matchType, tt.relation)
 		parts := st.expandList(tt.parts)
 		if tt.matchType == ":count" {
-			return countMatches(envelopeCount(msg, parts), tt.relation, tt.comparator, st.expandList(tt.keys))
+			return countMatches(envelopeCount(msg, parts), relation, comparator, st.expandList(tt.keys))
 		}
 		values := gatherEnvelopeValues(msg, parts, tt.addressPart, tt.subaddress)
-		return st.matchValues(values, tt.matchType, tt.relation, tt.comparator, tt.keys, true)
+		return st.matchValues(values, tt.matchType, relation, comparator, tt.keys, true)
 	case *bodyTest:
+		comparator, relation := st.matchArgs(tt.comparator, tt.matchType, tt.relation)
 		if msg.NoBody {
 			return false
 		}
 		// RFC 5173 §6: wildcards in a body test set no match variables.
-		return st.matchValues(st.bodyValues(tt), tt.matchType, tt.relation, tt.comparator, tt.keys, false)
+		return st.matchValues(st.bodyValues(tt), tt.matchType, relation, comparator, tt.keys, false)
 	case *stringTest:
+		comparator, relation := st.matchArgs(tt.comparator, tt.matchType, tt.relation)
 		// RFC 5229 §5: both sides come from the script, unstripped.
 		sources := st.expandList(tt.sources)
 		if tt.matchType == ":count" {
-			return countMatches(stringCount(sources), tt.relation, tt.comparator, st.expandList(tt.keys))
+			return countMatches(stringCount(sources), relation, comparator, st.expandList(tt.keys))
 		}
-		return st.matchValues(sources, tt.matchType, tt.relation, tt.comparator, tt.keys, true)
+		return st.matchValues(sources, tt.matchType, relation, comparator, tt.keys, true)
 	}
 	return false
 }

@@ -17,9 +17,9 @@ import (
 //
 // Strings are kept as written (after quoting and encoded-character decoding,
 // RFC 5229 §3.1) and expanded when control reaches the test or action they are
-// part of (§3). Strings that name a comparator or a relational operator are
-// not expanded: they select behaviour at parse time, so a reference there is
-// refused as an unknown comparator or operator.
+// part of (§3). That includes a comparator name and the relational operator
+// of :value and :count: Parse checks a constant one, and one built from
+// variables is checked once expanded, when its test runs.
 
 // Implementation limits (RFC 5229 §6).
 const (
@@ -342,6 +342,9 @@ type varState struct {
 	// matched holds the match variables of the most recent successful
 	// :matches (or :regex) match; index 0 is the matched source value.
 	matched []string
+	// declared holds the script's require names, for a comparator named
+	// at run time.
+	declared map[string]bool
 }
 
 // expand interpolates every variable-ref in s, in one pass (§3). Without the
@@ -438,6 +441,35 @@ func (st *evalState) matchValues(values []string, matchType, relation, comparato
 		}
 	}
 	return false
+}
+
+// matchArgs returns a test's comparator and relational operator, expanding
+// either one that holds a variable-ref (RFC 5229 §3) and checking it as Parse
+// checks a constant: the comparator must be built in or declared with require
+// (RFC 5228 §2.7.3), must support the match type, and the operator must be
+// one RFC 5231 §4 defines. A bad value is a run-time error: the script stops
+// and the message is kept (RFC 5228 §2.10.6).
+func (st *evalState) matchArgs(comparator, matchType, relation string) (string, string) {
+	if st.vs == nil {
+		return comparator, relation
+	}
+	if hasVariableRef(comparator) {
+		comparator = match.ASCIIFold(st.expand(comparator))
+		if comparator != defaultComparator && comparator != "i;octet" && !st.vs.declared["comparator-"+comparator] {
+			panic(fmt.Errorf("sieve: comparator %q is neither built in nor declared with require (RFC 5228 §2.7.3)", comparator))
+		}
+		if err := checkComparatorMatchType(comparator, matchType); err != nil {
+			panic(fmt.Errorf("sieve: %w", err))
+		}
+	}
+	if hasVariableRef(relation) {
+		op, ok := match.Relation(st.expand(relation))
+		if !ok {
+			panic(fmt.Errorf("sieve: unknown relational operator %q after %s: expected one of \"gt\", \"ge\", \"lt\", \"le\", \"eq\", \"ne\" (RFC 5231 §4)", st.expand(relation), matchType))
+		}
+		relation = op
+	}
+	return comparator, relation
 }
 
 // stringCount is the :count of the string test: each non-empty source counts
