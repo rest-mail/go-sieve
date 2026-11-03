@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The relational extension (RFC 5231, `require "relational"`): the `:value` and
+  `:count` match types with the operators `gt`, `ge`, `lt`, `le`, `eq` and `ne`.
+  Every comparator now orders as RFC 4790 §9 defines, `i;ascii-numeric` on digit
+  runs of any length. `:count` counts header fields for `header`, mailboxes
+  (group members included) for `address`, and addresses for `envelope`, where a
+  null reverse-path counts 0. Closes #95.
+- The subaddress extension (RFC 5233, `require "subaddress"`): the `:user` and
+  `:detail` address parts on the address and envelope tests. `WithSubaddress`
+  and `Subaddress` let the host give its mail system's encoding: the separator
+  (`DefaultSubaddress` uses `+`), whether the detail comes before it, whether an
+  empty detail exists, or no subaddressing. A repeated separator splits at the
+  first occurrence; an address without a detail matches no `:detail` key, and
+  `:user` is then the whole local part. Closes #96.
+- Checklist sections for RFC 5231 and RFC 5233 with the RFCs' own examples.
+
 ## [0.7.0] - 2026-10-26
 
 ### Changed (breaking)

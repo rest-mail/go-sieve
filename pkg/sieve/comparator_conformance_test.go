@@ -35,8 +35,8 @@ if header :is :comparator "i;bogus" "Subject" "x" { keep; }`},
 // with a substring match type. RFC 4790 §9.1 defines the comparator only for
 // equality and ordering of decimal integers and gives it no substring
 // operation, so combining it with :contains, :matches, or :regex is an error
-// rather than a casemap match. (This package has no relational :value/:count
-// extension, so :is is the only match type i;ascii-numeric applies to.)
+// rather than a casemap match. It applies to :is and to the ordering match
+// types :value and :count of the relational extension (RFC 5231).
 //
 // checklist: SIEVE-MT-07
 func TestComparator_AsciiNumericRejectsSubstringMatchTypes(t *testing.T) {
