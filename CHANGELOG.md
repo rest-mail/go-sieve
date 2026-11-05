@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `Headers.Lists` lets a host read From, To, Cc, Bcc and raw address fields when a test asks, in place of building every list up front. An `address` test then holds one address at a time and stops at its first match.
+
 ## [0.7.0] - 2026-10-26
 
 ### Changed (breaking)
