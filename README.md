@@ -328,6 +328,10 @@ The CI badge reports whether verification passed.
 
 Recent releases; see [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
+### v0.8.0 (2026-11-05)
+
+- `Headers.Lists` lets a host read address fields when a test asks, in place of building every list up front.
+
 ### v0.7.0 (2026-10-26)
 
 Breaking import change: public API moves to `pkg/sieve`, with lexical grammar
