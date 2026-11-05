@@ -47,6 +47,27 @@ type Headers struct {
 	Date       string
 	References []string
 	Raw        map[string][]string
+	// Lists, when set, reads From, To, Cc and Bcc when a test asks, in place of those fields, and
+	// reads a raw address field, so a host needn't hold a list no test asks for.
+	Lists AddressLists
+}
+
+// AddressLists is a host's reading of a message's address fields.
+type AddressLists interface {
+	// All is every address of a field, named in lower case: from, to, cc or bcc.
+	All(name string) []Address
+	// Specs visits the addr-spec of each address of that field. It stops when visit answers false.
+	Specs(name string, visit func(spec string) bool)
+	// RawSpecs visits the addr-spec of each address of a raw value, as mail.ParseAddressList reads
+	// it, and nothing for a value that doesn't read as a list. It stops when visit answers false.
+	RawSpecs(raw string, visit func(spec string) bool)
+}
+
+func (h Headers) list(name string, given []Address) []Address {
+	if h.Lists != nil {
+		return h.Lists.All(name)
+	}
+	return given
 }
 
 // Address is a structured email address.
@@ -503,6 +524,9 @@ func evalTest(t sieveTest, msg *Message) bool {
 		values := gatherHeaderValues(msg, tt.headers)
 		return match.Any(values, tt.matchType, tt.comparator, tt.keys)
 	case *addressTest:
+		if msg.Headers.Lists != nil {
+			return anyAddress(msg, tt)
+		}
 		values := gatherAddressValues(msg, tt.headers, tt.addressPart)
 		return match.Any(values, tt.matchType, tt.comparator, tt.keys)
 	case *envelopeTest:
@@ -551,10 +575,10 @@ func headerSize(h Headers) int64 {
 		size += int64(len(name) + len(": ") + len(value) + len("\r\n"))
 	}
 	add("Subject", h.Subject)
-	add("From", strings.Join(formatAddresses(h.From), ", "))
-	add("To", strings.Join(formatAddresses(h.To), ", "))
-	add("Cc", strings.Join(formatAddresses(h.Cc), ", "))
-	add("Bcc", strings.Join(formatAddresses(h.Bcc), ", "))
+	add("From", strings.Join(formatAddresses(h.list("from", h.From)), ", "))
+	add("To", strings.Join(formatAddresses(h.list("to", h.To)), ", "))
+	add("Cc", strings.Join(formatAddresses(h.list("cc", h.Cc)), ", "))
+	add("Bcc", strings.Join(formatAddresses(h.list("bcc", h.Bcc)), ", "))
 	add("Message-ID", h.MessageID)
 	add("In-Reply-To", h.InReplyTo)
 	add("Date", h.Date)
@@ -646,13 +670,13 @@ func headerValues(msg *Message, name string) []string {
 			out = append(out, msg.Headers.Subject)
 		}
 	case "from":
-		out = append(out, formatAddresses(msg.Headers.From)...)
+		out = append(out, formatAddresses(msg.Headers.list("from", msg.Headers.From))...)
 	case "to":
-		out = append(out, formatAddresses(msg.Headers.To)...)
+		out = append(out, formatAddresses(msg.Headers.list("to", msg.Headers.To))...)
 	case "cc":
-		out = append(out, formatAddresses(msg.Headers.Cc)...)
+		out = append(out, formatAddresses(msg.Headers.list("cc", msg.Headers.Cc))...)
 	case "bcc":
-		out = append(out, formatAddresses(msg.Headers.Bcc)...)
+		out = append(out, formatAddresses(msg.Headers.list("bcc", msg.Headers.Bcc))...)
 	case "message-id":
 		if msg.Headers.MessageID != "" {
 			out = append(out, msg.Headers.MessageID)
@@ -719,6 +743,49 @@ func formatAddresses(addrs []Address) []string {
 		}
 	}
 	return out
+}
+
+// anyAddress is match.Any of gatherAddressValues, holding one value at a time. match.Any only says
+// whether some value matches some key, so neither order nor repeats can change its answer.
+func anyAddress(msg *Message, tt *addressTest) bool {
+	matched := false
+	one := make([]string, 1)
+	visit := func(spec string) bool {
+		if spec == "" {
+			return true
+		}
+		one[0] = addressPartOf(spec, tt.addressPart)
+		matched = match.Any(one, tt.matchType, tt.comparator, tt.keys)
+		return !matched
+	}
+	for _, name := range tt.headers {
+		if !validHeaderName(name) {
+			continue
+		}
+		lower := strings.ToLower(name)
+		switch lower {
+		case "from", "to", "cc", "bcc":
+			msg.Headers.Lists.Specs(lower, visit)
+		case "sender", "reply-to",
+			"resent-from", "resent-to", "resent-cc", "resent-bcc", "resent-sender":
+		default:
+			continue
+		}
+		for k, vals := range msg.Headers.Raw {
+			if matched || match.ASCIIFold(k) != lower {
+				continue
+			}
+			for _, v := range vals {
+				if !matched {
+					msg.Headers.Lists.RawSpecs(v, visit)
+				}
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return matched
 }
 
 func gatherAddressValues(msg *Message, names []string, part string) []string {
