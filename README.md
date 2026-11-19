@@ -21,6 +21,7 @@ selects actions; your host applies them to its mailstore and transport.
 - [What the library does and what the host must do](#what-the-library-does-and-what-the-host-must-do)
 - [RFC conformance](#rfc-conformance): [the checklist](#the-rfc-checklist), [what it does not do](#what-it-does-not-do), [badges and coverage](#badges-and-coverage)
 - [Changelog](#changelog)
+- [Contributing](#contributing)
 - [Licence](#licence)
 
 ## Install
@@ -376,6 +377,15 @@ Documentation and packaging polish.
 ### v0.1.0 (2026-07-23)
 
 Initial public release: RFC 5228 parser and evaluator.
+
+## Contributing
+
+A pull request that changes behaviour adds a changelog fragment in
+[changelog.d](changelog.d/README.md) and does not edit `CHANGELOG.md`, so two
+pull requests never conflict there. A fragment is one file, named
+`<area>-<slug>.md`, holding one line such as `Added: What changed.` The release
+step runs `go run ./internal/changelog --release <version> <date>`, which writes
+the fragments into a new `CHANGELOG.md` section and deletes them.
 
 ## Licence
 
