@@ -363,6 +363,15 @@ The CI badge reports whether verification passed.
 
 Recent releases; see [CHANGELOG.md](CHANGELOG.md) for the complete history.
 
+### v0.9.0 (2026-11-19)
+
+Adds the variables (RFC 5229), relational (RFC 5231) and subaddress (RFC 5233)
+extensions, imap4flags flag state, the `mailboxexists` test and
+`RedirectReporter`. Breaking: script source must end every line in CRLF, a bare
+LF is refused; `body :raw` matches the undecoded `Message.RawBody`; a repeated
+`keep :flags` is refused. Hosts with `variables` identify vacation responses
+from `Vacation.Tracking`. The changelog has the details.
+
 ### v0.8.0 (2026-11-05)
 
 - `Headers.Lists` lets a host read address fields when a test asks, in place of building every list up front.

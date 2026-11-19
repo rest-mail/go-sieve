@@ -6,11 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-19
+
+### Changed (breaking)
+
+- Script source must end every line in CRLF (RFC 5228 §2 and the §8.1 grammar). A bare LF is now refused wherever it occurs, in whitespace, hash and bracket comments, quoted strings and multiline strings, with the error `sieve: line N: bare LF in script`, as NUL and bare CR already were. A `text:` string's value therefore always ends its lines in CRLF. An encoded-character value such as `${hex:0A}` may still produce LF. Scripts saved with Unix line endings no longer parse: a host that accepts scripts from users, for example over ManageSieve or a web form, should turn each bare LF into CRLF when the script is uploaded and store the result, and convert scripts it already stores before upgrading. Closes #92.
+- `body :raw` (RFC 5173 §5.1) now matches the undecoded body instead of the extracted text. `Message.RawBody` holds everything after the header's empty line as it is on the wire, so transfer encodings, multipart boundaries and nested MIME headers can be matched, and `RawBodySet` says the host supplied it; `:text` and `:content` do not read it. A Message without `RawBodySet` makes `body :raw` a runtime error, `ErrRawBodyUnavailable`, with the fail-safe implicit keep, because the RFC forbids decoding for `:raw`. Hosts that run `:raw` scripts must set `RawBody` and `RawBodySet`. Closes #90.
+- `keep :flags "a" :flags "b";` is now refused, as a repeated `fileinto` tag already was.
+
 ### Added
 
 - The variables extension (RFC 5229, #97): `set` with its six modifiers, the `string` test, `${name}` interpolation in every action and test argument, and the match variables `${0}` to `${9}` filled by `:matches` (never by `body`, RFC 5173 §6). Strings are expanded when their statement runs; variables last for one `Evaluate`. Limits: 128 variables, 400-character names, 4000-character values (longer run-time values are truncated). A redirect address, vacation `:from` or envelope part built from variables is checked once expanded, and an invalid one is a runtime error with the fail-safe keep. With `Headers.Lists`, an `address :matches` test still sets the match variables while holding one address at a time.
 - With `variables`, `setflag`, `addflag` and `removeflag` accept a variable name before the list of flags and then change that variable (RFC 5232 §3).
-- `Vacation.Tracking` carries `:subject`, `:from` and the reason as written, before variable expansion, for response tracking (RFC 5230 §4.2). `Handle` is never expanded.
+- `Vacation.Tracking` carries `:subject`, `:from` and the reason as written, before variable expansion, for response tracking (RFC 5230 §4.2). `Handle` is never expanded. A host that runs scripts with `variables` must identify the response from `Tracking`, not from `Subject`, `From` and `Body`, which hold the expanded values.
 - The relational extension (RFC 5231, `require "relational"`): the `:value` and
   `:count` match types with the operators `gt`, `ge`, `lt`, `le`, `eq` and `ne`.
   Every comparator now orders as RFC 4790 §9 defines, `i;ascii-numeric` on digit
@@ -30,6 +38,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `:user` is then the whole local part. With `Headers.Lists` the address
   test splits each address as it reads it. Closes #96.
 - Checklist sections for RFC 5231 and RFC 5233 with the RFCs' own examples.
+- imap4flags flag state (RFC 5232, #89). The evaluator holds the internal flag variable for each evaluation and implements the `hasflag` test (`:is` and `i;ascii-casemap` by default, `:count` counting distinct flags). A host that also implements the optional `FlagDeliverer` interface (`KeepWithFlags`, `FileIntoWithFlags`) receives every `keep` and `fileinto` with its effective flags, the `:flags` list when given and otherwise the internal variable when the action ran, instead of `Keep` and `FileInto`; merged duplicate deliveries keep the last flag list, so these calls come once per destination after the script finishes. `Outcome.ImplicitKeepFlags` carries the implicit keep's flags. `Flag` is still called for each flag action, and an Executor without the interface behaves as before. Closes #89.
+- With `variables`, `hasflag` takes the optional variable-list of RFC 5232 §4 and reads those variables instead of the internal one, `:count` summing their distinct flags, and the `:flags` list of `keep` and `fileinto` is expanded when the action runs. Without `variables` a variable-list is still refused.
+- The `mailboxexists` test (RFC 5490 §3.1), through `MailboxChecker`, an optional Executor interface. `MailboxExists(name string) (bool, error)` answers for the script's user whether the mailbox exists and accepts delivery; the test is true only if every named mailbox does, and with `variables` the names are expanded when the test runs. A lookup error is a runtime error with the fail-safe keep, never a missing mailbox; an Executor without the interface fails the same way with `ErrMailboxQueryUnavailable`. Closes #91.
+- `RedirectReporter`, an optional Executor interface whose `TryRedirect(addr, copy) error` replaces `Redirect`: nil is a forwarded redirect, `ErrRedirectSkipped` (or an error wrapping it) a redirect host policy silently skipped, which no longer cancels the implicit keep (RFC 5228 §4.2) and counts as no delivery, and any other error a runtime failure with the fail-safe implicit keep. An Executor without the interface behaves as before. Closes #93.
+- With `variables`, a `:comparator` name may be built from a variable (RFC 5229 §3). It is expanded when its test runs and checked as `Parse` checks a constant one: built in or declared with `require`, and able to serve the match type. A bad value is a runtime error with the fail-safe keep; a constant bad name is still refused by `Parse`. The relational operator of `:value` and `:count` already worked this way. Closes #100.
 
 ## [0.8.0] - 2026-11-05
 
