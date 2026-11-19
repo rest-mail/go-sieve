@@ -1,1 +1,0 @@
-Added: With `variables`, `hasflag` takes the optional variable-list of RFC 5232 §4 and reads those variables instead of the internal one, `:count` summing their distinct flags, and the `:flags` list of `keep` and `fileinto` is expanded when the action runs. Without `variables` a variable-list is still refused.
