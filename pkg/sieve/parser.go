@@ -140,6 +140,9 @@ type notTest struct{ inner sieveTest }
 type boolTest struct{ val bool }
 type existsTest struct{ headers []string }
 
+// mailboxexistsTest is the RFC 5490 §3.1 test; the host answers it.
+type mailboxexistsTest struct{ mailboxes []string }
+
 // hasflagTest is the RFC 5232 §4 hasflag test. variables names the variables
 // it reads (needs require "variables"); when nil it reads the internal one.
 type hasflagTest struct {
@@ -206,6 +209,8 @@ func (*envelopeTest) isTest() {}
 func (*bodyTest) isTest()     {}
 func (*hasflagTest) isTest()  {}
 
+func (*mailboxexistsTest) isTest() {}
+
 // Defaults per RFC 5228, and RFC 5173 §5 for the body transform.
 const (
 	defaultMatchType     = ":is"
@@ -233,7 +238,7 @@ var supportedCapabilities = map[string]bool{
 	"vacation":                   true, // RFC 5230 vacation action
 	"vacation-seconds":           true, // RFC 6131 :seconds, implies vacation
 	"notify":                     true, // notification action
-	"mailbox":                    true, // RFC 5490 fileinto :create
+	"mailbox":                    true, // RFC 5490 fileinto :create and mailboxexists
 	"copy":                       true, // RFC 3894 :copy tagged argument
 	"encoded-character":          true, // RFC 5228 §2.4.2.4 ${hex:..}/${unicode:..} in strings
 	"regex":                      true, // non-standard :regex match type
@@ -1196,6 +1201,16 @@ func (p *parser) parseTest() (sieveTest, error) {
 			return nil, err
 		}
 		return p.parseHasflagTest()
+	case "mailboxexists":
+		// RFC 5490 §3.1: mailboxexists <mailbox-names: string-list>.
+		if err := p.requireCapability("mailbox", "the mailboxexists test"); err != nil {
+			return nil, err
+		}
+		names, err := p.parseStringList()
+		if err != nil {
+			return nil, err
+		}
+		return &mailboxexistsTest{mailboxes: names}, nil
 	default:
 		// RFC 5228 §2.10.5: a test from an extension that was not declared with
 		// require (or that this package does not implement) is unavailable, so

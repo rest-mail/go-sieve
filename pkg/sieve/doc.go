@@ -47,13 +47,14 @@
 // Control commands: if / elsif / else, require, stop.
 //
 // Tests: address, header, envelope, exists, size (:over / :under), body, string,
-// allof, anyof, not, true / false, and the imap4flags hasflag.
+// allof, anyof, not, true / false, the imap4flags hasflag, and mailboxexists.
 //
 // Actions: keep, discard, fileinto (with :create), redirect, reject, imap4flags
 // (setflag / addflag / removeflag, and :flags on keep and fileinto), vacation,
 // notify, set. Optional Executor extensions: [FlagDeliverer] receives each
-// delivery with its flags, and [RedirectReporter] lets host policy skip a
-// redirect.
+// delivery with its flags, [RedirectReporter] lets host policy skip a
+// redirect, and [MailboxChecker] answers mailboxexists. body :raw matches
+// [Message].RawBody, which the host supplies.
 //
 // Variables (RFC 5229): a script that declares require "variables" may use set
 // and its modifiers, the string test, ${name} references in any string and the

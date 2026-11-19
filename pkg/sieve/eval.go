@@ -33,6 +33,19 @@ type Message struct {
 	// message without a body is false, even one for the empty string (RFC 5173
 	// §4).
 	NoBody bool
+	// RawBody is the undecoded body exactly as it appears on the wire:
+	// everything after the empty line that ends the header, the empty line
+	// itself excluded (RFC 5173 §4). Transfer encodings, multipart boundaries,
+	// prologues, epilogues and the MIME headers of nested parts all stay in
+	// it. The body :raw transform matches it as one string (RFC 5173 §5.1); the
+	// :text and :content transforms never read it.
+	RawBody string
+	// RawBodySet reports that the host supplied RawBody, so an empty RawBody
+	// is a body that is really empty. When it is false the evaluator has no
+	// undecoded body, and evaluating body :raw is a runtime error,
+	// [ErrRawBodyUnavailable], rather than a match against decoded text, which
+	// RFC 5173 §5.1 forbids. NoBody still makes every body test false first.
+	RawBodySet bool
 }
 
 // Headers holds the structured and raw headers used by header/address/exists
@@ -284,6 +297,45 @@ type RedirectReporter interface {
 	TryRedirect(addr string, copy bool) error
 }
 
+// ErrRawBodyUnavailable is the [Outcome.Error] of an evaluation that reached
+// a body :raw test for a [Message] without RawBodySet. RFC 5173 §5.1 requires
+// :raw to match the undecoded body, so the evaluator does not substitute the
+// decoded text; the runtime error fails safe to the implicit keep (RFC 5228
+// §2.10.6).
+var ErrRawBodyUnavailable = errors.New("sieve: body :raw needs the undecoded body (Message.RawBody) and the host did not supply it")
+
+// ErrMailboxQueryUnavailable is the [Outcome.Error] of an evaluation that
+// reached a mailboxexists test while the Executor does not implement
+// [MailboxChecker]. Without the query the evaluator cannot tell whether a
+// mailbox exists, so it neither guesses true nor false: the runtime error
+// fails safe to the implicit keep (RFC 5228 §2.10.6).
+var ErrMailboxQueryUnavailable = errors.New("sieve: mailboxexists needs a mailstore query (MailboxChecker) and the host did not supply one")
+
+// MailboxChecker is an optional extension of [Executor] for hosts that can
+// answer the RFC 5490 §3.1 mailboxexists test. When the Executor passed to
+// [Script.Evaluate] also implements it, mailboxexists calls MailboxExists once
+// for each named mailbox, in order, until one is not deliverable; the test is
+// true only when every named mailbox is. Without it, mailboxexists is a
+// runtime error ([ErrMailboxQueryUnavailable]).
+//
+// The query is scoped to the user the script runs for, which the host knows
+// from the Executor it built for this evaluation. MailboxExists reports:
+//
+//   - true, nil: the mailbox exists and that user may deliver into it. For an
+//     IMAP mailstore that is a READ-WRITE mailbox when the server has no ACL
+//     support, or the user's 'p' or 'i' right (RFC 4314 §5.2) when it has.
+//     It promises nothing about a later fileinto, which may still fail, for
+//     example over quota: delivery and quota stay with the host.
+//   - false, nil: the mailbox does not exist or the user may not deliver into
+//     it. The test is false and the script goes on.
+//   - any error: the mailstore could not answer, for example a temporary
+//     failure. Evaluation stops and fails safe to the implicit keep, reported
+//     through [Outcome.Error] (RFC 5228 §2.10.6), so a lookup failure is never
+//     read as a missing mailbox.
+type MailboxChecker interface {
+	MailboxExists(name string) (bool, error)
+}
+
 // Validate reports whether a Sieve script is syntactically valid and its
 // actions are compatible (see [Parse]). It accepts
 // the same [Option]s as [Parse]; nesting beyond [DefaultMaxDepth] (or the limit
@@ -326,6 +378,7 @@ func (s *Script) Evaluate(msg *Message, exec Executor) (out Outcome) {
 	}
 	st.flagDeliverer, _ = exec.(FlagDeliverer)
 	st.redirectReporter, _ = exec.(RedirectReporter)
+	st.mailboxChecker, _ = exec.(MailboxChecker)
 	// RFC 5228 §2.10.6: an execution error must not lose the message. If any
 	// action panics — typically a host Executor callback failing — recover and
 	// fall back to the implicit keep, reporting the error so the host can notify
@@ -398,6 +451,7 @@ type evalState struct {
 	// Optional Executor extensions, nil when the host does not implement them.
 	flagDeliverer    FlagDeliverer
 	redirectReporter RedirectReporter
+	mailboxChecker   MailboxChecker
 	// pending holds the keep and fileinto deliveries a FlagDeliverer receives
 	// at finalize, one per destination, in first-occurrence order.
 	pending []pendingDelivery
@@ -731,6 +785,8 @@ func (st *evalState) vacationReplyTo() (addr string, ok bool) {
 
 // evalTest evaluates a test. allof and anyof stop at the first test that
 // decides them, left to right, as RFC 5229 §3.2 requires for match variables.
+// The hasflag test reads the RFC 5232 internal variable (or named variables)
+// and mailboxexists queries the host.
 func (st *evalState) evalTest(t sieveTest) bool {
 	msg := st.msg
 	switch tt := t.(type) {
@@ -813,8 +869,31 @@ func (st *evalState) evalTest(t sieveTest) bool {
 		return st.matchValues(sources, tt.matchType, tt.relation, tt.comparator, tt.keys)
 	case *hasflagTest:
 		return st.hasflag(tt)
+	case *mailboxexistsTest:
+		// RFC 5229 §3: the names are expanded when the test runs.
+		return st.mailboxesExist(st.expandList(tt.mailboxes))
 	}
 	return false
+}
+
+// mailboxesExist implements the RFC 5490 §3.1 test: true only when every
+// named mailbox exists and accepts delivery by the script's user. A query
+// error, or a host without the query, is a runtime error that panics into the
+// fail-safe keep of Evaluate (RFC 5228 §2.10.6).
+func (st *evalState) mailboxesExist(names []string) bool {
+	if st.mailboxChecker == nil {
+		panic(ErrMailboxQueryUnavailable)
+	}
+	for _, name := range names {
+		ok, err := st.mailboxChecker.MailboxExists(name)
+		if err != nil {
+			panic(err)
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // hasflag implements the RFC 5232 §4 test. It reads the internal variable, or
@@ -1429,12 +1508,18 @@ func splitSubaddress(local string, sub Subaddress) (user, detail string, has boo
 
 // bodyValues returns the strings a body test matches against. With :content
 // (RFC 5173 §5.2) each MIME part whose type matches the list is a separate
-// string, so a key never matches across part boundaries. :text and :raw both
-// match the extracted text: the library has no undecoded body to offer :raw.
+// string, so a key never matches across part boundaries. :raw (§5.1) is the
+// host's undecoded body as one string, and :text the extracted text.
 func bodyValues(msg *Message, transform string, contentTypes []string) []string {
-	if transform == ":content" {
+	switch transform {
+	case ":content":
 		budget := maxBodyParts
 		return contentPartsBounded(nil, msg.Body, contentTypes, maxBodyDepth, &budget)
+	case ":raw":
+		if !msg.RawBodySet {
+			panic(ErrRawBodyUnavailable)
+		}
+		return []string{msg.RawBody}
 	}
 	return []string{extractBodyText(msg)}
 }
