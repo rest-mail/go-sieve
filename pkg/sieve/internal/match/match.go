@@ -188,3 +188,100 @@ func wildcardMatch(value, pattern string) bool {
 	}
 	return pi == len(pattern)
 }
+
+// wildcard pattern tokens for Captures.
+const (
+	tokLiteral = iota
+	tokOne     // '?'
+	tokAny     // '*'
+)
+
+type wildcardToken struct {
+	kind int
+	lit  byte
+}
+
+// wildcardTokens splits a :matches pattern into literal octets and wildcards,
+// resolving escapes exactly as wildcardMatch does: a backslash makes the next
+// octet literal, and a trailing backslash is itself a literal backslash.
+func wildcardTokens(pattern string) []wildcardToken {
+	toks := make([]wildcardToken, 0, len(pattern))
+	for i := 0; i < len(pattern); i++ {
+		switch c := pattern[i]; c {
+		case '*':
+			toks = append(toks, wildcardToken{kind: tokAny})
+		case '?':
+			toks = append(toks, wildcardToken{kind: tokOne})
+		case '\\':
+			if i+1 < len(pattern) {
+				i++
+				c = pattern[i]
+			}
+			toks = append(toks, wildcardToken{kind: tokLiteral, lit: c})
+		default:
+			toks = append(toks, wildcardToken{kind: tokLiteral, lit: c})
+		}
+	}
+	return toks
+}
+
+// Captures matches value against a :matches pattern under comparator and, when
+// it matches, returns the RFC 5229 §3.2 match list: index 0 is the matched part
+// of value (all of it, as :matches is anchored) and index i is the substring the
+// i-th wildcard ("?" or "*") expanded to. Wildcards match as little as possible,
+// leftmost first. Comparison folds case as the comparator says, but every
+// captured string is cut from the original value, so it keeps its case.
+//
+// It decides the match with a table of which pattern suffixes match which value
+// suffixes (one bit per pair), then walks the pattern giving each "*" the
+// shortest span after which the rest still matches. The table costs
+// (tokens+1)*(len(value)+1) bits and the walk is linear in both.
+func Captures(value, pattern, comparator string) ([]string, bool) {
+	folded := foldForComparator(value, comparator)
+	toks := wildcardTokens(foldForComparator(pattern, comparator))
+	n := len(folded)
+	words := (n + 1 + 63) / 64
+	table := make([]uint64, (len(toks)+1)*words)
+	get := func(t, v int) bool { return table[t*words+v/64]&(1<<(uint(v)%64)) != 0 }
+	set := func(t, v int) { table[t*words+v/64] |= 1 << (uint(v) % 64) }
+	// table[t][v]: tokens t.. match folded[v:].
+	set(len(toks), n)
+	for t := len(toks) - 1; t >= 0; t-- {
+		for v := n; v >= 0; v-- {
+			var ok bool
+			switch toks[t].kind {
+			case tokAny:
+				ok = get(t+1, v) || (v < n && get(t, v+1))
+			case tokOne:
+				ok = v < n && get(t+1, v+1)
+			default:
+				ok = v < n && folded[v] == toks[t].lit && get(t+1, v+1)
+			}
+			if ok {
+				set(t, v)
+			}
+		}
+	}
+	if !get(0, 0) {
+		return nil, false
+	}
+	groups := []string{value}
+	v := 0
+	for t, tok := range toks {
+		switch tok.kind {
+		case tokAny:
+			end := v
+			for !get(t+1, end) {
+				end++
+			}
+			groups = append(groups, value[v:end])
+			v = end
+		case tokOne:
+			groups = append(groups, value[v:v+1])
+			v++
+		default:
+			v++
+		}
+	}
+	return groups, true
+}

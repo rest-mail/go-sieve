@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The variables extension (RFC 5229, #97): `set` with its six modifiers, the `string` test, `${name}` interpolation in every action and test argument, and the match variables `${0}` to `${9}` filled by `:matches` (never by `body`, RFC 5173 §6). Strings are expanded when their statement runs; variables last for one `Evaluate`. Limits: 128 variables, 400-character names, 4000-character values (longer run-time values are truncated). A redirect address, vacation `:from` or envelope part built from variables is checked once expanded, and an invalid one is a runtime error with the fail-safe keep. With `Headers.Lists`, an `address :matches` test still sets the match variables while holding one address at a time.
+- With `variables`, `setflag`, `addflag` and `removeflag` accept a variable name before the list of flags and then change that variable (RFC 5232 §3).
+- `Vacation.Tracking` carries `:subject`, `:from` and the reason as written, before variable expansion, for response tracking (RFC 5230 §4.2). `Handle` is never expanded.
+
+### Known gaps
+
+- A `:comparator` name cannot be built from a variable (#100).
+
 ## [0.8.0] - 2026-11-05
 
 ### Added

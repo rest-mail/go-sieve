@@ -46,11 +46,16 @@
 //
 // Control commands: if / elsif / else, require, stop.
 //
-// Tests: address, header, envelope, exists, size (:over / :under), body, allof,
-// anyof, not, true / false.
+// Tests: address, header, envelope, exists, size (:over / :under), body, string,
+// allof, anyof, not, true / false.
 //
 // Actions: keep, discard, fileinto (with :create), redirect, reject, imap4flags
-// (setflag / addflag / removeflag), vacation, notify.
+// (setflag / addflag / removeflag), vacation, notify, set.
+//
+// Variables (RFC 5229): a script that declares require "variables" may use set
+// and its modifiers, the string test, ${name} references in any string and the
+// match variables ${0} to ${9} filled by :matches. Strings are expanded when
+// the statement using them runs, and variables last for one [Script.Evaluate].
 //
 // Match types: :is, :contains, :matches (glob with * and ?), and a non-standard
 // :regex extension. Comparators: i;ascii-casemap (the default), i;octet, and

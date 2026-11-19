@@ -8,7 +8,7 @@ import (
 // vacationAllowed implements RFC 5230 §§4.5–4.6. The envelope supplies the
 // recipient identity; :addresses adds aliases. The host must supply the final
 // envelope recipient and preserve the original list/automation headers.
-func (st *evalState) vacationAllowed(cmd *vacationCmd, replyTo string) bool {
+func (st *evalState) vacationAllowed(aliases []string, replyTo string) bool {
 	local, _, _ := strings.Cut(strings.ToLower(replyTo), "@")
 	switch local {
 	case "mailer-daemon", "listserv", "majordomo":
@@ -47,7 +47,7 @@ func (st *evalState) vacationAllowed(cmd *vacationCmd, replyTo string) bool {
 						return true
 					}
 				}
-				for _, identity := range cmd.addresses {
+				for _, identity := range aliases {
 					if strings.EqualFold(address.Address, identity) {
 						return true
 					}
