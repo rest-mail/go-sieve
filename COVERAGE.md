@@ -10,6 +10,7 @@ leave a statement uncovered.
 | File | Function | Statements | Reason |
 |------|----------|------------|--------|
 | `internal/checklist/main.go` | `main` | `os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))` | Exiting the process cannot be tested in-process. All of the checker's logic is in `run`, which the tests cover; CI also runs the command itself. |
+| `internal/changelog/main.go` | `main` | `os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))` | Exiting the process cannot be tested in-process. All of the changelog assembly is in `run`, which the tests cover. |
 
 ## Not covered yet
 
