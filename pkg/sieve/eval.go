@@ -175,10 +175,26 @@ type Vacation struct {
 	From string
 	// MIME says Body includes MIME headers as well as content; otherwise Body
 	// is UTF-8 text. The host validates and encodes the outgoing MIME entity.
-	MIME   bool
+	MIME bool
+	// Handle is the :handle argument as written. It serves only response
+	// tracking, so it is never expanded by the variables extension.
 	Handle string
 	// HandleSet distinguishes an explicit empty tracking handle from no handle.
 	HandleSet bool
+	// Tracking holds Subject, From and Body as the script wrote them, before
+	// variable expansion (RFC 5229). RFC 5230 §4.2: the arguments used for
+	// response tracking MUST NOT have undergone variable expansion. Identify
+	// the response from these, not the expanded fields. Without "variables"
+	// they equal Subject, From and Body.
+	Tracking VacationTracking
+}
+
+// VacationTracking carries the vacation arguments response tracking uses
+// (RFC 5230 §4.2), before any variable expansion.
+type VacationTracking struct {
+	Subject string
+	From    string
+	Body    string
 }
 
 // Executor applies the (non-terminal) actions a Sieve script selects. The host
@@ -248,6 +264,10 @@ func (s *Script) Evaluate(msg *Message, exec Executor) (out Outcome) {
 		filedInto:    map[fileintoDest]struct{}{},
 		redirected:   map[redirectDest]struct{}{},
 	}
+	if s.variables {
+		// RFC 5229 §4: variables belong to this evaluation only.
+		st.vars = &variableState{values: map[string]string{}}
+	}
 	// RFC 5228 §2.10.6: an execution error must not lose the message. If any
 	// action panics — typically a host Executor callback failing — recover and
 	// fall back to the implicit keep, reporting the error so the host can notify
@@ -312,6 +332,10 @@ type evalState struct {
 
 	// Even a suppressed vacation counts as an execution (RFC 5230 §4.7).
 	vacationExecuted bool
+
+	// vars holds the RFC 5229 variables; nil unless the script requires
+	// "variables", in which case strings are expanded as they are used.
+	vars *variableState
 }
 
 // fileintoDest keys a fileinto delivery for de-duplication: same folder and
@@ -347,7 +371,7 @@ func (st *evalState) runCmd(c sieveCmd) (halt bool) {
 	switch cmd := c.(type) {
 	case *ifCmd:
 		for _, br := range cmd.branches {
-			if br.test == nil || evalTest(br.test, st.msg) {
+			if br.test == nil || st.evalTest(br.test) {
 				return st.runBlock(br.block)
 			}
 		}
@@ -374,7 +398,7 @@ func (st *evalState) runCmd(c sieveCmd) (halt bool) {
 		// A terminal refusal: it cancels the implicit keep and halts the script.
 		st.implicitKeep = false
 		st.rejected = true
-		st.rejectReason = cmd.reason
+		st.rejectReason = st.expand(cmd.reason)
 		st.extendedReject = cmd.extended
 		return true
 
@@ -385,29 +409,49 @@ func (st *evalState) runCmd(c sieveCmd) (halt bool) {
 		st.deliverRedirect(cmd)
 
 	case *flagCmd:
-		st.exec.Flag(cmd.op, cmd.flags)
+		flags := cmd.flags
+		if st.vars != nil {
+			flags = normalizeFlags(st.expandList(cmd.raw))
+			if cmd.variable != "" {
+				st.runFlagVariable(cmd.op, cmd.variable, flags)
+				break
+			}
+		}
+		st.exec.Flag(cmd.op, flags)
+
+	case *setCmd:
+		st.runSet(cmd)
 
 	case *vacationCmd:
 		if st.vacationExecuted {
 			panic(fmt.Errorf("sieve: vacation may execute only once per script"))
 		}
 		st.vacationExecuted = true
-		if replyTo, ok := st.vacationReplyTo(); ok && st.vacationAllowed(cmd, replyTo) {
+		// The reply carries the expanded arguments; response tracking uses
+		// them as written (RFC 5230 §4.2), so both reach the host.
+		from := st.expand(cmd.from)
+		if st.vars != nil && from != "" {
+			if err := checkVacationFrom(from); err != nil {
+				panic(fmt.Errorf("sieve: %w", err))
+			}
+		}
+		if replyTo, ok := st.vacationReplyTo(); ok && st.vacationAllowed(st.expandList(cmd.addresses), replyTo) {
 			st.exec.Vacation(Vacation{
 				Interval:   cmd.interval,
-				Subject:    cmd.subject,
+				Subject:    st.expand(cmd.subject),
 				SubjectSet: cmd.subjectSet,
-				Body:       cmd.body,
+				Body:       st.expand(cmd.body),
 				ReplyTo:    replyTo,
-				From:       cmd.from,
+				From:       from,
 				MIME:       cmd.mime,
 				Handle:     cmd.handle,
 				HandleSet:  cmd.handleSet,
+				Tracking:   VacationTracking{Subject: cmd.subject, From: cmd.from, Body: cmd.body},
 			})
 		}
 
 	case *notifyCmd:
-		st.exec.Notify(cmd.method, cmd.message)
+		st.exec.Notify(st.expand(cmd.method), st.expand(cmd.message))
 	}
 
 	return false
@@ -433,10 +477,11 @@ func (st *evalState) deliverFileInto(cmd *fileintoCmd) {
 		st.implicitKeep = false
 	}
 	st.delivered = true
-	dest := fileintoDest{folder: cmd.folder, copy: cmd.copy}
+	folder := st.expand(cmd.folder)
+	dest := fileintoDest{folder: folder, copy: cmd.copy}
 	if _, done := st.filedInto[dest]; !done {
 		st.filedInto[dest] = struct{}{}
-		st.exec.FileInto(cmd.folder, cmd.create)
+		st.exec.FileInto(folder, cmd.create)
 	}
 }
 
@@ -444,14 +489,22 @@ func (st *evalState) deliverFileInto(cmd *fileintoCmd) {
 // :copy (RFC 3894 §3), cancels the implicit keep. RFC 5228 §2.10.3: redirecting
 // to the same address twice is one delivery.
 func (st *evalState) deliverRedirect(cmd *redirectCmd) {
+	addr := st.expand(cmd.addr)
+	if st.vars != nil {
+		// RFC 5228 §2.4.2.3: executing redirect with an invalid address is an
+		// error. An address built from variables is only known now.
+		if err := checkRedirectAddress(addr); err != nil {
+			panic(fmt.Errorf("sieve: %w", err))
+		}
+	}
 	if !cmd.copy {
 		st.implicitKeep = false
 	}
 	st.delivered = true
-	dest := redirectDest{addr: cmd.addr, copy: cmd.copy}
+	dest := redirectDest{addr: addr, copy: cmd.copy}
 	if _, done := st.redirected[dest]; !done {
 		st.redirected[dest] = struct{}{}
-		st.exec.Redirect(cmd.addr, cmd.copy)
+		st.exec.Redirect(addr, cmd.copy)
 	}
 }
 
@@ -487,28 +540,31 @@ func (st *evalState) vacationReplyTo() (addr string, ok bool) {
 
 // ── Test evaluation ──────────────────────────────────────────────────
 
-func evalTest(t sieveTest, msg *Message) bool {
+// evalTest evaluates a test. allof and anyof stop at the first test that
+// decides them, left to right, as RFC 5229 §3.2 requires for match variables.
+func (st *evalState) evalTest(t sieveTest) bool {
+	msg := st.msg
 	switch tt := t.(type) {
 	case *allofTest:
 		for _, sub := range tt.tests {
-			if !evalTest(sub, msg) {
+			if !st.evalTest(sub) {
 				return false
 			}
 		}
 		return true
 	case *anyofTest:
 		for _, sub := range tt.tests {
-			if evalTest(sub, msg) {
+			if st.evalTest(sub) {
 				return true
 			}
 		}
 		return false
 	case *notTest:
-		return !evalTest(tt.inner, msg)
+		return !st.evalTest(tt.inner)
 	case *boolTest:
 		return tt.val
 	case *existsTest:
-		for _, h := range tt.headers {
+		for _, h := range st.expandList(tt.headers) {
 			if len(headerValues(msg, h)) == 0 {
 				return false
 			}
@@ -521,22 +577,36 @@ func evalTest(t sieveTest, msg *Message) bool {
 		}
 		return size < tt.limit
 	case *headerTest:
-		values := gatherHeaderValues(msg, tt.headers)
-		return match.Any(values, tt.matchType, tt.comparator, tt.keys)
+		values := gatherHeaderValues(msg, st.expandList(tt.headers))
+		return st.matchValues(values, tt.matchType, tt.comparator, tt.keys)
 	case *addressTest:
+		headers := st.expandList(tt.headers)
 		if msg.Headers.Lists != nil {
-			return anyAddress(msg, tt)
+			return st.anyAddress(headers, tt)
 		}
-		values := gatherAddressValues(msg, tt.headers, tt.addressPart)
-		return match.Any(values, tt.matchType, tt.comparator, tt.keys)
+		values := gatherAddressValues(msg, headers, tt.addressPart)
+		return st.matchValues(values, tt.matchType, tt.comparator, tt.keys)
 	case *envelopeTest:
-		values := gatherEnvelopeValues(msg, tt.parts, tt.addressPart)
-		return match.Any(values, tt.matchType, tt.comparator, tt.keys)
+		parts := st.expandList(tt.parts)
+		if st.vars != nil {
+			for _, part := range parts {
+				if err := checkEnvelopePart(part); err != nil {
+					panic(fmt.Errorf("sieve: %w", err))
+				}
+			}
+		}
+		values := gatherEnvelopeValues(msg, parts, tt.addressPart)
+		return st.matchValues(values, tt.matchType, tt.comparator, tt.keys)
 	case *bodyTest:
 		if msg.NoBody {
 			return false
 		}
-		return match.Any(bodyValues(msg, tt), tt.matchType, tt.comparator, tt.keys)
+		// RFC 5173 §6: wildcards in a body test do not set match variables,
+		// so the keys are expanded but compared without capturing.
+		return match.Any(bodyValues(msg, tt.transform, st.expandList(tt.contentTypes)), tt.matchType, tt.comparator, st.expandList(tt.keys))
+	case *stringTest:
+		// RFC 5229 §5: the sources come from the script, unstripped.
+		return st.matchValues(st.expandList(tt.sources), tt.matchType, tt.comparator, tt.keys)
 	}
 	return false
 }
@@ -746,8 +816,13 @@ func formatAddresses(addrs []Address) []string {
 }
 
 // anyAddress is match.Any of gatherAddressValues, holding one value at a time. match.Any only says
-// whether some value matches some key, so neither order nor repeats can change its answer.
-func anyAddress(msg *Message, tt *addressTest) bool {
+// whether some value matches some key, so neither order nor repeats can change its answer. With
+// variables, headers are the expanded field names; the keys are expanded once here, and a :matches
+// sets the match variables from the first address that matches. It visits addresses in the order
+// gatherAddressValues lists them, so that is the same address either way.
+func (st *evalState) anyAddress(headers []string, tt *addressTest) bool {
+	msg := st.msg
+	keys := st.expandList(tt.keys)
 	matched := false
 	one := make([]string, 1)
 	visit := func(spec string) bool {
@@ -755,10 +830,10 @@ func anyAddress(msg *Message, tt *addressTest) bool {
 			return true
 		}
 		one[0] = addressPartOf(spec, tt.addressPart)
-		matched = match.Any(one, tt.matchType, tt.comparator, tt.keys)
+		matched = st.matchExpanded(one, tt.matchType, tt.comparator, keys)
 		return !matched
 	}
-	for _, name := range tt.headers {
+	for _, name := range headers {
 		if !validHeaderName(name) {
 			continue
 		}
@@ -956,10 +1031,10 @@ func addressPartOf(addr, part string) string {
 // (RFC 5173 §5.2) each MIME part whose type matches the list is a separate
 // string, so a key never matches across part boundaries. :text and :raw both
 // match the extracted text: the library has no undecoded body to offer :raw.
-func bodyValues(msg *Message, tt *bodyTest) []string {
-	if tt.transform == ":content" {
+func bodyValues(msg *Message, transform string, contentTypes []string) []string {
+	if transform == ":content" {
 		budget := maxBodyParts
-		return contentPartsBounded(nil, msg.Body, tt.contentTypes, maxBodyDepth, &budget)
+		return contentPartsBounded(nil, msg.Body, contentTypes, maxBodyDepth, &budget)
 	}
 	return []string{extractBodyText(msg)}
 }

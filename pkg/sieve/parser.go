@@ -13,7 +13,8 @@ import (
 
 // This file implements a recursive-descent parser over internal grammar tokens for a
 // practical subset of the Sieve mail-filtering language (RFC 5228), plus a
-// few widely used extensions (envelope, body, imap4flags, vacation, notify)
+// few widely used extensions (envelope, body, imap4flags, vacation, notify,
+// variables)
 // and a non-standard :regex match type retained for backwards compatibility.
 //
 // The parser produces an AST (Script -> commands -> tests) that the evaluator
@@ -31,6 +32,9 @@ import (
 type Script struct {
 	requires []string
 	commands []sieveCmd
+	// variables records require "variables" (RFC 5229): strings are then
+	// expanded when the statement using them runs.
+	variables bool
 }
 
 // Requires returns the extensions the script declared via "require".
@@ -66,8 +70,8 @@ type fileintoCmd struct {
 }
 
 type redirectCmd struct {
-	addr string
-	copy bool // RFC 3894 :copy — targets a destination distinct from a consuming redirect
+	addr string // checked at parse time unless it holds a variable reference
+	copy bool   // RFC 3894 :copy — targets a destination distinct from a consuming redirect
 }
 type rejectCmd struct {
 	reason   string
@@ -78,6 +82,11 @@ type rejectCmd struct {
 type flagCmd struct {
 	op    string // "setflag", "addflag", "removeflag"
 	flags []string
+	// raw is the list as written; with variables it is expanded and cleaned
+	// up at run time. variable names the variable the action changes instead
+	// of the internal one (RFC 5232 §3); it needs require "variables".
+	raw      []string
+	variable string
 }
 
 type vacationCmd struct {
@@ -203,6 +212,7 @@ var supportedCapabilities = map[string]bool{
 	"comparator-i;ascii-numeric": true, // RFC 4790/5228 i;ascii-numeric comparator
 	"comparator-i;octet":         true, // built-in comparator (may be declared explicitly)
 	"comparator-i;ascii-casemap": true, // built-in comparator (may be declared explicitly)
+	"variables":                  true, // RFC 5229 set, string and ${name} interpolation
 }
 
 // DefaultMaxDepth is the default limit on how deeply tests and control blocks
@@ -247,6 +257,7 @@ type parser struct {
 
 	required       map[string]bool // capabilities declared via require
 	seenNonRequire bool            // a non-require command has been parsed
+	variableNames  map[string]bool // distinct variables the script assigns (RFC 5229 §6)
 
 	maxDepth   int // nesting cap for tests and blocks
 	testDepth  int // current test-expression nesting
@@ -276,7 +287,7 @@ func parseSieveScript(src string, opts ...Option) (*Script, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &parser{toks: toks, maxDepth: cfg.maxDepth, required: map[string]bool{}}
+	p := &parser{toks: toks, maxDepth: cfg.maxDepth, required: map[string]bool{}, variableNames: map[string]bool{}}
 	// At top level parseCommands returns without an error only at EOF; a
 	// stray "}" or any other leftover token is already an error there.
 	cmds, err := p.parseCommands(false)
@@ -286,7 +297,7 @@ func parseSieveScript(src string, opts ...Option) (*Script, error) {
 	if _, err := checkActionCompatibility(cmds, actionUsage{}); err != nil {
 		return nil, err
 	}
-	return &Script{requires: p.requires, commands: cmds}, nil
+	return &Script{requires: p.requires, commands: cmds, variables: p.required["variables"]}, nil
 }
 
 // actionUsage records actions that can precede the next command. All action
@@ -381,13 +392,22 @@ func (p *parser) expect(k grammar.Kind, what string) (grammar.Token, error) {
 // other string constant becomes its decoded value at parse time; the AST and the
 // evaluator therefore see the intended octets. A well-formed but out-of-range
 // ${unicode:...} value is reported as an error against the token's line.
+//
+// With require "variables" the decoded string is then checked for variable
+// references this package cannot expand (RFC 5229 §3, §6): those are syntax
+// errors, found here at parse time.
 func (p *parser) decodeStringConstant(tok grammar.Token) (string, error) {
-	if !p.required["encoded-character"] {
-		return tok.Str, nil
+	s := tok.Str
+	if p.required["encoded-character"] {
+		var err error
+		if s, err = grammar.DecodeEncodedCharacters(s); err != nil {
+			return "", fmt.Errorf("sieve: line %d: %s", tok.Line, err)
+		}
 	}
-	s, err := grammar.DecodeEncodedCharacters(tok.Str)
-	if err != nil {
-		return "", fmt.Errorf("sieve: line %d: %s", tok.Line, err)
+	if p.required["variables"] {
+		if err := checkVariableRefs(s); err != nil {
+			return "", fmt.Errorf("sieve: line %d: %s", tok.Line, err)
+		}
 	}
 	return s, nil
 }
@@ -478,6 +498,11 @@ func (p *parser) parseCommand() (sieveCmd, error) {
 			return nil, err
 		}
 		return p.parseNotify()
+	case "set":
+		if err := p.requireCapability("variables", "the set action"); err != nil {
+			return nil, err
+		}
+		return p.parseSet()
 	default:
 		// RFC 5228 §2.10.5: a command from an extension that was not declared
 		// with require (or that this package does not implement) is treated as
@@ -671,25 +696,38 @@ func (p *parser) parseRedirect() (sieveCmd, error) {
 	if err != nil {
 		return nil, err
 	}
+	// An address built from variables is checked when it is expanded, at run
+	// time; a constant one is checked now.
+	if !p.dynamic(addr.Str) {
+		if err := checkRedirectAddress(addr.Str); err != nil {
+			return nil, fmt.Errorf("sieve: line %d: %w", addr.Line, err)
+		}
+	}
+	cmd.addr = addr.Str
+	return cmd, p.finishStatement()
+}
+
+// checkRedirectAddress validates a decoded (and, with variables, expanded)
+// redirect target.
+func checkRedirectAddress(addr string) error {
 	// RFC 5228 §2.4.2.3: it is an error to execute redirect with an argument that
 	// is not a valid sieve-address. In particular a target carrying CR, LF, NUL
 	// or any other control character (readily smuggled in via a "text:" literal)
 	// would let a host that builds SMTP commands or message headers from the
 	// address be tricked into command/header injection, so reject it here.
-	if r := firstControlChar(addr.Str); r >= 0 {
-		return nil, fmt.Errorf("sieve: line %d: redirect address contains a forbidden control character (%#U)", addr.Line, r)
+	if r := firstControlChar(addr); r >= 0 {
+		return fmt.Errorf("redirect address contains a forbidden control character (%#U)", r)
 	}
 	// RFC 5228 §2.4.2.3 permits one mailbox, not a group or source route.
 	// ParseAddress alone accepts a group containing one mailbox, so check the
 	// delimiters too. Validate the decoded value, but preserve it for the host.
-	if _, err := mail.ParseAddress(placeholderDomainLiterals(addr.Str)); err != nil {
-		return nil, fmt.Errorf("sieve: line %d: invalid redirect address: %w", addr.Line, err)
+	if _, err := mail.ParseAddress(placeholderDomainLiterals(addr)); err != nil {
+		return fmt.Errorf("invalid redirect address: %w", err)
 	}
-	if hasAddressGroupOrRoute(addr.Str) {
-		return nil, fmt.Errorf("sieve: line %d: redirect address must not contain a group or source route", addr.Line)
+	if hasAddressGroupOrRoute(addr) {
+		return fmt.Errorf("redirect address must not contain a group or source route")
 	}
-	cmd.addr = addr.Str
-	return cmd, p.finishStatement()
+	return nil
 }
 
 // hasAddressGroupOrRoute finds group/route delimiters outside quoted strings,
@@ -815,14 +853,26 @@ func (p *parser) parseReject(extended bool) (sieveCmd, error) {
 }
 
 func (p *parser) parseFlag(op string) (sieveCmd, error) {
-	// imap4flags setflag/addflag/removeflag may take an optional variable name
-	// (which we do not support) followed by the flag list. We only accept the
-	// flag string / string-list form.
+	// setflag/addflag/removeflag take an optional variable name before the
+	// flag list (RFC 5232 §3). Without "variables" the name is an error
+	// (§1): the list is then followed directly by the semicolon.
+	cmd := &flagCmd{op: op}
+	if p.required["variables"] && p.peek().Kind == grammar.String && p.pos+1 < len(p.toks) &&
+		(p.toks[p.pos+1].Kind == grammar.String || p.toks[p.pos+1].Kind == grammar.LBracket) {
+		name, err := p.expect(grammar.String, "a variable name")
+		if err != nil {
+			return nil, err
+		}
+		if cmd.variable, err = p.declareVariable(name); err != nil {
+			return nil, err
+		}
+	}
 	flags, err := p.parseStringList()
 	if err != nil {
 		return nil, err
 	}
-	return &flagCmd{op: op, flags: normalizeFlags(flags)}, p.finishStatement()
+	cmd.raw, cmd.flags = flags, normalizeFlags(flags)
+	return cmd, p.finishStatement()
 }
 
 // settableSystemFlags are the IMAP system flags a client may set (RFC 3501
@@ -923,8 +973,10 @@ func (p *parser) parseVacation() (sieveCmd, error) {
 			case ":subject":
 				cmd.subject, cmd.subjectSet = s.Str, true
 			case ":from":
-				if _, err := mail.ParseAddressList(s.Str); err != nil {
-					return nil, p.errf("invalid vacation :from mailbox-list: %v", err)
+				if !p.dynamic(s.Str) {
+					if err := checkVacationFrom(s.Str); err != nil {
+						return nil, p.errf("%v", err)
+					}
 				}
 				cmd.from = s.Str
 			case ":handle":
@@ -948,6 +1000,15 @@ func (p *parser) parseVacation() (sieveCmd, error) {
 	}
 	cmd.body = body.Str
 	return cmd, p.finishStatement()
+}
+
+// checkVacationFrom validates a decoded (and, with variables, expanded)
+// vacation :from argument as a mailbox list.
+func checkVacationFrom(from string) error {
+	if _, err := mail.ParseAddressList(from); err != nil {
+		return fmt.Errorf("invalid vacation :from mailbox-list: %v", err)
+	}
+	return nil
 }
 
 func (p *parser) parseNotify() (sieveCmd, error) {
@@ -1047,6 +1108,11 @@ func (p *parser) parseTest() (sieveTest, error) {
 			return nil, err
 		}
 		return p.parseBodyTest()
+	case "string":
+		if err := p.requireCapability("variables", "the string test"); err != nil {
+			return nil, err
+		}
+		return p.parseStringTest()
 	default:
 		// RFC 5228 §2.10.5: a test from an extension that was not declared with
 		// require (or that this package does not implement) is unavailable, so
@@ -1292,11 +1358,13 @@ func (p *parser) parseEnvelopeTest() (sieveTest, error) {
 	}
 	// RFC 5228 §5.4 recommends an error for unknown envelope parts. Check
 	// every decoded operand now, even in a branch that will not be evaluated.
+	// A part built from variables is checked when it is expanded.
 	for _, part := range parts {
-		switch match.ASCIIFold(part) {
-		case "from", "to":
-		default:
-			return nil, p.errf("unknown envelope part %q", part)
+		if p.dynamic(part) {
+			continue
+		}
+		if err := checkEnvelopePart(part); err != nil {
+			return nil, p.errf("%v", err)
 		}
 	}
 	keys, err := p.parseStringList()
@@ -1310,6 +1378,15 @@ func (p *parser) parseEnvelopeTest() (sieveTest, error) {
 		parts:       parts,
 		keys:        keys,
 	}, nil
+}
+
+// checkEnvelopePart accepts the envelope parts this package knows.
+func checkEnvelopePart(part string) error {
+	switch match.ASCIIFold(part) {
+	case "from", "to":
+		return nil
+	}
+	return fmt.Errorf("unknown envelope part %q", part)
 }
 
 func (p *parser) parseBodyTest() (sieveTest, error) {

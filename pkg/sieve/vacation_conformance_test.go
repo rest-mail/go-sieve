@@ -210,6 +210,8 @@ func TestVacation_CallbackArguments(t *testing.T) {
 		{`:subject "" :from "Me <me@example.com>" :handle ""`, "away", Vacation{Interval: 7 * 24 * time.Hour, SubjectSet: true, From: "Me <me@example.com>", HandleSet: true, Body: "away", ReplyTo: "sender@example.com"}},
 		{`:subject "À bientôt" :handle "trip" :mime`, "Content-Type: text/plain; charset=utf-8\r\n\r\nÀ bientôt", Vacation{Interval: 7 * 24 * time.Hour, Subject: "À bientôt", SubjectSet: true, Handle: "trip", HandleSet: true, MIME: true, Body: "Content-Type: text/plain; charset=utf-8\r\n\r\nÀ bientôt", ReplyTo: "sender@example.com"}},
 	} {
+		// Without variables the tracking arguments are the reply arguments.
+		tc.want.Tracking = VacationTracking{Subject: tc.want.Subject, From: tc.want.From, Body: tc.want.Body}
 		script, err := Parse(`require "vacation"; vacation ` + tc.args + ` "` + tc.body + `";`)
 		if err != nil {
 			t.Fatal(err)

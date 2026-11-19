@@ -14,8 +14,8 @@ is a known gap says "n/a" and why. CI checks this file against the tests with
 [README](README.md#the-rfc-checklist).
 
 RFC 5429 (`reject` and `ereject`), RFC 5230 (`vacation`), RFC 3894 (`copy`),
-RFC 5232 (`imap4flags`), RFC 5173 (`body`), RFC 5490 (`mailbox`) and
-RFC 6131 (`vacation-seconds`) are checked clause by clause in their own sections. The `Received` and loop requirements of
+RFC 5232 (`imap4flags`), RFC 5173 (`body`), RFC 5490 (`mailbox`),
+RFC 6131 (`vacation-seconds`) and RFC 5229 (`variables`) are checked clause by clause in their own sections. The `Received` and loop requirements of
 `redirect` belong to the host, as recorded below.
 
 `TestDifferentialEvaluate` and `TestDifferentialParse` check the RFC 5228 items
@@ -174,8 +174,8 @@ The extension audits and the owner decisions on hasflag, delivered flags,
 The capability inventory is checked by `TestExtensionCapabilityInventory`.
 `fileinto` and `envelope` belong to RFC 5228 (SIEVE-ACT-02 and SIEVE-TST-05),
 `encoded-character` to SIEVE-LEX-06, and the three comparators to SIEVE-MT-05/07.
-`reject`, `ereject`, `vacation`, `vacation-seconds`, `copy`, `imap4flags`, `body`
-and `mailbox` have separate sections below. `regex` and `notify` are local
+`reject`, `ereject`, `vacation`, `vacation-seconds`, `copy`, `imap4flags`, `body`,
+`mailbox` and `variables` have separate sections below. `regex` and `notify` are local
 extensions; their names do not establish conformance to an RFC or draft.
 
 The broad overview rows below retain their existing test mappings. In
@@ -184,8 +184,8 @@ record that gap. Planned flag state, raw-body matching and mailbox queries are t
 [go-sieve#89](https://github.com/rest-mail/go-sieve/issues/89),
 [#90](https://github.com/rest-mail/go-sieve/issues/90) and
 [#91](https://github.com/rest-mail/go-sieve/issues/91).
-Relational, subaddress and variables are not implemented; numeric equality,
-ordinary address parts and literal strings do not provide those capabilities.
+Relational and subaddress are not implemented; numeric equality and ordinary
+address parts do not provide those capabilities.
 
 | ID | Section | Level | Requirement | Tests |
 |----|---------|-------|-------------|-------|
@@ -262,9 +262,9 @@ headers. Host responsibilities are not claims of implementation conformance.
 | VACATION-16 | 4, 4.2 | Normative | The response destination is the SMTP envelope sender; never substitute From or Reply-To. Suppress null or unavailable reverse-paths. | `TestVacation_EnvelopeDestination`, `TestSieve_Vacation_NullReversePathSuppressed` |
 | VACATION-17 | 4.2, 8 | MUST NOT | Send the same response to a sender more frequently than the interval, unless the script changes. | n/a: host's job: Executor owns persistent tracking storage and time; Vacation supplies Interval, ReplyTo and response identity arguments. |
 | VACATION-18 | 4.2 | Normative | For tracking, identical explicit handles identify the same response even when other arguments differ. | n/a: host's job: the library reports Handle and HandleSet without discarding an empty handle (proved by VACATION-08); Executor performs tracking. |
-| VACATION-19 | 4.2 | Normative | Without a handle, synthesize response identity from the original :subject, :from, :mime and reason arguments. | n/a: host's job: the unchanged arguments, including SubjectSet, are reported (VACATION-04, VACATION-07, VACATION-26); Executor constructs its storage key. |
+| VACATION-19 | 4.2 | Normative | Without a handle, synthesize response identity from the original :subject, :from, :mime and reason arguments. | n/a: host's job: the unchanged arguments, including SubjectSet, are reported (VACATION-04, VACATION-07, VACATION-26), and in `Vacation.Tracking` before any variable expansion (VACATION-21); Executor constructs its storage key. |
 | VACATION-20 | 4.2 | REQUIRED | Different response identities can elicit separate replies even within the interval for the same sender. | n/a: host's job: persistent de-duplication is outside this evaluator; it reports each selected action. |
-| VACATION-21 | 4.2 | MUST NOT | Expand variables before deriving the response-tracking identity. | n/a: the variables extension (RFC 5229) is unsupported; no variable expansion occurs. |
+| VACATION-21 | 4.2 | MUST NOT | Expand variables before deriving the response-tracking identity: the reply uses the expanded arguments, tracking the arguments as written (`Vacation.Tracking`, and `:handle`, which is never expanded). | `TestVariables_VacationTracking` |
 | VACATION-22 | 4.2 | MAY | Reset previous-response records when a script changes. | n/a: host's job: script lifecycle and persistent tracking records are host-owned. |
 | VACATION-23 | 4.2 | MUST NOT | Limit remembered responses to fewer than 1000. | n/a: host's job: the library has no persistent response store or storage limit. |
 | VACATION-24 | 4.2 | SHOULD | When response tracking is bounded, discard the oldest records first. | n/a: host's job: eviction policy belongs to the persistent response store. |
@@ -348,6 +348,7 @@ rows about variable names cover only the error they must cause.
 | FLAGS-19 | 3; RFC 5228 §2.10.3 | MUST | When repeated `keep` or `fileinto` deliveries are merged, the last list of flags wins. | n/a: not supported yet, follows FLAGS-18. |
 | FLAGS-20 | 5 | MUST | Flags the mailbox cannot store are ignored, and failing to store one is not a runtime error. | n/a: host's job: the library stores nothing, and `Executor.Flag` returns no error. |
 | FLAGS-21 | 7 | Normative | The extension sets flags only on the message being processed, never on other messages in the store. | n/a: host's job: `Executor.Flag` is called for the current message only. |
+| FLAGS-22 | 1, 3–3.3 | Normative | With `variables`, a variable name before the list of flags makes the action change that variable, a space-separated flag list, instead of the internal one; §3.1 and §3.2's examples give the results the RFC describes. | `TestFlags_VariableName` |
 
 
 ## RFC 5173 body extension
@@ -378,7 +379,7 @@ names and matches them. `:text` (the default) matches one string: the first
 | BODY-14 | 5.2 | SHOULD NOT | A NUL octet does not end the content being compared. | `TestBody_NULDoesNotTerminate` |
 | BODY-15 | 5.3 | MUST | All the text taken from one non-container part is in the same string. | `TestBody_TextKeepsPartTogether` |
 | BODY-16 | 5.3 | MAY | `:text` may strip mark-up; the library strips HTML tags. | `TestBody_DefaultTransformIsText`, `TestSieve_BodyContains_HTMLStripped` |
-| BODY-17 | 6 | MUST NOT | With the `variables` extension, wildcards in a body test do not set match variables. | n/a: the `variables` extension is not supported. |
+| BODY-17 | 6 | MUST NOT | With the `variables` extension, wildcards in a body test do not set match variables; its keys and content types are still expanded. | `TestVariables_BodyNoMatchVariables` |
 | BODY-18 | 5.1–5.3 | Normative | The example message and scripts of §5 give the results the RFC describes. | `TestBody_RFCExample` |
 | BODY-19 | 5.2; RFC 2045 §§2, 5.1 | Normative | MIME type selection is ASCII case-insensitive; Unicode case look-alikes do not select an ASCII type, independently of the body comparator. | `TestBody_ContentTypeASCIICase`, `FuzzBodyContentTypeSelection` |
 
@@ -421,7 +422,6 @@ this library does not implement.
 | EXT-CAP-01 | RFC 5228 §3.2 | MUST | Accept exactly the inventoried capabilities; reject unsupported capability declarations and syntax rather than execute a partial script. | `TestExtensionCapabilityInventory` |
 | RELATIONAL-01 | RFC 5231 §1, §4.1–4.2 | Normative | `relational` adds ordered value comparisons and entity counts. | n/a: not implemented; `require "relational"`, `:value` and `:count` are rejected; `i;ascii-numeric` supports equality only. Planned: rest-mail/go-sieve#95. |
 | SUBADDRESS-01 | RFC 5233 §3–4 | Normative | `subaddress` adds user/detail address parts using the encompassing mail system's encoding. | n/a: not implemented; declaration and `:user`/`:detail` are rejected; there is no host subaddress policy API. Planned: rest-mail/go-sieve#96. |
-| VARIABLES-01 | RFC 5229 §2–5 | Normative | `variables` enables interpolation, assignment and string-value tests. | n/a: not implemented; declaration, `set` and `string` are rejected; `${name}` stays literal without the extension. Planned: rest-mail/go-sieve#97. |
 | ENOTIFY-01 | RFC 5435 §2 | Normative | The standardized notification capability is `enotify`. | n/a: not implemented; `enotify` is rejected; the local `notify` action only forwards method/message and does not implement RFC 5435 validation, options, tests or transport policy. |
 
 
@@ -458,3 +458,40 @@ by this library.
 | SECONDS-07 | RFC 6131 §2 | Normative | Use the site default when both interval tags are omitted. | `TestVacationSeconds_Intervals` |
 | SECONDS-08 | RFC 6131 §3 | Normative | The meeting example requests a 1800-second reply interval. | `TestVacationSeconds_RFCExample` |
 | SECONDS-09 | RFC 6131 §2, §4 | SHOULD | Consider reply volume with short intervals. | n/a: host owns sending, persistent suppression and rate limits; interval zero requests no time-based suppression. |
+
+
+## RFC 5229 variables extension
+
+[RFC 5229](https://www.rfc-editor.org/rfc/rfc5229) adds `set`, the `string`
+test, `${name}` interpolation and match variables. Strings keep their decoded
+text in the parsed script and are expanded when the statement using them runs.
+Constant strings are still checked at parse time; a redirect address, vacation
+`:from` or envelope part built from variables is checked once expanded, and an
+invalid one is a runtime error with the fail-safe keep. A comparator name is
+not expanded (VARIABLES-11, [#100](https://github.com/rest-mail/go-sieve/issues/100)).
+`TestDifferentialVariables` compares the extension with foxcpp/go-sieve;
+`TestDifferentialVariablesDepartures` pins three places where foxcpp departs from
+the RFC. Limits: 128 distinct variables, names of up to 400 characters, values of
+up to 4000 characters, match variables `${0}` to `${9}`.
+
+| ID | Section | Level | Requirement | Tests |
+|----|---------|-------|-------------|-------|
+| VARIABLES-01 | 1, 2 | Normative | The capability string is `variables`; `set`, `string` and interpolation exist only in a script that declares it, and `${name}` is ordinary text otherwise. | `TestVariables_RequiresCapability` |
+| VARIABLES-02 | 3 | SHALL | Each variable reference in a string is replaced by the variable's value; names are case-insensitive and unknown variables expand to the empty string. | `TestVariables_Interpolation`, `TestDifferentialVariables` |
+| VARIABLES-03 | 3 | SHALL | Only one pass through the string is done, and text that is not a well-formed reference, such as `${}` or `${doh!}`, is left as it is. | `TestVariables_Interpolation`, `TestDifferentialVariablesDepartures` |
+| VARIABLES-04 | 3 | MUST | An expanded string uses the values current when control reaches its statement. | `TestVariables_CurrentValues` |
+| VARIABLES-05 | 3 | MUST | A reference to a namespace without a require of its extension is an error; no supported extension defines a namespace. | `TestVariables_NamespaceRefused` |
+| VARIABLES-06 | 3.1 | Normative | Backslash quoting, then encoded-character decoding, happen before substitution. | `TestVariables_QuotingAndEncoded` |
+| VARIABLES-07 | 3.2 | Normative | A successful `:matches` sets the match variables: one per wildcard, non-greedy, `${0}` the matched value, leading zeroes ignored, the empty string out of range or before any match; a failed match leaves them. | `TestVariables_MatchVariables`, `TestMatchCapturesReference`, `TestAddressLists_Variables`, `TestDifferentialVariables`, `TestDifferentialVariablesDepartures` |
+| VARIABLES-08 | 3.2 | MUST | Tests are short-circuited and evaluated left to right, so a test not evaluated sets no match variables. | `TestVariables_MatchVariablesShortCircuit`, `TestDifferentialVariables` |
+| VARIABLES-09 | 4 | MUST | The name given to `set` is a constant identifier; a match variable, a namespace or any other invalid name is a syntax error. | `TestVariables_SetName` |
+| VARIABLES-10 | 4 | Normative | `set` stores the value for the running evaluation only, does not affect the implicit keep and combines with every other action. | `TestVariables_SetScope` |
+| VARIABLES-11 | 3 | Normative | Every action and test argument is expanded when it runs, with values only then known checked then; the `:comparator` name is checked at parse time and so cannot be built from a variable (gap: [#100](https://github.com/rest-mail/go-sieve/issues/100)). | `TestVariables_Actions`, `TestAddressLists_Variables` |
+| VARIABLES-12 | 4.1 | MUST | Modifier names are case-insensitive; an unknown modifier, or two of one precedence, is a syntax error; modifiers apply in precedence order, largest first. | `TestVariables_Modifiers`, `TestDifferentialVariables` |
+| VARIABLES-13 | 4.1.1–4.1.3 | Normative | `:length` gives the number of characters, `:quotewildcard` quotes `*`, `?` and `\`, and the case modifiers change only US-ASCII letters. | `TestVariables_ModifierValues`, `TestDifferentialVariables` |
+| VARIABLES-14 | 5 | MUST NOT | `string` is true if any source matches any key, with `:is` by default, and strips no whitespace. | `TestVariables_StringTest`, `TestDifferentialVariables` |
+| VARIABLES-15 | 6 | MUST | At least 128 distinct variables, names of 32 characters and values of 4000 characters are supported. | `TestVariables_Limits`, `TestDifferentialVariablesDepartures` |
+| VARIABLES-16 | 6 | SHOULD | A constant value over the limit is a parse error; a longer value found at run time is truncated on a character boundary, never an error. | `TestVariables_ValueTruncation` |
+| VARIABLES-17 | 6 | MUST | Match variables `${1}` to `${9}` are supported, and a reference to a higher index is a syntax error found at parse time. | `TestVariables_MatchVariableLimit` |
+| VARIABLES-18 | 5 | Normative | With `relational`, `string :count` counts the non-empty sources. | n/a: not supported yet: `relational` is not implemented, see https://github.com/rest-mail/go-sieve/issues/95. |
+| VARIABLES-19 | 3.2 | MAY | An extension defining a match type may set match variables; the local `:regex` match type sets none, so only `:matches` does. | `TestVariables_MatchVariables` |

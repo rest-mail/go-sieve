@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Checklist: 164/249 mapped](https://img.shields.io/badge/checklist-164%2F249%20mapped-blue)](CHECKLIST.md)
+[![Checklist: 185/268 mapped](https://img.shields.io/badge/checklist-185%2F268%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve/pkg/sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -122,7 +122,8 @@ Check a script's syntax without evaluating it with `sieve.Validate(src)`.
 | Envelope and body | `envelope` (RFC 5228), `body` (RFC 5173): extracted `:text` and MIME-type-selected `:content`. `:raw` currently uses extracted text; see the planned gap below. |
 | Rejection | `reject` and `ereject` (RFC 5429); `Outcome.ExtendedReject` distinguishes them. |
 | Copies and folders | `:copy` on fileinto/redirect (RFC 3894); `fileinto :create` (RFC 5490). The host creates folders. |
-| Flags | `setflag`, `addflag`, `removeflag` callbacks with normalized lists (RFC 5232). `hasflag` and delivery `:flags` remain gaps. |
+| Flags | `setflag`, `addflag`, `removeflag` callbacks with normalized lists (RFC 5232); with `variables`, a variable name before the list changes that variable instead. `hasflag` and delivery `:flags` remain gaps. |
+| Variables | RFC 5229: `set` with `:lower`, `:upper`, `:lowerfirst`, `:upperfirst`, `:quotewildcard` and `:length`; the `string` test; `${name}` interpolation in every action and test argument; match variables `${0}` to `${9}` from `:matches`. Up to 128 variables, 400-character names and 4000-character values; longer values set at run time are truncated. Variables last for one `Evaluate`. A `:comparator` name is not expanded. |
 | Vacation | RFC 5230 argument validation and suppression rules; RFC 6131 `vacation-seconds`. Persistent suppression and reply transport belong to the host. |
 | Encoded strings | `encoded-character`: `${hex:...}` and `${unicode:...}` (RFC 5228). |
 | Local extensions | `regex` uses Go regular expressions; `notify` forwards method/message. These are not standardized regex or RFC 5435 `enotify` conformance. |
@@ -180,7 +181,10 @@ The callback preserves `Subject`, `From`, `Body`, `MIME`, and `Handle`.
 `SubjectSet` and `HandleSet` distinguish explicit empty strings from omitted
 tags. The host owns persistent tracking: use the explicit handle when
 `HandleSet`, otherwise the original subject/from/MIME/reason arguments, together
-with the recipient user and sender. Do not include a generated default subject
+with the recipient user and sender. In a script using `variables`, `Subject`,
+`From` and `Body` are expanded for the reply, but RFC 5230 §4.2 forbids
+tracking on expanded arguments: track with `Vacation.Tracking`, which carries
+them as written, and `Handle`, which is never expanded. Do not include a generated default subject
 in that identity, and honor `Interval` when sending. The host also validates
 and serializes MIME, encodes non-ASCII subjects, generates defaults and threading
 headers, and sends the reply with `Auto-Submitted: auto-replied` and a null SMTP
@@ -308,7 +312,8 @@ reason. That records a boundary or a gap, rather than claiming full conformance.
 | Report a host policy skip from Redirect without cancelling the implicit keep (SIEVE-CORE-20). | [#93](https://github.com/rest-mail/go-sieve/issues/93) |
 | Relational comparisons (RFC 5231): `:value` with ordered operators and `:count`, beyond today's numeric equality (RELATIONAL-01). | [#95](https://github.com/rest-mail/go-sieve/issues/95) |
 | Subaddresses (RFC 5233): `:user` and `:detail`, with the separator supplied by the host (SUBADDRESS-01). | [#96](https://github.com/rest-mail/go-sieve/issues/96) |
-| Variables (RFC 5229): `set`, interpolation, match variables and the `string` test; `${name}` stays literal until then (VARIABLES-01). | [#97](https://github.com/rest-mail/go-sieve/issues/97) |
+| Expand variables in `:comparator` names, which are checked at parse time today (VARIABLES-11), and in relational operators once relational lands. | [#100](https://github.com/rest-mail/go-sieve/issues/100) |
+| Let the host choose which extensions a script may use; today every supported extension, `variables` included, is available to any script that declares it. | [#107](https://github.com/rest-mail/go-sieve/issues/107) |
 
 ### Badges and coverage
 
@@ -319,8 +324,8 @@ tests count toward the implementation they exercise. CI runs the race detector,
 checklist, workflow fixtures and all seven fuzz targets, bounded by 500000
 executions per target.
 
-The checklist badge counts 164 mapped requirements out of 249 rows, including
-85 `n/a` rows. `TestReadmeChecklistBadge` validates the actual mappings and exact
+The checklist badge counts 185 mapped requirements out of 268 rows, including
+83 `n/a` rows. `TestReadmeChecklistBadge` validates the actual mappings and exact
 badge text; the workflow fixtures check the coverage badge against the gate.
 The CI badge reports whether verification passed.
 

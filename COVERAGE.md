@@ -13,6 +13,13 @@ leave a statement uncovered.
 
 ## Not covered yet
 
+Every statement of the variables extension (`pkg/sieve/variables.go` and
+`match.Captures`) is covered: `TestMatchCapturesReference` drives the capture
+table and walk, and the `TestVariables_*` suite in `pkg/sieve/rfctest` the
+parser, expansion, modifiers, truncation and run-time checks. The one statement
+left in `parseBlock` (the closing-brace error after `parseCommands(true)`) was
+uncovered before this change and cannot fire.
+
 No known gaps remain in the lexer (`tokenize` through `readMultiLineString`).
 `TestMultiLineString_HashCommentAfterMarker` covers the hash comment that may
 end the `text:` line of a multi-line string (RFC 5228 §8.1), including malformed
