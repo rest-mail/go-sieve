@@ -1311,6 +1311,13 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 				return opts, err
 			}
 			comparatorSet = true
+			// With variables, a comparator name built from a variable is a
+			// string like any other (RFC 5229 §3): it is kept as written, then
+			// expanded and checked when its test runs (expandComparator).
+			if p.dynamic(s.Str) {
+				opts.comparator = s.Str
+				break
+			}
 			// RFC 4790 §3.1 restricts collation identifiers to US-ASCII.
 			// Unicode lowercasing would accept dotted I as an ASCII i.
 			opts.comparator = match.ASCIIFold(s.Str)

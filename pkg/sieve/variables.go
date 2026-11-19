@@ -2,6 +2,7 @@ package sieve
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -85,6 +86,9 @@ func (*stringTest) isTest() {}
 type variableState struct {
 	values  map[string]string
 	matches []string // most recent successful :matches; empty before one
+	// requires holds the script's require names, so a comparator named at
+	// run time can be checked as Parse checks a constant one.
+	requires []string
 }
 
 // ── Variable references ──────────────────────────────────────────────
@@ -431,7 +435,28 @@ func (st *evalState) expandList(list []string) []string {
 // successful :matches sets the match variables from the first pair that
 // matches (§3.2); a failed one leaves them as they were.
 func (st *evalState) matchValues(values []string, matchType, relation, comparator string, keys []string) bool {
+	comparator = st.expandComparator(matchType, comparator)
 	return st.matchExpanded(values, matchType, st.expandRelation(matchType, relation), comparator, st.expandList(keys))
+}
+
+// expandComparator returns a test's comparator name. Parse has checked a
+// constant one; one built from variables (RFC 5229 §3) is expanded here and
+// checked the same way: case-insensitive, built in or declared with require
+// (RFC 5228 §2.7.3), and able to serve the match type (RFC 4790 §9.1). A bad
+// value is a runtime error, so the fail-safe keep applies.
+func (st *evalState) expandComparator(matchType, comparator string) string {
+	if st.vars == nil || !hasVariableRef(comparator) {
+		return comparator
+	}
+	expanded := st.vars.expand(comparator)
+	name := match.ASCIIFold(expanded)
+	if name != defaultComparator && name != "i;octet" && !slices.Contains(st.vars.requires, "comparator-"+name) {
+		panic(fmt.Errorf("sieve: comparator %q is neither built in nor declared with require (RFC 5228 §2.7.3)", expanded))
+	}
+	if err := checkComparatorMatchType(name, matchType); err != nil {
+		panic(fmt.Errorf("sieve: %w", err))
+	}
+	return name
 }
 
 // expandRelation returns the relational operator of a :value or :count test.

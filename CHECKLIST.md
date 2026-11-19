@@ -89,7 +89,7 @@ The extension audits and the owner decisions on hasflag, delivered flags,
 | SIEVE-CORE-41 | 5.1 | SHOULD | Include other fields using an address-list body in address tests. | `TestRFC5228AddressHeaderRestriction` |
 | SIEVE-CORE-42 | 5.4 | Normative | Only envelope recipient information for the evaluated user is available in the to part. | n/a: the host must populate Envelope.To with only the current delivery recipient identities; the library cannot infer user ownership from an arbitrary supplied list. |
 | SIEVE-CORE-43 | 7 | Normative | Use application/sieve when transmitting a Sieve script as a MIME entity. | n/a: this parser has no script transmission or MIME serialization facility. |
-| SIEVE-CORE-44 | 2.1–2.3, 8.1 | Normative | CR and LF occur only as the CRLF line ending in script source. | n/a: planned (https://github.com/rest-mail/go-sieve/issues/92): outside quoted strings, bare LF is still accepted in whitespace, comments and multiline strings. SIEVE-CORE-49 proves whole-source bare-CR rejection; SIEVE-LEX-03 proves quoted-string validation. |
+| SIEVE-CORE-44 | 2.1–2.3, 8.1 | Normative | CR and LF occur only as the CRLF line ending in script source. | `TestRFC5228SourceBareLFRejected`, `TestRFC5228SourceLFDiagnostic`, `TestRFC5228SourceLFValuesPreserved`, `TestRFC5228SourceBareCRRejected`, `FuzzParse` |
 | SIEVE-CORE-45 | 2.4.2.3 | Normative | Accept the complete sieve-address grammar, including obsolete addr-spec forms and folding whitespace in domain literals inherited from RFC 2822. | n/a: redirect uses Go net/mail mailbox syntax, which rejects some obsolete forms. Domain literals are checked as non-empty dtext independently of the Go version (IPv4, IPv6: and general literals are tested by CORE-39), but FWS inside a literal is rejected; this is not complete grammar conformance. |
 | SIEVE-CORE-46 | 2.4.2.2, 5.1, 5.5, 5.7; RFC 5322 §3.6.8 | Normative | Header field names use ASCII case-insensitive matching, independently of the value comparator; non-ASCII names in raw message headers cannot alias valid names. | `TestRFC5228RawHeaderNameASCIICase`, `TestRFC5228RawHeaderNameOctets` |
 | SIEVE-CORE-47 | 5.7; RFC 5322 §2.2.3 | Normative | Before header matching, unfold by removing only CRLF immediately followed by SP or HTAB; preserve the whitespace octets rather than collapsing them. | `TestRFC5228HeaderUnfoldPreservesWhitespace`, `TestRFC5228HeaderUnfoldWSPSequences` |
@@ -508,8 +508,8 @@ text in the parsed script and are expanded when the statement using them runs.
 Constant strings are still checked at parse time; a redirect address, vacation
 `:from` or envelope part built from variables is checked once expanded, and an
 invalid one is a runtime error with the fail-safe keep; so is a relational
-operator built from variables. A comparator name is
-not expanded (VARIABLES-11, [#100](https://github.com/rest-mail/go-sieve/issues/100)).
+operator or a `:comparator` name built from variables (VARIABLES-11,
+[#100](https://github.com/rest-mail/go-sieve/issues/100)).
 `TestDifferentialVariables` compares the extension with foxcpp/go-sieve;
 `TestDifferentialVariablesDepartures` pins three places where foxcpp departs from
 the RFC. Limits: 128 distinct variables, names of up to 400 characters, values of
@@ -527,7 +527,7 @@ up to 4000 characters, match variables `${0}` to `${9}`.
 | VARIABLES-08 | 3.2 | MUST | Tests are short-circuited and evaluated left to right, so a test not evaluated sets no match variables. | `TestVariables_MatchVariablesShortCircuit`, `TestDifferentialVariables` |
 | VARIABLES-09 | 4 | MUST | The name given to `set` is a constant identifier; a match variable, a namespace or any other invalid name is a syntax error. | `TestVariables_SetName` |
 | VARIABLES-10 | 4 | Normative | `set` stores the value for the running evaluation only, does not affect the implicit keep and combines with every other action. | `TestVariables_SetScope` |
-| VARIABLES-11 | 3 | Normative | Every action and test argument is expanded when it runs, with values only then known checked then, the relational operator of `:value` and `:count` included; the `:comparator` name is checked at parse time and so cannot be built from a variable (gap: [#100](https://github.com/rest-mail/go-sieve/issues/100)). | `TestVariables_Actions`, `TestAddressLists_Variables`, `TestDifferentialRelationalDepartures` |
+| VARIABLES-11 | 3 | Normative | Every action and test argument is expanded when it runs, with values only then known checked then, the relational operator of `:value` and `:count` and the `:comparator` name included ([#100](https://github.com/rest-mail/go-sieve/issues/100)): an expanded comparator name must be built in or declared with require and support the match type, and a bad one is a runtime error with the fail-safe keep; a constant one is still checked at parse time. | `TestVariables_Actions`, `TestVariables_ComparatorName`, `TestAddressLists_Variables`, `TestDifferentialRelationalDepartures`, `TestDifferentialVariablesComparatorName` |
 | VARIABLES-12 | 4.1 | MUST | Modifier names are case-insensitive; an unknown modifier, or two of one precedence, is a syntax error; modifiers apply in precedence order, largest first. | `TestVariables_Modifiers`, `TestDifferentialVariables` |
 | VARIABLES-13 | 4.1.1–4.1.3 | Normative | `:length` gives the number of characters, `:quotewildcard` quotes `*`, `?` and `\`, and the case modifiers change only US-ASCII letters. | `TestVariables_ModifierValues`, `TestDifferentialVariables` |
 | VARIABLES-14 | 5 | MUST NOT | `string` is true if any source matches any key, with `:is` by default, and strips no whitespace. | `TestVariables_StringTest`, `TestDifferentialVariables` |

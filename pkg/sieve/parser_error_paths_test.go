@@ -46,8 +46,8 @@ func TestParse_NestedErrorsPropagate(t *testing.T) {
 	}
 	for name, src := range bad {
 		t.Run(name, func(t *testing.T) {
-			if s, err := Parse(src); err == nil {
-				t.Fatalf("Parse(%q) accepted the script: %+v", src, s)
+			if s, err := Parse(crlf(src)); err == nil {
+				t.Fatalf("Parse(crlf(%q)) accepted the script: %+v", src, s)
 			}
 		})
 	}
@@ -74,7 +74,7 @@ func TestParse_TopLevelLeftoverTokens(t *testing.T) {
 		"keep; [",
 		"keep; {",
 	} {
-		if err := Validate(src); err == nil {
+		if err := Validate(crlf(src)); err == nil {
 			t.Errorf("%q was accepted", src)
 		}
 	}

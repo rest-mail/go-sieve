@@ -253,8 +253,8 @@ func TestAddressLists_RelationalAndSubaddress(t *testing.T) {
 
 	// :count reads each address once and builds no list.
 	lists := &parsedLists{fields: map[string]string{"from": "a@b.example, c@d.example", "to": "e@f.example"}}
-	script, err := Parse(`require ["fileinto", "relational", "comparator-i;ascii-numeric"];
-if address :count "eq" :comparator "i;ascii-numeric" ["From", "To"] "3" { fileinto "three"; }`)
+	script, err := Parse(crlf(`require ["fileinto", "relational", "comparator-i;ascii-numeric"];
+if address :count "eq" :comparator "i;ascii-numeric" ["From", "To"] "3" { fileinto "three"; }`))
 	if err != nil {
 		t.Fatal(err)
 	}

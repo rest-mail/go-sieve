@@ -11,7 +11,7 @@ func TestParseSieveScript_RequiresAndCommands(t *testing.T) {
 	script := `require ["fileinto", "envelope"];
 if true { keep; }
 discard;`
-	s, err := parseSieveScript(script)
+	s, err := parseSieveScript(crlf(script))
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestValidateSieve_Errors(t *testing.T) {
 		`if header :is "Subject" { keep; }`,    // header missing key list
 	}
 	for _, s := range bad {
-		if err := Validate(s); err == nil {
+		if err := Validate(crlf(s)); err == nil {
 			t.Errorf("expected Validate to reject:\n%s", s)
 		}
 	}
@@ -52,7 +52,7 @@ if header :is "Subject" "x" { fileinto "A"; } elsif true { fileinto "B"; } else 
 		`if address :localpart :contains "From" "admin" { redirect "ops@example.com"; }`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("Validate rejected a valid script: %v\n%s", err, s)
 		}
 	}
@@ -80,7 +80,7 @@ if envelope :is "from" [] { keep; }`},
 if true { setflag []; }`},
 	}
 	for _, tc := range empty {
-		if err := Validate(tc.script); err == nil {
+		if err := Validate(crlf(tc.script)); err == nil {
 			t.Errorf("%s: expected Validate to reject an empty [] string list:\n%s", tc.name, tc.script)
 		}
 	}
@@ -103,7 +103,7 @@ func TestValidateSieve_RejectsRedirectControlChars(t *testing.T) {
 		{"carriage-return", "redirect text:\nvictim\rTo: attacker@evil.com\n.\n;"},
 	}
 	for _, tc := range inject {
-		if err := Validate(tc.script); err == nil {
+		if err := Validate(crlf(tc.script)); err == nil {
 			t.Errorf("%s: expected Validate to reject redirect with a control character in the address:\n%s", tc.name, tc.script)
 		}
 	}
@@ -118,7 +118,7 @@ redirect :copy "copy@example.com";`,
 		`redirect "Ops Team <ops@example.com>";`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("Validate rejected a valid redirect: %v\n%s", err, s)
 		}
 	}
@@ -145,7 +145,7 @@ if envelope :is "from" "a@b.com" {
 }`,
 	}
 	for _, s := range scripts {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("Validate should accept valid script, got error: %v\nScript: %s", err, s)
 		}
 	}
@@ -205,7 +205,7 @@ func TestValidateSieve_RejectsSizeOverflow(t *testing.T) {
 		`if size :over 99999999999999999999K { discard; }`,
 	}
 	for _, s := range overflow {
-		if err := Validate(s); err == nil {
+		if err := Validate(crlf(s)); err == nil {
 			t.Errorf("expected Validate to reject an overflowing quantified size:\n%s", s)
 		}
 	}
@@ -222,7 +222,7 @@ func TestValidateSieve_AcceptsRepresentableSizes(t *testing.T) {
 		`if size :under 0G { keep; }`,
 	}
 	for _, s := range good {
-		if err := Validate(s); err != nil {
+		if err := Validate(crlf(s)); err != nil {
 			t.Errorf("Validate rejected a representable quantified size: %v\n%s", err, s)
 		}
 	}

@@ -105,6 +105,14 @@ func uniqueStrings(in []string) []string {
 	return out
 }
 
+// crlf gives a test script the CRLF line ends RFC 5228 requires (§2, §8.1).
+// Go raw string literals drop CR, so scripts are written with LF and turned
+// into conforming source here, as a host would normalise one on upload. A
+// CRLF already in the script is kept.
+func crlf(src string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(src, "\r\n", "\n"), "\n", "\r\n")
+}
+
 // sieveResult bundles the recorded actions and terminal outcome of a run.
 type sieveResult struct {
 	meta         map[string]string
@@ -115,7 +123,7 @@ type sieveResult struct {
 
 func runSieve(t *testing.T, script string, msg *Message) *sieveResult {
 	t.Helper()
-	s, err := Parse(script)
+	s, err := Parse(crlf(script))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
@@ -893,7 +901,7 @@ func TestSieve_UnknownCommandRejected(t *testing.T) {
 	script := `require "fileinto";
 frobnicate "x" 42;
 if header :contains "Subject" "test" { fileinto "StillWorks"; }`
-	if err := Validate(script); err == nil {
+	if err := Validate(crlf(script)); err == nil {
 		t.Error("expected an unknown command to be rejected at parse time")
 	}
 }
@@ -907,7 +915,7 @@ if spamtest :value "gt" "5" {
 } else {
   fileinto "Ham";
 }`
-	if err := Validate(script); err == nil {
+	if err := Validate(crlf(script)); err == nil {
 		t.Error("expected an unknown test to be rejected at parse time")
 	}
 }
@@ -1594,7 +1602,7 @@ func countApplied(applied []string, want string) int {
 // actions the reference Executor recorded.
 func evalApplied(t *testing.T, script string) []string {
 	t.Helper()
-	s, err := Parse(script)
+	s, err := Parse(crlf(script))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}

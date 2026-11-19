@@ -10,7 +10,7 @@ import (
 // allows: its requires are capabilities the package supports, and evaluating it
 // against a message neither panics nor loses the message.
 //
-// checklist: SIEVE-CMD-02 SIEVE-CMD-03 SIEVE-LEX-01 SIEVE-LEX-02 SIEVE-LEX-03 SIEVE-LEX-05 SIEVE-LEX-07 SIEVE-LEX-08 SIEVE-LEX-10 SIEVE-CORE-37 SIEVE-CORE-49
+// checklist: SIEVE-CMD-02 SIEVE-CMD-03 SIEVE-LEX-01 SIEVE-LEX-02 SIEVE-LEX-03 SIEVE-LEX-05 SIEVE-LEX-07 SIEVE-LEX-08 SIEVE-LEX-10 SIEVE-CORE-37 SIEVE-CORE-44 SIEVE-CORE-49
 func FuzzParse(f *testing.F) {
 	for _, seed := range []string{
 		"",
@@ -66,6 +66,9 @@ func FuzzParse(f *testing.F) {
 		for i := 0; i < len(src); i++ {
 			if src[i] == '\r' && (i+1 == len(src) || src[i+1] != '\n') {
 				t.Fatal("accepted a bare CR in script source")
+			}
+			if src[i] == '\n' && (i == 0 || src[i-1] != '\r') {
+				t.Fatal("accepted a bare LF in script source")
 			}
 		}
 		for _, name := range script.Requires() {

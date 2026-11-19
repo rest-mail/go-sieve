@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml/badge.svg)](https://github.com/rest-mail/go-sieve/actions/workflows/ci.yml)
 [![Coverage gate: >=95%](https://img.shields.io/badge/coverage%20gate-%3E%3D95%25-brightgreen)](COVERAGE.md)
-[![Checklist: 202/283 mapped](https://img.shields.io/badge/checklist-202%2F283%20mapped-blue)](CHECKLIST.md)
+[![Checklist: 203/283 mapped](https://img.shields.io/badge/checklist-203%2F283%20mapped-blue)](CHECKLIST.md)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rest-mail/go-sieve.svg)](https://pkg.go.dev/github.com/rest-mail/go-sieve/pkg/sieve)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rest-mail/go-sieve)](https://goreportcard.com/report/github.com/rest-mail/go-sieve)
 
@@ -60,6 +60,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/rest-mail/go-sieve/pkg/sieve"
 )
@@ -78,11 +79,14 @@ func (m *mailbox) Vacation(v sieve.Vacation)           {}
 func (m *mailbox) Notify(method, message string)       {}
 
 func main() {
-	script, err := sieve.Parse(`require ["fileinto", "imap4flags", "mailbox"];
+	// Sieve source ends every line in CRLF (RFC 5228 §2). A script written
+	// with Unix line ends is refused, so a host normalises it on upload.
+	src := strings.ReplaceAll(`require ["fileinto", "imap4flags", "mailbox"];
 if header :contains "Subject" "invoice" {
     setflag "\\Flagged";
     fileinto :create "Invoices";
-}`)
+}`, "\n", "\r\n")
+	script, err := sieve.Parse(src)
 	if err != nil {
 		panic(err)
 	}
@@ -126,7 +130,7 @@ Check a script's syntax without evaluating it with `sieve.Validate(src)`.
 | Rejection | `reject` and `ereject` (RFC 5429); `Outcome.ExtendedReject` distinguishes them. |
 | Copies and folders | `:copy` on fileinto/redirect (RFC 3894); `fileinto :create` (RFC 5490). The host creates folders. |
 | Flags | `setflag`, `addflag`, `removeflag` callbacks with normalized lists (RFC 5232); with `variables`, a variable name before the list changes that variable instead. `hasflag` and delivery `:flags` remain gaps. |
-| Variables | RFC 5229: `set` with `:lower`, `:upper`, `:lowerfirst`, `:upperfirst`, `:quotewildcard` and `:length`; the `string` test; `${name}` interpolation in every action and test argument; match variables `${0}` to `${9}` from `:matches`. Up to 128 variables, 400-character names and 4000-character values; longer values set at run time are truncated. Variables last for one `Evaluate`. A `:comparator` name is not expanded. |
+| Variables | RFC 5229: `set` with `:lower`, `:upper`, `:lowerfirst`, `:upperfirst`, `:quotewildcard` and `:length`; the `string` test; `${name}` interpolation in every action and test argument; match variables `${0}` to `${9}` from `:matches`. Up to 128 variables, 400-character names and 4000-character values; longer values set at run time are truncated. Variables last for one `Evaluate`. A relational operator or `:comparator` name built from variables is checked when its test runs. |
 | Vacation | RFC 5230 argument validation and suppression rules; RFC 6131 `vacation-seconds`. Persistent suppression and reply transport belong to the host. |
 | Encoded strings | `encoded-character`: `${hex:...}` and `${unicode:...}` (RFC 5228). |
 | Local extensions | `regex` uses Go regular expressions; `notify` forwards method/message. These are not standardized regex or RFC 5435 `enotify` conformance. |
@@ -203,11 +207,12 @@ message that is only a header, with no empty line after it: every `body` test of
 it is false, even one for the empty string (RFC 5173 §4).
 
 The RFC 5228 core audit also records host duties and known gaps: MIME header
-charset preparation, redirect policy/trace/loop controls, strict whole-script
-line endings, and full structured-address validation. Raw NUL and bare CR
-are rejected throughout the source, including comments and multiline strings;
-encoded-character may produce either in string values. Bare LF outside quoted
-strings remains a known line-ending gap (SIEVE-CORE-44). Redirect
+charset preparation, redirect policy/trace/loop controls, and full
+structured-address validation. Raw NUL, bare CR and bare LF are rejected
+throughout the source, including comments and multiline strings, so every line
+must end in CRLF; a host should convert a script saved with Unix line endings
+when it is uploaded. Encoded-character may produce any of them in string
+values (SIEVE-CORE-44, SIEVE-CORE-49). Redirect
 targets are checked after encoded-character decoding as a single mailbox using
 Go `net/mail`, with groups and source routes refused. The original valid value
 is passed unchanged to `Executor.Redirect`. This accepts named and quoted
@@ -311,9 +316,7 @@ reason. That records a boundary or a gap, rather than claiming full conformance.
 | Track flags, implement `hasflag`, and preserve delivery `:flags`, including duplicate-delivery rules (FLAGS-17/18/19). | [#89](https://github.com/rest-mail/go-sieve/issues/89) |
 | Supply an undecoded body for `body :raw` (BODY-07). | [#90](https://github.com/rest-mail/go-sieve/issues/90) |
 | Add a user-scoped host query for `mailboxexists` (MAILBOX-08/09/10). | [#91](https://github.com/rest-mail/go-sieve/issues/91) |
-| Reject bare LF throughout script source (SIEVE-CORE-44). | [#92](https://github.com/rest-mail/go-sieve/issues/92) |
 | Report a host policy skip from Redirect without cancelling the implicit keep (SIEVE-CORE-20). | [#93](https://github.com/rest-mail/go-sieve/issues/93) |
-| Expand variables in `:comparator` names, which are checked at parse time today (VARIABLES-11). | [#100](https://github.com/rest-mail/go-sieve/issues/100) |
 | Let the host choose which extensions a script may use; today every supported extension, `variables` included, is available to any script that declares it. | [#107](https://github.com/rest-mail/go-sieve/issues/107) |
 
 ### Badges and coverage

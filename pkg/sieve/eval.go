@@ -267,7 +267,7 @@ func (s *Script) Evaluate(msg *Message, exec Executor) (out Outcome) {
 	}
 	if s.variables {
 		// RFC 5229 §4: variables belong to this evaluation only.
-		st.vars = &variableState{values: map[string]string{}}
+		st.vars = &variableState{values: map[string]string{}, requires: s.requires}
 	}
 	// RFC 5228 §2.10.6: an execution error must not lose the message. If any
 	// action panics — typically a host Executor callback failing — recover and
@@ -614,7 +614,8 @@ func (st *evalState) evalTest(t sieveTest) bool {
 		}
 		// RFC 5173 §6: wildcards in a body test do not set match variables,
 		// so the keys are expanded but compared without capturing.
-		return matchPlain(bodyValues(msg, tt.transform, st.expandList(tt.contentTypes)), tt.matchType, st.expandRelation(tt.matchType, tt.relation), tt.comparator, st.expandList(tt.keys))
+		comparator := st.expandComparator(tt.matchType, tt.comparator)
+		return matchPlain(bodyValues(msg, tt.transform, st.expandList(tt.contentTypes)), tt.matchType, st.expandRelation(tt.matchType, tt.relation), comparator, st.expandList(tt.keys))
 	case *stringTest:
 		// RFC 5229 §5: the sources come from the script, unstripped.
 		sources := st.expandList(tt.sources)
@@ -640,6 +641,7 @@ func matchPlain(values []string, matchType, relation, comparator string, keys []
 // expanded key a right side; the test is true if any key satisfies it. A count
 // sets no match variables (RFC 5229 §3.2).
 func (st *evalState) countMatches(n int, relation, comparator string, keys []string) bool {
+	comparator = st.expandComparator(":count", comparator)
 	return match.AnyValue([]string{strconv.Itoa(n)}, st.expandRelation(":count", relation), comparator, st.expandList(keys))
 }
 
@@ -929,6 +931,7 @@ func formatAddresses(addrs []Address) []string {
 // gatherAddressValues lists them, so that is the same address either way. An address with no
 // :detail (RFC 5233 §4) gives no value, as in gatherAddressValues.
 func (st *evalState) anyAddress(headers []string, tt *addressTest) bool {
+	comparator := st.expandComparator(tt.matchType, tt.comparator)
 	keys := st.expandList(tt.keys)
 	relation := st.expandRelation(tt.matchType, tt.relation)
 	matched := false
@@ -939,7 +942,7 @@ func (st *evalState) anyAddress(headers []string, tt *addressTest) bool {
 			return true
 		}
 		one[0] = v
-		matched = st.matchExpanded(one, tt.matchType, relation, tt.comparator, keys)
+		matched = st.matchExpanded(one, tt.matchType, relation, comparator, keys)
 		return !matched
 	})
 	return matched
