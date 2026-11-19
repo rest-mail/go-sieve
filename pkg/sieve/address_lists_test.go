@@ -193,3 +193,74 @@ func TestAddressLists_SubjectIsNotAnAddress(t *testing.T) {
 		t.Fatalf("read a list for a Subject: %+v", lists)
 	}
 }
+
+// With relational and subaddress, the lazy form still answers as the built
+// form does: :value and :count on the address and header tests, and the :user
+// and :detail address parts, on lists of every shape, groups included.
+//
+// checklist: RELATIONAL-07 RELATIONAL-09 SUBADDRESS-03 SUBADDRESS-04
+func TestAddressLists_RelationalAndSubaddress(t *testing.T) {
+	values := []string{
+		"", "ann@example.com", "ann+news@example.com, bob+@example.org", "team: d+x@example.com, e@example.com;",
+		"not an address", "a@b,c+d@e,f@g",
+	}
+	raws := []map[string][]string{
+		nil,
+		{"Reply-To": {"zed+r@example.net, y@example.net", "not an address"}},
+	}
+	var tests []string
+	for _, field := range []string{`"From"`, `"Cc"`, `"Reply-To"`, `"Subject"`, `["from", "cc", "reply-to"]`} {
+		for n := range 6 {
+			tests = append(tests,
+				fmt.Sprintf(`address :count "eq" :comparator "i;ascii-numeric" %s "%d"`, field, n),
+				fmt.Sprintf(`header :count "eq" :comparator "i;ascii-numeric" %s "%d"`, field, n))
+		}
+		for _, part := range []string{":all", ":localpart", ":user", ":detail"} {
+			for _, key := range []string{"ann", "news", "", "d", "x", "c+d", "zed"} {
+				tests = append(tests,
+					fmt.Sprintf(`address %s :is %s "%s"`, part, field, key),
+					fmt.Sprintf(`address %s :value "lt" %s "%s"`, part, field, key))
+			}
+			tests = append(tests, fmt.Sprintf(`address %s :matches %s "*"`, part, field))
+		}
+	}
+
+	matched := 0
+	for _, test := range tests {
+		script, err := Parse(`require ["fileinto", "relational", "subaddress", "comparator-i;ascii-numeric"]; if ` + test + ` { fileinto "hit"; }`)
+		if err != nil {
+			t.Fatalf("%s: %v", test, err)
+		}
+		for _, from := range values {
+			field := map[string]string{"from": from, "cc": from}
+			for _, raw := range raws {
+				built, lazy := builtAndLazy(field, raw)
+				a, b := newRecExec(), newRecExec()
+				script.Evaluate(built, a)
+				script.Evaluate(lazy, b)
+				if !reflect.DeepEqual(a.applied, b.applied) {
+					t.Fatalf("%s on %v %v: built %v, lazy %v", test, field, raw, a.applied, b.applied)
+				}
+				if strings.Contains(strings.Join(a.applied, " "), "hit") {
+					matched++
+				}
+			}
+		}
+	}
+	if matched == 0 {
+		t.Fatal("no test matched, so the comparison proved nothing")
+	}
+
+	// :count reads each address once and builds no list.
+	lists := &parsedLists{fields: map[string]string{"from": "a@b.example, c@d.example", "to": "e@f.example"}}
+	script, err := Parse(`require ["fileinto", "relational", "comparator-i;ascii-numeric"];
+if address :count "eq" :comparator "i;ascii-numeric" ["From", "To"] "3" { fileinto "three"; }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex := newRecExec()
+	script.Evaluate(&Message{Headers: Headers{Lists: lists}}, ex)
+	if ex.meta["deliver_to_folder"] != "three" || lists.all != 0 || lists.seen != 3 {
+		t.Errorf("folder %q, built %d lists, visited %d addresses; want three, 0, 3", ex.meta["deliver_to_folder"], lists.all, lists.seen)
+	}
+}

@@ -240,6 +240,11 @@ func TestVariables_MatchVariables(t *testing.T) {
 	if got != "m" {
 		t.Errorf("a non-:matches test changed the match variables: %q", got)
 	}
+	// Nor do the relational :value and :count (RFC 5231).
+	got = expandInMsg(t, `require ["relational", "comparator-i;ascii-numeric"]; if string :matches "m" "*" {} if string :value "gt" "b" "a" {} if string :count "eq" :comparator "i;ascii-numeric" "q" "1" {} if header :count "ge" :comparator "i;ascii-numeric" "Subject" "1" {}`, `${0}${1}`, msg)
+	if got != "mm" {
+		t.Errorf("a relational test changed the match variables: %q", got)
+	}
 }
 
 // TestVariables_MatchVariablesShortCircuit checks that tests are evaluated left
@@ -416,6 +421,33 @@ if allof (header :is "${h}" "${c}", exists ["${h}", "Subject"], envelope :localp
 	if _, out := varsRun(t, req+`set "a" "Name <a@b.example>"; redirect "${a}";`, sieveEmail()); out.Error != nil {
 		t.Errorf("valid expanded redirect: %v", out.Error)
 	}
+	// The relational operator is a string like any other: built from a
+	// variable it is expanded and checked when its test runs (RFC 5229 §3).
+	const relReq = `require ["variables", "fileinto", "relational", "comparator-i;ascii-numeric"]; `
+	for _, tc := range []struct{ script, want string }{
+		{`set "op" "GT"; if string :value "${op}" "b" "a" { fileinto "gt"; }`, "fileinto:gt"},
+		{`set "op" "l"; if string :value "${op}e" "b" "b" { fileinto "le"; }`, "fileinto:le"},
+		{`set "op" "eq"; if header :count "${op}" :comparator "i;ascii-numeric" "Subject" "1" { fileinto "one"; }`, "fileinto:one"},
+	} {
+		ex, out := varsRun(t, relReq+tc.script, sieveEmail())
+		if out.Error != nil || !reflect.DeepEqual(ex.applied, []string{tc.want}) {
+			t.Errorf("%s: actions %q, error %v, want %s", tc.script, ex.applied, out.Error, tc.want)
+		}
+	}
+	for _, script := range []string{
+		`set "op" "bogus"; if string :value "${op}" "b" "a" { fileinto "x"; }`,
+		`if string :count "${unset}" "b" "1" { fileinto "x"; }`,
+		`set "op" "gt"; if header :value "${op} " "Subject" "a" { fileinto "x"; }`,
+	} {
+		ex, out := varsRun(t, relReq+script, sieveEmail())
+		if out.Error == nil || !out.ImplicitKeep || len(ex.applied) != 0 {
+			t.Errorf("%s: outcome %+v, actions %q, want a runtime error and the implicit keep", script, out, ex.applied)
+		}
+	}
+	if err := sieve.Validate(relReq + `if string :value "bogus" "b" "a" { keep; }`); err == nil {
+		t.Error("a constant unknown operator was accepted")
+	}
+
 	// Gap rest-mail/go-sieve#100: a comparator name is not expanded.
 	if err := sieve.Validate(req + `set "c" "i;octet"; if header :comparator "${c}" :is "Subject" "x" { keep; }`); err == nil {
 		t.Error("a comparator name built from a variable was accepted; update #100 and VARIABLES-11")
@@ -744,4 +776,48 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// TestVariables_StringCount checks string :count with relational: an empty
+// source counts 0 and any other 1, summed over the list, after expansion
+// (RFC 5229 §5).
+//
+// checklist: VARIABLES-18
+func TestVariables_StringCount(t *testing.T) {
+	for _, tc := range []struct {
+		test string
+		want bool
+	}{
+		{`string :count "eq" :comparator "i;ascii-numeric" "a" "1"`, true},
+		{`string :count "eq" :comparator "i;ascii-numeric" "" "0"`, true},
+		{`string :count "eq" :comparator "i;ascii-numeric" ["a", "", "b"] "2"`, true},
+		{`string :count "eq" :comparator "i;ascii-numeric" ["${unset}", "${empty}", "${x}"] "1"`, true},
+		{`string :count "eq" :comparator "i;ascii-numeric" [" ", "${unset}"] "1"`, true},
+		{`string :count "gt" :comparator "i;ascii-numeric" ["a", "b", "c"] "2"`, true},
+		{`string :count "lt" :comparator "i;ascii-numeric" ["a", "b", "c"] ["1", "3"]`, false},
+		{`string :count "ne" :comparator "i;ascii-numeric" ["a", "b"] ["2", "5"]`, true},
+		{`string :count "eq" "" "0"`, true},
+		{`string :value "lt" :comparator "i;ascii-numeric" ["10", "x"] "9"`, false},
+		{`string :value "gt" :comparator "i;ascii-numeric" ["${x}0", "1"] "9"`, true},
+	} {
+		script := `require ["fileinto", "variables", "relational", "comparator-i;ascii-numeric"];
+set "empty" ""; set "x" "1";
+if ` + tc.test + ` { fileinto "yes"; }`
+		ex, out := varsRun(t, script, sieveEmail())
+		if out.Error != nil {
+			t.Fatalf("%s: %v", tc.test, out.Error)
+		}
+		if got := ex.meta["deliver_to_folder"] == "yes"; got != tc.want {
+			t.Errorf("%s = %v, want %v", tc.test, got, tc.want)
+		}
+	}
+	// :count and :value on string need relational.
+	for _, s := range []string{
+		`if string :count "eq" "a" "1" { keep; }`,
+		`if string :value "eq" "a" "a" { keep; }`,
+	} {
+		if err := sieve.Validate(`require "variables"; ` + s); err == nil {
+			t.Errorf("%s: accepted without relational", s)
+		}
+	}
 }

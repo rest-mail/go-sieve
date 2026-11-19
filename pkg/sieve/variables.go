@@ -73,6 +73,7 @@ func (*setCmd) isCmd() {}
 type stringTest struct {
 	comparator string
 	matchType  string
+	relation   string // the RFC 5231 operator of :value or :count
 	sources    []string
 	keys       []string
 }
@@ -386,6 +387,7 @@ func (p *parser) parseSet() (sieveCmd, error) {
 }
 
 // parseStringTest parses: string [MATCH-TYPE] [COMPARATOR] <source> <keys> (§5).
+// With "relational", MATCH-TYPE may be :value or :count (RFC 5231 §4).
 func (p *parser) parseStringTest() (sieveTest, error) {
 	opts, err := p.parseMatchOptions(false, false)
 	if err != nil {
@@ -399,7 +401,7 @@ func (p *parser) parseStringTest() (sieveTest, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &stringTest{comparator: opts.comparator, matchType: opts.matchType, sources: sources, keys: keys}, nil
+	return &stringTest{comparator: opts.comparator, matchType: opts.matchType, relation: opts.relation, sources: sources, keys: keys}, nil
 }
 
 // ── Evaluation ───────────────────────────────────────────────────────
@@ -428,14 +430,31 @@ func (st *evalState) expandList(list []string) []string {
 // matchValues compares values with the expanded keys. With variables, a
 // successful :matches sets the match variables from the first pair that
 // matches (§3.2); a failed one leaves them as they were.
-func (st *evalState) matchValues(values []string, matchType, comparator string, keys []string) bool {
-	return st.matchExpanded(values, matchType, comparator, st.expandList(keys))
+func (st *evalState) matchValues(values []string, matchType, relation, comparator string, keys []string) bool {
+	return st.matchExpanded(values, matchType, st.expandRelation(matchType, relation), comparator, st.expandList(keys))
 }
 
-// matchExpanded is matchValues for keys already expanded.
-func (st *evalState) matchExpanded(values []string, matchType, comparator string, keys []string) bool {
+// expandRelation returns the relational operator of a :value or :count test.
+// With variables it is expanded first (RFC 5229 §3), and an expansion that is
+// not an operator is a runtime error, so the fail-safe keep applies. Any other
+// match type has no operator.
+func (st *evalState) expandRelation(matchType, relation string) string {
+	if st.vars == nil || (matchType != ":value" && matchType != ":count") {
+		return relation
+	}
+	expanded := st.vars.expand(relation)
+	op, ok := match.Relation(expanded)
+	if !ok {
+		panic(fmt.Errorf("sieve: unknown relational operator %q after %s: %s", expanded, matchType, relationalOperators))
+	}
+	return op
+}
+
+// matchExpanded is matchValues for keys already expanded. Only :matches sets
+// match variables; the relational :value and :count set none.
+func (st *evalState) matchExpanded(values []string, matchType, relation, comparator string, keys []string) bool {
 	if st.vars == nil || matchType != ":matches" {
-		return match.Any(values, matchType, comparator, keys)
+		return matchPlain(values, matchType, relation, comparator, keys)
 	}
 	for _, v := range values {
 		for _, k := range keys {

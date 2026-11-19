@@ -14,7 +14,7 @@ import (
 // This file implements a recursive-descent parser over internal grammar tokens for a
 // practical subset of the Sieve mail-filtering language (RFC 5228), plus a
 // few widely used extensions (envelope, body, imap4flags, vacation, notify,
-// variables)
+// variables, relational, subaddress)
 // and a non-standard :regex match type retained for backwards compatibility.
 //
 // The parser produces an AST (Script -> commands -> tests) that the evaluator
@@ -137,6 +137,7 @@ type sizeTest struct {
 type headerTest struct {
 	comparator string
 	matchType  string
+	relation   string // the RFC 5231 operator of :value or :count
 	headers    []string
 	keys       []string
 }
@@ -144,7 +145,9 @@ type headerTest struct {
 type addressTest struct {
 	comparator  string
 	matchType   string
+	relation    string
 	addressPart string
+	subaddress  Subaddress // the host's detail encoding, for :user and :detail
 	headers     []string
 	keys        []string
 }
@@ -152,7 +155,9 @@ type addressTest struct {
 type envelopeTest struct {
 	comparator  string
 	matchType   string
+	relation    string
 	addressPart string
+	subaddress  Subaddress
 	parts       []string
 	keys        []string
 }
@@ -160,6 +165,7 @@ type envelopeTest struct {
 type bodyTest struct {
 	comparator string
 	matchType  string
+	relation   string
 	// transform is the body transform (RFC 5173 §5): ":text" (the default),
 	// ":raw" or ":content". contentTypes holds the :content list.
 	transform    string
@@ -209,6 +215,8 @@ var supportedCapabilities = map[string]bool{
 	"copy":                       true, // RFC 3894 :copy tagged argument
 	"encoded-character":          true, // RFC 5228 §2.4.2.4 ${hex:..}/${unicode:..} in strings
 	"regex":                      true, // non-standard :regex match type
+	"relational":                 true, // RFC 5231 :value and :count match types
+	"subaddress":                 true, // RFC 5233 :user and :detail address parts
 	"comparator-i;ascii-numeric": true, // RFC 4790/5228 i;ascii-numeric comparator
 	"comparator-i;octet":         true, // built-in comparator (may be declared explicitly)
 	"comparator-i;ascii-casemap": true, // built-in comparator (may be declared explicitly)
@@ -229,11 +237,12 @@ const DefaultMaxDepth = 64
 type Option func(*parseOptions)
 
 type parseOptions struct {
-	maxDepth int
+	maxDepth   int
+	subaddress Subaddress
 }
 
 func defaultParseOptions() parseOptions {
-	return parseOptions{maxDepth: DefaultMaxDepth}
+	return parseOptions{maxDepth: DefaultMaxDepth, subaddress: DefaultSubaddress}
 }
 
 // WithMaxDepth overrides [DefaultMaxDepth], the maximum nesting depth of tests
@@ -248,6 +257,44 @@ func WithMaxDepth(n int) Option {
 	}
 }
 
+// Subaddress describes how the encompassing mail system encodes a detail in
+// the local part of an address, for the :user and :detail address parts of the
+// subaddress extension (RFC 5233 §4). RFC 5233 leaves the encoding to the mail
+// system and requires the implementation to match it, so a host whose system
+// differs from [DefaultSubaddress] passes its own with [WithSubaddress].
+type Subaddress struct {
+	// Separator is the character sequence between the user and the detail,
+	// such as "+" in "ken+sieve@example.org". An empty Separator means the
+	// mail system has no subaddresses: no address has a detail, so :detail
+	// matches nothing and :user is the whole local part.
+	Separator string
+	// DetailFirst selects the encoding where the detail precedes the
+	// separator, as in RFC 5233's "detail--user@domain" diagram. By default
+	// the detail follows it ("user+detail@domain").
+	DetailFirst bool
+	// NoEmptyDetail says the mail system does not encode an empty detail: a
+	// local part whose detail side of the separator is empty ("ken+@...") is
+	// then a plain user with no detail. By default such a local part has the
+	// empty detail "" (RFC 5233 §4).
+	NoEmptyDetail bool
+}
+
+// DefaultSubaddress is the encoding [Parse] uses unless [WithSubaddress] says
+// otherwise: the detail follows the first "+" and may be empty.
+//
+// When the separator occurs more than once in the local part, RFC 5233 §4
+// leaves the split to the implementation. This package always splits at the
+// first occurrence: "a+b+c" has user "a" and detail "b+c", or with
+// DetailFirst detail "a" and user "b+c".
+var DefaultSubaddress = Subaddress{Separator: "+"}
+
+// WithSubaddress sets the detail encoding the :user and :detail address parts
+// apply (RFC 5233 §4). Pass the encoding the host's mail system uses to route
+// the message; see [Subaddress].
+func WithSubaddress(s Subaddress) Option {
+	return func(o *parseOptions) { o.subaddress = s }
+}
+
 // ── Parser ───────────────────────────────────────────────────────────
 
 type parser struct {
@@ -259,9 +306,10 @@ type parser struct {
 	seenNonRequire bool            // a non-require command has been parsed
 	variableNames  map[string]bool // distinct variables the script assigns (RFC 5229 §6)
 
-	maxDepth   int // nesting cap for tests and blocks
-	testDepth  int // current test-expression nesting
-	blockDepth int // current control-block nesting
+	maxDepth   int        // nesting cap for tests and blocks
+	subaddress Subaddress // detail encoding for :user and :detail
+	testDepth  int        // current test-expression nesting
+	blockDepth int        // current control-block nesting
 }
 
 // Parse parses a Sieve script into an evaluable [Script]. It is strict about
@@ -287,7 +335,7 @@ func parseSieveScript(src string, opts ...Option) (*Script, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &parser{toks: toks, maxDepth: cfg.maxDepth, required: map[string]bool{}, variableNames: map[string]bool{}}
+	p := &parser{toks: toks, maxDepth: cfg.maxDepth, subaddress: cfg.subaddress, required: map[string]bool{}, variableNames: map[string]bool{}}
 	// At top level parseCommands returns without an error only at EOF; a
 	// stray "}" or any other leftover token is already an error there.
 	cmds, err := p.parseCommands(false)
@@ -1178,6 +1226,7 @@ func (p *parser) parseSizeTest() (sieveTest, error) {
 type matchOptions struct {
 	comparator    string
 	matchType     string
+	relation      string
 	addressPart   string
 	bodyTransform string
 	contentTypes  []string
@@ -1224,6 +1273,35 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 			}
 			matchTypeSet = true
 			opts.matchType = tag
+		case ":value", ":count":
+			// RFC 5231 §4: each takes the relational operator as a string.
+			if err := p.requireCapability("relational", "the "+tag+" match type"); err != nil {
+				return opts, err
+			}
+			if matchTypeSet {
+				return opts, p.errf("duplicate or conflicting match type %q: a test takes at most one match type", tag)
+			}
+			// RFC 5231 §4.2 defines what :count counts only for the address,
+			// envelope and header tests; a body has no entities to count.
+			if tag == ":count" && allowBody {
+				return opts, p.errf("the :count match type is not valid on the body test (RFC 5231 §4.2 counts only addresses, envelope parts and header fields)")
+			}
+			s, err := p.expect(grammar.String, "a relational operator after "+tag)
+			if err != nil {
+				return opts, err
+			}
+			// With variables, an operator built from a variable is a string like
+			// any other (RFC 5229 §3): it is expanded and checked when it runs.
+			op := s.Str
+			if !p.dynamic(op) {
+				var ok bool
+				if op, ok = match.Relation(op); !ok {
+					return opts, p.errf("unknown relational operator %q after %s: %s", s.Str, tag, relationalOperators)
+				}
+			}
+			matchTypeSet = true
+			opts.matchType = tag
+			opts.relation = op
 		case ":comparator":
 			if comparatorSet {
 				return opts, p.errf("duplicate :comparator: a test takes at most one comparator")
@@ -1243,7 +1321,12 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 					return opts, err
 				}
 			}
-		case ":localpart", ":domain", ":all":
+		case ":localpart", ":domain", ":all", ":user", ":detail":
+			if tag == ":user" || tag == ":detail" {
+				if err := p.requireCapability("subaddress", "the "+tag+" address part"); err != nil {
+					return opts, err
+				}
+			}
 			if !allowAddressPart {
 				return opts, p.errf("tagged argument %q is not valid on this test (address parts apply only to address and envelope tests)", tag)
 			}
@@ -1279,6 +1362,9 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 	return opts, nil
 }
 
+// relationalOperators names the operators RFC 5231 §4 allows, for errors.
+const relationalOperators = `expected one of "gt", "ge", "lt", "le", "eq", "ne" (RFC 5231 §4)`
+
 // checkComparatorMatchType rejects a comparator used with a match type it does
 // not define. A comparator is not a free substitute across every match type
 // (RFC 5228 §2.7.3): each comparator declares which operations it supports, and
@@ -1291,9 +1377,9 @@ func (p *parser) parseMatchOptions(allowAddressPart, allowBody bool) (matchOptio
 // the substring match types :contains and :matches (RFC 5228 §2.7.1) or the
 // non-standard :regex match type — the numeric interpretation is meaningless
 // for a substring or wildcard/regex pattern. It therefore applies only to the
-// equality match type :is here. (An ordering use would require the relational
-// extension's :value/:count, RFC 5231, which this package does not implement.)
-// i;octet and i;ascii-casemap support every match type and are unrestricted.
+// equality match type :is and to the ordering match types :value and :count
+// of the relational extension (RFC 5231 §4). i;octet and i;ascii-casemap
+// support every match type, including ordering (RFC 4790 §9.2, §9.3).
 func checkComparatorMatchType(comparator, matchType string) error {
 	if comparator == "i;ascii-numeric" {
 		switch matchType {
@@ -1320,6 +1406,7 @@ func (p *parser) parseHeaderTest() (sieveTest, error) {
 	return &headerTest{
 		comparator: opts.comparator,
 		matchType:  opts.matchType,
+		relation:   opts.relation,
 		headers:    headers,
 		keys:       keys,
 	}, nil
@@ -1341,7 +1428,9 @@ func (p *parser) parseAddressTest() (sieveTest, error) {
 	return &addressTest{
 		comparator:  opts.comparator,
 		matchType:   opts.matchType,
+		relation:    opts.relation,
 		addressPart: opts.addressPart,
+		subaddress:  p.subaddress,
 		headers:     headers,
 		keys:        keys,
 	}, nil
@@ -1374,7 +1463,9 @@ func (p *parser) parseEnvelopeTest() (sieveTest, error) {
 	return &envelopeTest{
 		comparator:  opts.comparator,
 		matchType:   opts.matchType,
+		relation:    opts.relation,
 		addressPart: opts.addressPart,
+		subaddress:  p.subaddress,
 		parts:       parts,
 		keys:        keys,
 	}, nil
@@ -1401,6 +1492,7 @@ func (p *parser) parseBodyTest() (sieveTest, error) {
 	return &bodyTest{
 		comparator:   opts.comparator,
 		matchType:    opts.matchType,
+		relation:     opts.relation,
 		transform:    opts.bodyTransform,
 		contentTypes: opts.contentTypes,
 		keys:         keys,

@@ -15,7 +15,8 @@ func TestExtensionCapabilityInventory(t *testing.T) {
 	want := []string{
 		"fileinto", "reject", "ereject", "envelope", "body", "imap4flags",
 		"vacation", "vacation-seconds", "notify", "mailbox", "copy",
-		"encoded-character", "regex", "comparator-i;ascii-numeric",
+		"encoded-character", "regex", "relational", "subaddress",
+		"comparator-i;ascii-numeric",
 		"comparator-i;octet", "comparator-i;ascii-casemap", "variables",
 	}
 	if len(supportedCapabilities) != len(want) {
@@ -26,14 +27,15 @@ func TestExtensionCapabilityInventory(t *testing.T) {
 			t.Errorf("%s: %v", capability, err)
 		}
 	}
-	for _, capability := range []string{"relational", "subaddress", "enotify"} {
+	for _, capability := range []string{"enotify"} {
 		if err := Validate(fmt.Sprintf("require %q;", capability)); err == nil {
 			t.Errorf("advertised unsupported %s", capability)
 		}
 	}
-	// The numeric equality comparator does not imply relational match types;
-	// ordinary address parts do not imply subaddress splitting; set and string
-	// are unavailable unless "variables" is declared.
+	// The numeric comparator does not imply the relational match types, the
+	// ordinary address parts do not imply subaddress splitting, and set and
+	// string are unavailable unless "variables" is declared: each needs its
+	// own require.
 	for _, script := range []string{
 		`require "comparator-i;ascii-numeric"; if header :value "gt" "X-Priority" "3" { discard; }`,
 		`if header :count "gt" "Received" "3" { discard; }`,
