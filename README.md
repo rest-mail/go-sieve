@@ -130,7 +130,7 @@ Check a script's syntax without evaluating it with `sieve.Validate(src)`.
 | Rejection | `reject` and `ereject` (RFC 5429); `Outcome.ExtendedReject` distinguishes them. |
 | Copies and folders | `:copy` on fileinto/redirect (RFC 3894); `fileinto :create` (RFC 5490). The host creates folders. |
 | Flags | `setflag`, `addflag`, `removeflag` callbacks with normalized lists (RFC 5232); with `variables`, a variable name before the list changes that variable instead. `hasflag` and delivery `:flags` remain gaps. |
-| Variables | RFC 5229: `set` with `:lower`, `:upper`, `:lowerfirst`, `:upperfirst`, `:quotewildcard` and `:length`; the `string` test; `${name}` interpolation in every action and test argument; match variables `${0}` to `${9}` from `:matches`. Up to 128 variables, 400-character names and 4000-character values; longer values set at run time are truncated. Variables last for one `Evaluate`. A `:comparator` name is not expanded. |
+| Variables | RFC 5229: `set` with `:lower`, `:upper`, `:lowerfirst`, `:upperfirst`, `:quotewildcard` and `:length`; the `string` test; `${name}` interpolation in every action and test argument; match variables `${0}` to `${9}` from `:matches`. Up to 128 variables, 400-character names and 4000-character values; longer values set at run time are truncated. Variables last for one `Evaluate`. A relational operator or `:comparator` name built from variables is checked when its test runs. |
 | Vacation | RFC 5230 argument validation and suppression rules; RFC 6131 `vacation-seconds`. Persistent suppression and reply transport belong to the host. |
 | Encoded strings | `encoded-character`: `${hex:...}` and `${unicode:...}` (RFC 5228). |
 | Local extensions | `regex` uses Go regular expressions; `notify` forwards method/message. These are not standardized regex or RFC 5435 `enotify` conformance. |
@@ -317,7 +317,6 @@ reason. That records a boundary or a gap, rather than claiming full conformance.
 | Supply an undecoded body for `body :raw` (BODY-07). | [#90](https://github.com/rest-mail/go-sieve/issues/90) |
 | Add a user-scoped host query for `mailboxexists` (MAILBOX-08/09/10). | [#91](https://github.com/rest-mail/go-sieve/issues/91) |
 | Report a host policy skip from Redirect without cancelling the implicit keep (SIEVE-CORE-20). | [#93](https://github.com/rest-mail/go-sieve/issues/93) |
-| Expand variables in `:comparator` names, which are checked at parse time today (VARIABLES-11). | [#100](https://github.com/rest-mail/go-sieve/issues/100) |
 | Let the host choose which extensions a script may use; today every supported extension, `variables` included, is available to any script that declares it. | [#107](https://github.com/rest-mail/go-sieve/issues/107) |
 
 ### Badges and coverage

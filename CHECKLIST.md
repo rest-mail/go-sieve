@@ -508,8 +508,8 @@ text in the parsed script and are expanded when the statement using them runs.
 Constant strings are still checked at parse time; a redirect address, vacation
 `:from` or envelope part built from variables is checked once expanded, and an
 invalid one is a runtime error with the fail-safe keep; so is a relational
-operator built from variables. A comparator name is
-not expanded (VARIABLES-11, [#100](https://github.com/rest-mail/go-sieve/issues/100)).
+operator or a `:comparator` name built from variables (VARIABLES-11,
+[#100](https://github.com/rest-mail/go-sieve/issues/100)).
 `TestDifferentialVariables` compares the extension with foxcpp/go-sieve;
 `TestDifferentialVariablesDepartures` pins three places where foxcpp departs from
 the RFC. Limits: 128 distinct variables, names of up to 400 characters, values of
@@ -527,7 +527,7 @@ up to 4000 characters, match variables `${0}` to `${9}`.
 | VARIABLES-08 | 3.2 | MUST | Tests are short-circuited and evaluated left to right, so a test not evaluated sets no match variables. | `TestVariables_MatchVariablesShortCircuit`, `TestDifferentialVariables` |
 | VARIABLES-09 | 4 | MUST | The name given to `set` is a constant identifier; a match variable, a namespace or any other invalid name is a syntax error. | `TestVariables_SetName` |
 | VARIABLES-10 | 4 | Normative | `set` stores the value for the running evaluation only, does not affect the implicit keep and combines with every other action. | `TestVariables_SetScope` |
-| VARIABLES-11 | 3 | Normative | Every action and test argument is expanded when it runs, with values only then known checked then, the relational operator of `:value` and `:count` included; the `:comparator` name is checked at parse time and so cannot be built from a variable (gap: [#100](https://github.com/rest-mail/go-sieve/issues/100)). | `TestVariables_Actions`, `TestAddressLists_Variables`, `TestDifferentialRelationalDepartures` |
+| VARIABLES-11 | 3 | Normative | Every action and test argument is expanded when it runs, with values only then known checked then, the relational operator of `:value` and `:count` and the `:comparator` name included ([#100](https://github.com/rest-mail/go-sieve/issues/100)): an expanded comparator name must be built in or declared with require and support the match type, and a bad one is a runtime error with the fail-safe keep; a constant one is still checked at parse time. | `TestVariables_Actions`, `TestVariables_ComparatorName`, `TestAddressLists_Variables`, `TestDifferentialRelationalDepartures`, `TestDifferentialVariablesComparatorName` |
 | VARIABLES-12 | 4.1 | MUST | Modifier names are case-insensitive; an unknown modifier, or two of one precedence, is a syntax error; modifiers apply in precedence order, largest first. | `TestVariables_Modifiers`, `TestDifferentialVariables` |
 | VARIABLES-13 | 4.1.1–4.1.3 | Normative | `:length` gives the number of characters, `:quotewildcard` quotes `*`, `?` and `\`, and the case modifiers change only US-ASCII letters. | `TestVariables_ModifierValues`, `TestDifferentialVariables` |
 | VARIABLES-14 | 5 | MUST NOT | `string` is true if any source matches any key, with `:is` by default, and strips no whitespace. | `TestVariables_StringTest`, `TestDifferentialVariables` |

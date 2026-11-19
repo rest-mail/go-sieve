@@ -47,7 +47,7 @@ func TestAddressLists_Variables(t *testing.T) {
 	// :detail and :user feeding the match variables, and :value and :count
 	// leaving the match variables of the last :matches as they were.
 	subFields := map[string]string{"from": "ann+news@one.example", "to": "bob@two.example, carol+x+y@three.example"}
-	const subReq = `require ["fileinto", "variables", "relational", "subaddress", "comparator-i;ascii-numeric"]; set "h" "to"; set "op" "GT"; `
+	const subReq = `require ["fileinto", "variables", "relational", "subaddress", "comparator-i;ascii-numeric"]; set "h" "to"; set "op" "GT"; set "num" "I;ASCII-Numeric"; `
 	for _, test := range []string{
 		`address :detail :matches ["from", "${h}"] "*"`,
 		`address :user :matches "${h}" "c*"`,
@@ -55,6 +55,8 @@ func TestAddressLists_Variables(t *testing.T) {
 		`address :value "${op}" :localpart "${h}" "bob"`,
 		`allof (address :matches "from" "*+*", address :value "${op}" :domain "${h}" "a")`,
 		`allof (address :matches "from" "*+*", address :count "eq" :comparator "i;ascii-numeric" ["from", "${h}"] "3")`,
+		`address :count "eq" :comparator "${num}" ["from", "${h}"] "03"`,
+		`address :value "gt" :comparator "${num}" :localpart "${h}" "99"`,
 	} {
 		script, err := Parse(subReq + `if ` + test + ` { fileinto "hit=${0}|${1}|${2}"; } else { fileinto "miss=${1}"; }`)
 		if err != nil {
@@ -98,6 +100,34 @@ func TestAddressLists_Variables(t *testing.T) {
 	_, lazy := builtAndLazy(subFields, nil)
 	if out := script.Evaluate(lazy, newRecExec()); out.Error == nil || !out.ImplicitKeep {
 		t.Errorf("bogus operator: %+v, want a runtime error and the implicit keep", out)
+	}
+
+	// A comparator name built from a variable is expanded and checked when the
+	// test runs (#100): i;octet tells case apart where the default does not,
+	// and a name that is not declared is a runtime error with the fail-safe
+	// keep, on the lists as on built ones.
+	for comparator, folder := range map[string]string{"i;ascii-casemap": "hit", "i;octet": ""} {
+		script, err := Parse(subReq + `set "c" "` + comparator + `"; if address :is :comparator "${c}" "${h}" "BOB@two.example" { fileinto "hit"; }`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		built, lazy := builtAndLazy(subFields, nil)
+		for _, msg := range []*Message{built, lazy} {
+			ex := newRecExec()
+			if out := script.Evaluate(msg, ex); out.Error != nil || ex.meta["deliver_to_folder"] != folder {
+				t.Errorf("comparator %s: folder %q, error %v, want %q", comparator, ex.meta["deliver_to_folder"], out.Error, folder)
+			}
+		}
+	}
+	script, err = Parse(subReq + `set "c" "i;bogus"; if address :is :comparator "${c}" "${h}" "x" { fileinto "hit"; }`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	built, lazy := builtAndLazy(subFields, nil)
+	for _, msg := range []*Message{built, lazy} {
+		if out := script.Evaluate(msg, newRecExec()); out.Error == nil || !out.ImplicitKeep || !strings.Contains(out.Error.Error(), `"i;bogus"`) {
+			t.Errorf("bogus comparator: %+v, want a runtime error naming it and the implicit keep", out)
+		}
 	}
 
 	// Still one address at a time, stopping at the first match.

@@ -31,10 +31,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   test splits each address as it reads it. Closes #96.
 - Checklist sections for RFC 5231 and RFC 5233 with the RFCs' own examples.
 
-### Known gaps
-
-- A `:comparator` name cannot be built from a variable (#100).
-
 ## [0.8.0] - 2026-11-05
 
 ### Added

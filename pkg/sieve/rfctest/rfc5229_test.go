@@ -348,9 +348,8 @@ type vacationRec struct {
 func (e *vacationRec) Vacation(v sieve.Vacation) { e.vacations = append(e.vacations, v) }
 
 // TestVariables_Actions checks that every action and test argument is expanded
-// when it runs, that values only known then are checked then, and that a
-// comparator name is still checked at parse time, so a reference in it is
-// refused (rest-mail/go-sieve#100).
+// when it runs, and that values only known then are checked then. The
+// comparator name is covered by TestVariables_ComparatorName.
 //
 // checklist: VARIABLES-11
 func TestVariables_Actions(t *testing.T) {
@@ -447,10 +446,68 @@ if allof (header :is "${h}" "${c}", exists ["${h}", "Subject"], envelope :localp
 	if err := sieve.Validate(relReq + `if string :value "bogus" "b" "a" { keep; }`); err == nil {
 		t.Error("a constant unknown operator was accepted")
 	}
+}
 
-	// Gap rest-mail/go-sieve#100: a comparator name is not expanded.
-	if err := sieve.Validate(req + `set "c" "i;octet"; if header :comparator "${c}" :is "Subject" "x" { keep; }`); err == nil {
-		t.Error("a comparator name built from a variable was accepted; update #100 and VARIABLES-11")
+// TestVariables_ComparatorName checks that a :comparator name is a string like
+// any other (RFC 5229 §3, rest-mail/go-sieve#100): built from variables it is
+// expanded when its test runs, then checked as Parse checks a constant one.
+// The name is case-insensitive, must be built in or declared with require
+// (RFC 5228 §2.7.3) and must support the match type (RFC 4790 §9.1); a bad
+// value is a runtime error that keeps the message (RFC 5228 §2.10.6).
+//
+// checklist: VARIABLES-11
+func TestVariables_ComparatorName(t *testing.T) {
+	const req = `require ["variables", "fileinto", "relational", "body", "envelope", "comparator-i;ascii-numeric"]; `
+	for _, tc := range []struct{ script, want string }{
+		// Each test gives a different answer under the default comparator.
+		{`set "c" "i;octet"; if string :is :comparator "${c}" "Hello" "hello" { fileinto "casemap"; } else { fileinto "octet"; }`, "fileinto:octet"},
+		{`set "c" "I;ASCII-CASEMAP"; if string :comparator "${c}" :is "Hello" "hello" { fileinto "casemap"; } else { fileinto "octet"; }`, "fileinto:casemap"},
+		{`set "c" "i;octet"; if header :contains :comparator "${c}" "Subject" "test" { fileinto "x"; } else { fileinto "octet"; }`, "fileinto:octet"},
+		{`set "c" "i;octet"; if address :all :is :comparator "${c}" "From" "Sender@example.com" { fileinto "x"; } else { fileinto "octet"; }`, "fileinto:octet"},
+		{`set "c" "i;octet"; if envelope :is :comparator "${c}" "from" "SENDER@example.com" { fileinto "x"; } else { fileinto "octet"; }`, "fileinto:octet"},
+		{`set "c" "i;octet"; if body :comparator "${c}" :contains "TEST" { fileinto "x"; } else { fileinto "octet"; }`, "fileinto:octet"},
+		{`set "n" "numeric"; if string :value "gt" :comparator "i;ascii-${n}" "10" "9" { fileinto "numeric"; }`, "fileinto:numeric"},
+		{`set "op" "eq"; set "c" "i;ascii-numeric"; if header :count "${op}" :comparator "${c}" "Subject" "01" { fileinto "one"; }`, "fileinto:one"},
+		{`set "c" "i;ascii-numeric"; if string :is :comparator "${c}" "007" "7" { fileinto "numeric"; }`, "fileinto:numeric"},
+		// Checked when the test runs: one that never runs is never checked.
+		{`set "c" "i;bogus"; if anyof (true, string :comparator "${c}" "a" "a") { fileinto "short"; }`, "fileinto:short"},
+	} {
+		ex, out := varsRun(t, req+tc.script, sieveEmail())
+		if out.Error != nil || !reflect.DeepEqual(ex.applied, []string{tc.want}) {
+			t.Errorf("%s: actions %q, error %v, want %s", tc.script, ex.applied, out.Error, tc.want)
+		}
+	}
+	// A bad expanded name is a runtime error that names the value and keeps
+	// the message.
+	for _, tc := range []struct{ require, script, value string }{
+		{req, `set "c" "i;bogus"; if string :comparator "${c}" "a" "a" { fileinto "x"; }`, `"i;bogus"`},
+		{req, `if string :comparator "${unset}" "a" "a" { fileinto "x"; }`, `""`},
+		{req, `set "c" "i;octet"; if string :comparator "${c} " "a" "a" { fileinto "x"; }`, `"i;octet "`},
+		{`require ["variables", "fileinto"]; `, `set "c" "i;ascii-numeric"; if string :comparator "${c}" "1" "1" { fileinto "x"; }`, `"i;ascii-numeric"`},
+		{req, `set "c" "i;ascii-numeric"; if string :contains :comparator "${c}" "1" "1" { fileinto "x"; }`, `:contains`},
+		{req, `set "c" "I;Ascii-Numeric"; if header :matches :comparator "${c}" "Subject" "*" { fileinto "x"; }`, `:matches`},
+		{req, `set "c" "i;bogus"; if header :count "eq" :comparator "${c}" "Subject" "1" { fileinto "x"; }`, `"i;bogus"`},
+		{req, `set "c" "i;bogus"; if body :comparator "${c}" :contains "x" { fileinto "x"; }`, `"i;bogus"`},
+	} {
+		ex, out := varsRun(t, tc.require+tc.script, sieveEmail())
+		if out.Error == nil || !out.ImplicitKeep || len(ex.applied) != 0 || !strings.Contains(out.Error.Error(), tc.value) {
+			t.Errorf("%s: outcome %+v, actions %q, want a runtime error naming %s and the implicit keep", tc.script, out, ex.applied, tc.value)
+		}
+	}
+	// The same names written as constants are still refused by Parse.
+	for _, tc := range []struct{ require, script string }{
+		{req, `if string :comparator "i;bogus" "a" "a" { keep; }`},
+		{`require "variables"; `, `if string :comparator "i;ascii-numeric" "1" "1" { keep; }`},
+		{req, `if string :contains :comparator "i;ascii-numeric" "1" "1" { keep; }`},
+	} {
+		if err := sieve.Validate(tc.require + tc.script); err == nil {
+			t.Errorf("%s: a constant bad comparator was accepted", tc.script)
+		}
+	}
+	// Without the variables extension a reference is plain text, so it names
+	// an unknown comparator and Parse refuses it.
+	if err := sieve.Validate(`require "fileinto"; if header :comparator "${c}" :is "Subject" "x" { keep; }`); err == nil {
+		t.Error("without variables a comparator ${c} was accepted")
 	}
 }
 

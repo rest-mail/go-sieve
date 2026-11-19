@@ -114,3 +114,43 @@ func TestDifferentialVariablesDepartures(t *testing.T) {
 		}
 	}
 }
+
+// TestDifferentialVariablesComparatorName checks a :comparator name built from
+// a variable (RFC 5229 §3, rest-mail/go-sieve#100) against foxcpp/go-sieve.
+// The reference refuses such a name when it loads the script, so each
+// variable form is compared with the reference running the same script with
+// the name written as a constant: expanding the name must give what the
+// constant gives. When the reference starts to accept the variable form, the
+// test logs it.
+//
+// checklist: VARIABLES-11
+func TestDifferentialVariablesComparatorName(t *testing.T) {
+	const req = `require ["fileinto", "variables", "relational", "comparator-i;ascii-numeric"]; `
+	for _, tc := range []struct{ name, test string }{
+		{"i;octet", `header :is :comparator "${c}" "Subject" "i have a present for you"`},
+		{"i;ascii-casemap", `header :is :comparator "${c}" "Subject" "i have a present for you"`},
+		{"i;octet", `address :domain :is :comparator "${c}" "Cc" "acme.example.com"`},
+		{"i;ascii-numeric", `header :is :comparator "${c}" "X-Spam-Score" "012"`},
+		{"i;ascii-numeric", `header :value "gt" :comparator "${c}" "X-Spam-Score" "9"`},
+		{"i;ascii-numeric", `header :count "eq" :comparator "${c}" "Subject" "01"`},
+	} {
+		script := req + `set "c" "` + tc.name + `"; if ` + tc.test + ` { fileinto "yes"; } else { fileinto "no"; }`
+		constant := strings.ReplaceAll(script, `"${c}"`, `"`+tc.name+`"`)
+		want, refErr := reference(t, constant)
+		if refErr != nil {
+			t.Errorf("the reference refused the constant form: %v\n%s", refErr, constant)
+			continue
+		}
+		for _, s := range []string{script, constant} {
+			got, err := ours(s)
+			if err != nil || !slices.Equal(got, want) {
+				t.Errorf("deliveries %q, error %v, want the reference's %q\nscript: %s", got, err, want, s)
+			}
+		}
+		if ref, refErr := reference(t, script); refErr == nil && slices.Equal(ref, want) {
+			t.Logf("%s: the reference now expands the comparator name; fold this into TestDifferentialVariables", tc.test)
+		} else {
+			t.Logf("%s: the reference departs from RFC 5229 §3: %q, %v", tc.test, ref, refErr)
+		}
+	}
+}
